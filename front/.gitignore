@@ -1,0 +1,12 @@
+/node_modules
+/.next
+/out
+/build
+.DS_Store
+*.tsbuildinfo
+next-env.d.ts
+
+# Variables de entorno (NO subir credenciales)
+.env
+.env.local
+.env*.local

@@ -1,0 +1,41 @@
+import { prisma } from './prisma.js';
+import { hashPassword } from './lib/auth.js';
+
+// Siembra una empresa demo completa. Ejecutar: npm run seed
+async function main() {
+  const business = await prisma.business.create({
+    data: { name: 'Estudio Lúa', vertical: 'peluqueria', brandPrimary: '#1b431c', brandSecondary: '#8cc63f' },
+  });
+  const location = await prisma.location.create({ data: { businessId: business.id, name: 'Sede Centro' } });
+
+  // Horario L-V 9:00-20:00, S 9:00-14:00
+  for (let wd = 1; wd <= 5; wd++) await prisma.openingHour.create({ data: { locationId: location.id, weekday: wd, openTime: '09:00', closeTime: '20:00' } });
+  await prisma.openingHour.create({ data: { locationId: location.id, weekday: 6, openTime: '09:00', closeTime: '14:00' } });
+
+  const owner = await prisma.user.create({ data: { email: 'owner@estudiolua.com', passwordHash: await hashPassword('demo1234'), firstName: 'Adrián' } });
+  await prisma.membership.create({ data: { userId: owner.id, businessId: business.id, role: 'OWNER' } });
+
+  const sara = await prisma.employee.create({ data: { businessId: business.id, locationId: location.id, firstName: 'Sara', lastName: 'Molina', specialty: 'Color', color: '#8cc63f' } });
+  const jorge = await prisma.employee.create({ data: { businessId: business.id, locationId: location.id, firstName: 'Jorge', lastName: 'Ortega', specialty: 'Barba', color: '#f25c2a' } });
+
+  const corte = await prisma.service.create({ data: { businessId: business.id, name: 'Corte de pelo', durationMin: 30, price: 15, requiresProfessional: true, employees: { connect: [{ id: sara.id }, { id: jorge.id }] } } });
+  const color = await prisma.service.create({ data: { businessId: business.id, name: 'Color completo', durationMin: 90, price: 55, requiresResource: true, resourceType: 'CHAIR', employees: { connect: [{ id: sara.id }] } } });
+
+  const sillon = await prisma.resource.create({ data: { businessId: business.id, locationId: location.id, name: 'Sillón 1', type: 'CHAIR', capacity: 1, services: { connect: [{ id: corte.id }, { id: color.id }] } } });
+
+  const ana = await prisma.customer.create({ data: { businessId: business.id, firstName: 'Ana', lastName: 'Gómez', phone: '600555666', email: 'ana@mail.com', status: 'ACTIVE' } });
+
+  await prisma.product.create({ data: { businessId: business.id, name: 'Cera modeladora', category: 'Peinado', stock: 24, stockMinimo: 10, price: 12.5, supplier: 'BeautyDist' } });
+
+  // Bono de 5 sesiones de corte para Ana
+  const bono = await prisma.package.create({ data: { businessId: business.id, name: 'Bono 5 cortes', sessionsTotal: 5, validityDays: 180, price: 60, services: { connect: [{ id: corte.id }] } } });
+  await prisma.customerPackage.create({ data: { businessId: business.id, customerId: ana.id, packageId: bono.id, sessionsTotal: 5, expiresAt: new Date(Date.now() + 180 * 86400000) } });
+
+  // Una reserva de mañana 10:00
+  const start = new Date(); start.setDate(start.getDate() + 1); start.setHours(10, 0, 0, 0);
+  await prisma.booking.create({ data: { businessId: business.id, locationId: location.id, customerId: ana.id, serviceId: corte.id, employeeId: sara.id, startAt: start, endAt: new Date(start.getTime() + 30 * 60000), status: 'CONFIRMED', resources: { connect: [{ id: sillon.id }] } } });
+
+  console.log('Seed OK. Login demo: owner@estudiolua.com / demo1234');
+}
+
+main().then(() => prisma.$disconnect()).catch(async (e) => { console.error(e); await prisma.$disconnect(); process.exit(1); });

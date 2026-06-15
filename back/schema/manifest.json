@@ -1,0 +1,28 @@
+{
+  "core": ["00_core.sql"],
+  "modules": {
+    "clientes":   { "tables": ["10_clientes.sql"], "requires": [] },
+    "servicios":  { "tables": ["20_servicios.sql"], "requires": [] },
+    "empleados":  { "tables": ["30_empleados.sql"], "requires": [] },
+    "citas":      { "tables": ["40_citas.sql"], "requires": [],
+                    "relations": [
+                      { "file": "rel/citas_clientes.sql",  "needs": ["clientes"] },
+                      { "file": "rel/citas_servicios.sql", "needs": ["servicios"] },
+                      { "file": "rel/citas_empleados.sql", "needs": ["empleados"] }
+                    ] },
+    "fichaje":    { "tables": ["50_fichaje.sql"], "requires": [],
+                    "relations": [ { "file": "rel/fichaje_empleados.sql", "needs": ["empleados"] } ] },
+    "vacaciones": { "tables": ["60_vacaciones.sql"], "requires": [],
+                    "relations": [ { "file": "rel/vacaciones_empleados.sql", "needs": ["empleados"] } ] },
+    "productos":  { "tables": ["70_productos.sql"], "requires": [] },
+    "ventas":     { "tables": ["80_ventas.sql"], "requires": [],
+                    "relations": [
+                      { "file": "rel/ventas_clientes.sql",  "needs": ["clientes"] },
+                      { "file": "rel/ventas_productos.sql", "needs": ["productos"] },
+                      { "file": "rel/ventas_servicios.sql", "needs": ["servicios"] }
+                    ] },
+    "marketing":  { "tables": ["90_marketing.sql"], "requires": [] },
+    "web":        { "tables": ["95_web.sql"], "requires": [] }
+  },
+  "order": ["clientes","servicios","empleados","citas","fichaje","vacaciones","productos","ventas","marketing","web"]
+}

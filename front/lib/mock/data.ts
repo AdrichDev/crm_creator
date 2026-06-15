@@ -1,0 +1,82 @@
+// Datos de ejemplo (semillas). Al portar, el hook useCollection se conecta a
+// Supabase y estas semillas dejan de usarse.
+
+export interface Cliente { id: number; nombre: string; email: string; telefono: string; visitas: number; gastoTotal: number; segmento: string; ultimaVisita: string; }
+export interface Cita { id: number; cliente: string; servicio: string; empleado: string; fecha: string; hora: string; estado: string; }
+export interface Servicio { id: number; nombre: string; duracion: number; precio: number; categoria: string; }
+export interface Empleado { id: number; nombre: string; rol: string; especialidad: string; estado: string; email: string; }
+export interface Fichaje { id: number; empleado: string; fecha: string; entrada: string; salida: string; horas: number; }
+export interface Vacacion { id: number; empleado: string; tipo: string; inicio: string; fin: string; dias: number; estado: string; }
+export interface Producto { id: number; nombre: string; categoria: string; stock: number; minimo: number; precio: number; proveedor: string; }
+export interface Venta { id: number; fecha: string; cliente: string; items: number; metodo: string; total: number; }
+export interface Campana { id: number; nombre: string; canal: string; estado: string; enviados: number; aperturas: string; }
+export interface Resena { id: number; autor: string; estrellas: number; texto: string; fecha: string; }
+
+export const clientes: Cliente[] = [
+  { id: 1, nombre: 'Lucía Fernández', email: 'lucia@mail.com', telefono: '600 111 222', visitas: 12, gastoTotal: 480, segmento: 'VIP', ultimaVisita: '2026-06-10' },
+  { id: 2, nombre: 'Marcos Ruiz', email: 'marcos@mail.com', telefono: '600 333 444', visitas: 3, gastoTotal: 95, segmento: 'Nuevo', ultimaVisita: '2026-06-12' },
+  { id: 3, nombre: 'Ana Gómez', email: 'ana@mail.com', telefono: '600 555 666', visitas: 27, gastoTotal: 1120, segmento: 'VIP', ultimaVisita: '2026-06-14' },
+  { id: 4, nombre: 'David Soler', email: 'david@mail.com', telefono: '600 777 888', visitas: 7, gastoTotal: 210, segmento: 'Recurrente', ultimaVisita: '2026-05-29' },
+  { id: 5, nombre: 'Elena Páez', email: 'elena@mail.com', telefono: '600 999 000', visitas: 1, gastoTotal: 30, segmento: 'Nuevo', ultimaVisita: '2026-06-15' },
+];
+
+export const citas: Cita[] = [
+  { id: 1, cliente: 'Lucía Fernández', servicio: 'Corte + peinado', empleado: 'Sara', fecha: '2026-06-16', hora: '10:00', estado: 'Confirmada' },
+  { id: 2, cliente: 'Marcos Ruiz', servicio: 'Afeitado clásico', empleado: 'Jorge', fecha: '2026-06-16', hora: '11:30', estado: 'Pendiente' },
+  { id: 3, cliente: 'Ana Gómez', servicio: 'Color + corte', empleado: 'Sara', fecha: '2026-06-16', hora: '13:00', estado: 'Confirmada' },
+  { id: 4, cliente: 'David Soler', servicio: 'Corte', empleado: 'Carlos', fecha: '2026-06-17', hora: '09:30', estado: 'Cancelada' },
+  { id: 5, cliente: 'Elena Páez', servicio: 'Manicura', empleado: 'Marta', fecha: '2026-06-17', hora: '16:00', estado: 'Pendiente' },
+];
+
+export const servicios: Servicio[] = [
+  { id: 1, nombre: 'Corte de pelo', duracion: 30, precio: 15, categoria: 'Pelo' },
+  { id: 2, nombre: 'Corte + peinado', duracion: 45, precio: 22, categoria: 'Pelo' },
+  { id: 3, nombre: 'Color completo', duracion: 90, precio: 55, categoria: 'Color' },
+  { id: 4, nombre: 'Afeitado clásico', duracion: 25, precio: 14, categoria: 'Barba' },
+  { id: 5, nombre: 'Manicura', duracion: 40, precio: 20, categoria: 'Manos' },
+];
+
+export const empleados: Empleado[] = [
+  { id: 1, nombre: 'Sara Molina', rol: 'Senior', especialidad: 'Color', estado: 'Activo', email: 'sara@negocio.com' },
+  { id: 2, nombre: 'Jorge Ortega', rol: 'Barbero', especialidad: 'Barba', estado: 'Activo', email: 'jorge@negocio.com' },
+  { id: 3, nombre: 'Carlos Vidal', rol: 'Junior', especialidad: 'Corte', estado: 'Vacaciones', email: 'carlos@negocio.com' },
+  { id: 4, nombre: 'Marta Ríos', rol: 'Estética', especialidad: 'Manos', estado: 'Activo', email: 'marta@negocio.com' },
+];
+
+export const fichajes: Fichaje[] = [
+  { id: 1, empleado: 'Sara Molina', fecha: '2026-06-15', entrada: '09:02', salida: '17:31', horas: 8.5 },
+  { id: 2, empleado: 'Jorge Ortega', fecha: '2026-06-15', entrada: '10:00', salida: '18:05', horas: 8.1 },
+  { id: 3, empleado: 'Marta Ríos', fecha: '2026-06-15', entrada: '09:30', salida: '14:30', horas: 5.0 },
+];
+
+export const vacaciones: Vacacion[] = [
+  { id: 1, empleado: 'Carlos Vidal', tipo: 'Vacaciones', inicio: '2026-06-10', fin: '2026-06-20', dias: 8, estado: 'Aprobada' },
+  { id: 2, empleado: 'Sara Molina', tipo: 'Vacaciones', inicio: '2026-07-01', fin: '2026-07-15', dias: 11, estado: 'Pendiente' },
+  { id: 3, empleado: 'Jorge Ortega', tipo: 'Asuntos propios', inicio: '2026-06-24', fin: '2026-06-24', dias: 1, estado: 'Pendiente' },
+];
+
+export const productos: Producto[] = [
+  { id: 1, nombre: 'Cera modeladora', categoria: 'Peinado', stock: 24, minimo: 10, precio: 12.5, proveedor: 'BeautyDist' },
+  { id: 2, nombre: 'Champú anticaída', categoria: 'Cuidado', stock: 6, minimo: 8, precio: 18.0, proveedor: 'BeautyDist' },
+  { id: 3, nombre: 'Aceite de barba', categoria: 'Barba', stock: 15, minimo: 5, precio: 14.0, proveedor: 'BarberPro' },
+  { id: 4, nombre: 'Esmalte rojo', categoria: 'Uñas', stock: 3, minimo: 6, precio: 8.0, proveedor: 'NailWorld' },
+];
+
+export const ventas: Venta[] = [
+  { id: 1024, fecha: '2026-06-15', cliente: 'Ana Gómez', items: 3, metodo: 'Tarjeta', total: 72.0 },
+  { id: 1023, fecha: '2026-06-15', cliente: 'Lucía Fernández', items: 1, metodo: 'Efectivo', total: 22.0 },
+  { id: 1022, fecha: '2026-06-14', cliente: 'Contado', items: 2, metodo: 'Bizum', total: 34.5 },
+  { id: 1021, fecha: '2026-06-14', cliente: 'David Soler', items: 1, metodo: 'Tarjeta', total: 15.0 },
+];
+
+export const campanas: Campana[] = [
+  { id: 1, nombre: 'Vuelta de vacaciones', canal: 'Email', estado: 'Activa', enviados: 320, aperturas: '38%' },
+  { id: 2, nombre: 'Cumpleaños -20%', canal: 'SMS', estado: 'Automática', enviados: 45, aperturas: '—' },
+  { id: 3, nombre: 'Reseña tras visita', canal: 'WhatsApp', estado: 'Borrador', enviados: 0, aperturas: '—' },
+];
+
+export const resenas: Resena[] = [
+  { id: 1, autor: 'Ana G.', estrellas: 5, texto: 'El mejor sitio, repito seguro.', fecha: '2026-06-12' },
+  { id: 2, autor: 'Marcos R.', estrellas: 4, texto: 'Muy buen trato y puntuales.', fecha: '2026-06-09' },
+  { id: 3, autor: 'Elena P.', estrellas: 5, texto: 'Encantada con el resultado.', fecha: '2026-06-15' },
+];

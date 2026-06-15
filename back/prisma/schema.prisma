@@ -1,0 +1,567 @@
+// OperaOS — Business OS para negocios locales. Multi-tenant (businessId en todo).
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------- Enums -----------------------------
+enum MemberRole {
+  OWNER
+  ADMIN
+  MANAGER
+  EMPLOYEE
+  RECEPTIONIST
+  PROFESSIONAL
+  ACCOUNTANT
+}
+
+enum ResourceType {
+  TABLE
+  ROOM
+  CABIN
+  CHAIR
+  BED
+  MACHINE
+  CLASS_SLOT
+  TRAINER
+  COURT
+  SPACE
+  OTHER
+}
+
+enum BookingStatus {
+  DRAFT
+  PENDING
+  CONFIRMED
+  CHECKED_IN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum BookingChannel {
+  MANUAL
+  ONLINE
+}
+
+enum TimeOffStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum TimeOffType {
+  VACATION
+  SICK
+  LEAVE
+  OTHER
+}
+
+enum DocumentType {
+  PAYROLL
+  CONTRACT
+  CERTIFICATE
+  INTERNAL
+  OTHER
+}
+
+enum DocVisibility {
+  OWNER_ONLY
+  LOCATION
+  BUSINESS
+}
+
+enum CustomerStatus {
+  ACTIVE
+  INACTIVE
+  BLOCKED
+  LEAD
+}
+
+enum PackageStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  AUTOMATIC
+  FINISHED
+}
+
+// ----------------------------- Núcleo -----------------------------
+model Business {
+  id              String   @id @default(cuid())
+  name            String
+  legalName       String?
+  taxId           String?
+  vertical        String   @default("custom")
+  defaultCurrency String   @default("EUR")
+  defaultTimezone String   @default("Europe/Madrid")
+  plan            String   @default("starter")
+  brandPrimary    String   @default("#1b431c")
+  brandSecondary  String   @default("#8cc63f")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  locations    Location[]
+  memberships  Membership[]
+  employees    Employee[]
+  customers    Customer[]
+  services     Service[]
+  resources    Resource[]
+  bookings     Booking[]
+  tags         Tag[]
+  timeOff      TimeOffRequest[]
+  documents    Document[]
+  packages     Package[]
+  customerPkgs CustomerPackage[]
+  products     Product[]
+  sales        Sale[]
+  campaigns    Campaign[]
+  fichajes     Fichaje[]
+  modules      SectorModule[]
+  settings     BusinessSetting[]
+  notifications Notification[]
+}
+
+model Location {
+  id        String   @id @default(cuid())
+  businessId String
+  business  Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name      String
+  address   String?
+  timezone  String   @default("Europe/Madrid")
+  currency  String   @default("EUR")
+  phone     String?
+  email     String?
+  onlineBookingEnabled Boolean @default(true)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  openingHours OpeningHour[]
+  holidays     Holiday[]
+  employees    Employee[]
+  resources    Resource[]
+  bookings     Booking[]
+  @@index([businessId])
+}
+
+model BusinessSetting {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  locationId String?
+  category   String
+  data       Json     @default("{}")
+  updatedAt  DateTime @updatedAt
+  @@unique([businessId, locationId, category])
+}
+
+model OpeningHour {
+  id         String   @id @default(cuid())
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  weekday    Int      // 0=domingo .. 6=sábado
+  openTime   String   // "09:00"
+  closeTime  String   // "20:00"
+  @@index([locationId, weekday])
+}
+
+model Holiday {
+  id         String   @id @default(cuid())
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  date       DateTime @db.Date
+  name       String?
+  isOpen     Boolean  @default(false)
+  @@index([locationId, date])
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  firstName    String
+  lastName     String?
+  status       String   @default("active")
+  createdAt    DateTime @default(now())
+  memberships  Membership[]
+  employee     Employee?
+}
+
+model Membership {
+  id         String     @id @default(cuid())
+  userId     String
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessId String
+  business   Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  locationId String?
+  role       MemberRole @default(EMPLOYEE)
+  createdAt  DateTime   @default(now())
+  @@unique([userId, businessId])
+  @@index([businessId])
+}
+
+// ----------------------------- Personas / catálogo -----------------------------
+model Employee {
+  id           String   @id @default(cuid())
+  businessId   String
+  business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  locationId   String?
+  location     Location? @relation(fields: [locationId], references: [id])
+  userId       String?  @unique
+  user         User?    @relation(fields: [userId], references: [id])
+  firstName    String
+  lastName     String?
+  email        String?
+  phone        String?
+  specialty    String?
+  color        String   @default("#6366f1")
+  status       String   @default("Activo")
+  hireDate     DateTime?
+  vacationTotal Int     @default(22)
+  vacationUsed  Int     @default(0)
+  commission   Decimal?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  services   Service[]        @relation("EmpServices")
+  resources  Resource[]       @relation("ResEmployees")
+  schedules  EmployeeSchedule[]
+  bookings   Booking[]
+  timeOff    TimeOffRequest[]
+  documents  Document[]
+  fichajes   Fichaje[]
+  @@index([businessId])
+  @@index([locationId])
+}
+
+model EmployeeSchedule {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  weekday    Int
+  startTime  String
+  endTime    String
+  @@index([employeeId, weekday])
+}
+
+model Customer {
+  id          String   @id @default(cuid())
+  businessId  String
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  firstName   String
+  lastName    String?
+  phone       String?
+  email       String?
+  birthDate   DateTime?
+  gender      String?
+  address     String?
+  acquisitionChannel String?
+  notes       String?
+  preferences Json     @default("{}")
+  consentComms Boolean @default(false)
+  consentAt   DateTime?
+  status      CustomerStatus @default(ACTIVE)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tags        Tag[]            @relation("CustomerTags")
+  bookings    Booking[]
+  packages    CustomerPackage[]
+  sales       Sale[]
+  @@index([businessId])
+  @@index([businessId, phone])
+  @@index([businessId, email])
+}
+
+model Tag {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name       String
+  color      String   @default("#9ca3af")
+  customers  Customer[] @relation("CustomerTags")
+  @@index([businessId])
+}
+
+model Service {
+  id          String   @id @default(cuid())
+  businessId  String
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  category    String?
+  durationMin Int      @default(30)
+  price       Decimal  @default(0)
+  tax         Decimal?
+  requiresResource Boolean @default(false)
+  resourceType ResourceType?
+  requiresProfessional Boolean @default(true)
+  onlineBookable Boolean @default(true)
+  color       String   @default("#1b431c")
+  bufferBefore Int     @default(0)
+  bufferAfter  Int     @default(0)
+  requiresConsent Boolean @default(false)
+  requiresPackage Boolean @default(false)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  employees   Employee[] @relation("EmpServices")
+  resources   Resource[] @relation("ResServices")
+  bookings    Booking[]
+  packages    Package[]  @relation("PackageServices")
+  @@index([businessId])
+}
+
+model Resource {
+  id          String   @id @default(cuid())
+  businessId  String
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  locationId  String?
+  location    Location? @relation(fields: [locationId], references: [id])
+  name        String
+  type        ResourceType @default(OTHER)
+  capacity    Int      @default(1)
+  status      String   @default("Activo")
+  locationNote String?
+  description String?
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  services    Service[]  @relation("ResServices")
+  employees   Employee[] @relation("ResEmployees")
+  bookings    Booking[]  @relation("BookingResources")
+  @@index([businessId])
+  @@index([locationId, type])
+}
+
+// ----------------------------- Reservas -----------------------------
+model Booking {
+  id          String   @id @default(cuid())
+  businessId  String
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  locationId  String
+  location    Location @relation(fields: [locationId], references: [id])
+  customerId  String?
+  customer    Customer? @relation(fields: [customerId], references: [id])
+  serviceId   String
+  service     Service  @relation(fields: [serviceId], references: [id])
+  employeeId  String?
+  employee    Employee? @relation(fields: [employeeId], references: [id])
+  startAt     DateTime
+  endAt       DateTime
+  status      BookingStatus @default(PENDING)
+  channel     BookingChannel @default(MANUAL)
+  notes       String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  resources   Resource[] @relation("BookingResources")
+  history     BookingStatusHistory[]
+  sessions    PackageSession[]
+  @@index([businessId])
+  @@index([locationId, startAt])
+  @@index([employeeId, startAt])
+  @@index([customerId])
+  @@index([status])
+}
+
+model BookingStatusHistory {
+  id         String   @id @default(cuid())
+  bookingId  String
+  booking    Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  fromStatus BookingStatus?
+  toStatus   BookingStatus
+  changedBy  String?
+  changedAt  DateTime @default(now())
+  reason     String?
+  @@index([bookingId, changedAt])
+}
+
+// ----------------------------- Vacaciones / documentos / bonos -----------------------------
+model TimeOffRequest {
+  id          String   @id @default(cuid())
+  businessId  String
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type        TimeOffType @default(VACATION)
+  startDate   DateTime @db.Date
+  endDate     DateTime @db.Date
+  days        Int?
+  status      TimeOffStatus @default(PENDING)
+  reason      String?
+  decidedBy   String?
+  decidedAt   DateTime?
+  createdAt   DateTime @default(now())
+  @@index([employeeId, startDate])
+}
+
+model Document {
+  id          String   @id @default(cuid())
+  businessId  String
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  employeeId  String?
+  employee    Employee? @relation(fields: [employeeId], references: [id])
+  title       String
+  type        DocumentType @default(OTHER)
+  filePath    String
+  visibility  DocVisibility @default(OWNER_ONLY)
+  uploadedBy  String?
+  createdAt   DateTime @default(now())
+  @@index([businessId])
+  @@index([employeeId])
+}
+
+model Package {
+  id           String   @id @default(cuid())
+  businessId   String
+  business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name         String
+  sessionsTotal Int
+  validityDays Int      @default(365)
+  price        Decimal?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  services     Service[] @relation("PackageServices")
+  instances    CustomerPackage[]
+  @@index([businessId])
+}
+
+model CustomerPackage {
+  id          String   @id @default(cuid())
+  businessId  String
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  packageId   String
+  package     Package  @relation(fields: [packageId], references: [id])
+  sessionsTotal Int
+  sessionsUsed Int     @default(0)
+  purchasedAt DateTime @default(now())
+  expiresAt   DateTime?
+  status      PackageStatus @default(ACTIVE)
+  sessions    PackageSession[]
+  @@index([customerId])
+}
+
+model PackageSession {
+  id               String   @id @default(cuid())
+  customerPackageId String
+  customerPackage  CustomerPackage @relation(fields: [customerPackageId], references: [id], onDelete: Cascade)
+  bookingId        String?
+  booking          Booking? @relation(fields: [bookingId], references: [id])
+  usedAt           DateTime @default(now())
+  note             String?
+  @@index([customerPackageId])
+}
+
+// ----------------------------- Servicios existentes (retail / personas / marketing) -----------------------------
+model Product {
+  id          String   @id @default(cuid())
+  businessId  String
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name        String
+  category    String?
+  stock       Int      @default(0)
+  stockMinimo Int      @default(0)
+  price       Decimal  @default(0)
+  supplier    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([businessId])
+}
+
+model Sale {
+  id          String   @id @default(cuid())
+  businessId  String
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customerId  String?
+  customer    Customer? @relation(fields: [customerId], references: [id])
+  customerName String? @default("Contado")
+  date        DateTime @default(now())
+  paymentMethod String @default("Tarjeta")
+  total       Decimal  @default(0)
+  createdAt   DateTime @default(now())
+  lines       SaleLine[]
+  @@index([businessId])
+}
+
+model SaleLine {
+  id        String   @id @default(cuid())
+  saleId    String
+  sale      Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  concept   String
+  quantity  Int      @default(1)
+  unitPrice Decimal  @default(0)
+  subtotal  Decimal  @default(0)
+  @@index([saleId])
+}
+
+model Campaign {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name       String
+  channel    String   @default("Email")
+  status     CampaignStatus @default(DRAFT)
+  sent       Int      @default(0)
+  opens      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  @@index([businessId])
+}
+
+model Fichaje {
+  id          String   @id @default(cuid())
+  businessId  String
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  employeeId  String?
+  employee    Employee? @relation(fields: [employeeId], references: [id])
+  employeeName String?
+  date        DateTime @default(now()) @db.Date
+  checkIn     DateTime?
+  checkOut    DateTime?
+  hours       Decimal?
+  createdAt   DateTime @default(now())
+  @@index([businessId])
+}
+
+// ----------------------------- Plataforma -----------------------------
+model SectorModule {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  moduleKey  String
+  enabled    Boolean  @default(true)
+  config     Json     @default("{}")
+  @@unique([businessId, moduleKey])
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  businessId  String
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  type        String
+  channel     String   @default("email")
+  target      String?
+  payload     Json     @default("{}")
+  scheduledAt DateTime?
+  sentAt      DateTime?
+  status      String   @default("pending")
+  createdAt   DateTime @default(now())
+  @@index([scheduledAt, status])
+}

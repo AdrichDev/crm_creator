@@ -1,0 +1,184 @@
+'use client';
+import JSZip from 'jszip';
+import type { TenantConfig } from '@/lib/config/tenant-config';
+import { MODULES, type ModuleId } from '@/lib/config/modules';
+import { MODULE_TABLES, RELATIONS, type GenTable } from './schemas';
+
+const DATA_ORDER: ModuleId[] = [
+  'clientes', 'servicios', 'empleados', 'citas', 'fichaje', 'vacaciones', 'productos', 'ventas', 'marketing',
+];
+
+export function activeDataModules(cfg: TenantConfig): ModuleId[] {
+  return DATA_ORDER.filter((m) => cfg.modules[m]);
+}
+export function slug(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'proyecto';
+}
+
+// --- Núcleo SQL (multi-tenant + helpers RLS) incluido siempre ---
+const CORE_SQL = `-- Núcleo multi-tenant
+create extension if not exists "pgcrypto";
+create schema if not exists app;
+
+create or replace function app.set_updated_at()
+returns trigger language plpgsql as $$
+begin new.updated_at := now(); return new; end; $$;
+
+create table if not exists app.tenants (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  slug text unique,
+  vertical text not null default 'custom',
+  phone text, email text, address text,
+  brand_primary text not null default '#1b431c',
+  brand_secondary text not null default '#8cc63f',
+  brand_logo_text text,
+  setup_complete boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists app.tenant_modules (
+  tenant_id uuid not null references app.tenants(id) on delete cascade,
+  module text not null,
+  enabled boolean not null default true,
+  primary key (tenant_id, module)
+);
+
+create or replace function app.user_tenant_ids()
+returns setof uuid language sql stable security definer set search_path = app as $$
+  select tenant_id from app.tenant_modules where false; -- reemplazar por memberships al añadir auth
+$$;
+
+create or replace function app.enable_tenant_rls(p_table regclass)
+returns void language plpgsql as $$
+begin
+  execute format('alter table %s enable row level security', p_table);
+  execute format($f$
+    drop policy if exists tenant_isolation on %1$s;
+    create policy tenant_isolation on %1$s
+      using (tenant_id in (select app.user_tenant_ids()))
+      with check (tenant_id in (select app.user_tenant_ids()));
+  $f$, p_table);
+end; $$;`;
+
+function tableSql(t: GenTable): string {
+  const cols = t.cols.map((c) => `  ${c.name} ${c.sql},`).join('\n');
+  return `create table if not exists app.${t.table} (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references app.tenants(id) on delete cascade,
+${cols}
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists idx_${t.table}_tenant on app.${t.table}(tenant_id);
+drop trigger if exists trg_${t.table}_updated on app.${t.table};
+create trigger trg_${t.table}_updated before update on app.${t.table}
+  for each row execute function app.set_updated_at();
+select app.enable_tenant_rls('app.${t.table}');`;
+}
+
+export function buildSql(cfg: TenantConfig): string {
+  const mods = activeDataModules(cfg);
+  const present = new Set(mods);
+  const parts: string[] = [
+    `-- Esquema generado para: ${cfg.business.name}`,
+    `-- Vertical: ${cfg.business.vertical} | Módulos: ${mods.join(', ') || '(ninguno)'}`,
+    `-- Generado: ${new Date().toISOString()}`,
+    CORE_SQL,
+  ];
+  for (const m of mods) for (const t of MODULE_TABLES[m] ?? []) parts.push(tableSql(t));
+  const rels = RELATIONS.filter((r) => present.has(r.module) && present.has(r.needs));
+  if (rels.length) {
+    parts.push('-- Relaciones entre módulos');
+    for (const r of rels) parts.push(
+      `alter table app.${r.table} drop constraint if exists ${r.name};\n` +
+      `alter table app.${r.table} add constraint ${r.name}\n` +
+      `  foreign key (${r.col}) references app.${r.ref}(id) on delete set null;`);
+  }
+  return parts.join('\n\n') + '\n';
+}
+
+const PRISMA_HEADER = `// Fragmento Prisma generado — pégalo/mézclalo en agents-agency/back/prisma/schema.prisma
+// Requiere el generator y datasource ya existentes en ese schema (provider postgresql).
+// Todos los modelos llevan tenantId para multi-tenant.`;
+
+function prismaModel(t: GenTable): string {
+  const fields = t.cols.map((c) => `  ${c.prisma}`).join('\n');
+  return `model ${t.model} {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+${fields}
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("${t.table}")
+  @@index([tenantId])
+}`;
+}
+
+export function buildPrisma(cfg: TenantConfig): string {
+  const mods = activeDataModules(cfg);
+  const parts: string[] = [PRISMA_HEADER];
+  for (const m of mods) for (const t of MODULE_TABLES[m] ?? []) parts.push(prismaModel(t));
+  return parts.join('\n\n') + '\n';
+}
+
+export function buildManifest(cfg: TenantConfig) {
+  const enabled = MODULES.filter((m) => cfg.modules[m.id]).map((m) => m.id);
+  return {
+    name: cfg.business.name,
+    slug: slug(cfg.business.name),
+    vertical: cfg.business.vertical,
+    business: cfg.business,
+    branding: cfg.branding,
+    terminology: cfg.terminology,
+    modules: cfg.modules,
+    activeModules: enabled,
+    dataModules: activeDataModules(cfg),
+    generatedAt: new Date().toISOString(),
+    schemaFiles: ['schema.sql', 'schema.prisma'],
+  };
+}
+
+function readme(cfg: TenantConfig): string {
+  return `# Paquete de producto — ${cfg.business.name}
+
+Generado por la consola SaaS para integrarse en **agents-agency**.
+
+- \`manifest.json\` — vertical, módulos activos, terminología y branding.
+- \`schema.sql\` — esquema Postgres (núcleo + módulos elegidos), aplicable a Supabase/Postgres.
+- \`schema.prisma\` — modelos Prisma equivalentes para mezclar en agents-agency.
+
+Esto es la **especificación** del proyecto, no el CRM completo. Para generar el
+CRM completo (back + front + .env), ejecuta en la raíz de SaaS_Negocios:
+
+    node generar.mjs --from manifest.json
+
+Módulos activos: ${activeDataModules(cfg).join(', ') || '(solo núcleo)'}
+`;
+}
+
+export async function buildPackageBlob(cfg: TenantConfig): Promise<Blob> {
+  const zip = new JSZip();
+  const root = zip.folder(slug(cfg.business.name))!;
+  root.file('manifest.json', JSON.stringify(buildManifest(cfg), null, 2));
+  root.file('schema.sql', buildSql(cfg));
+  root.file('schema.prisma', buildPrisma(cfg));
+  root.file('README.md', readme(cfg));
+  return zip.generateAsync({ type: 'blob' });
+}
+
+export function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export async function generateAndDownload(cfg: TenantConfig): Promise<void> {
+  const blob = await buildPackageBlob(cfg);
+  downloadBlob(blob, `${slug(cfg.business.name)}.zip`);
+}
