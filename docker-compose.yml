@@ -1,8 +1,8 @@
-version: '3.8'
+name: 3a_estudio
 
 services:
   db-crm:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: crm-negocios-db
     restart: unless-stopped
     ports:

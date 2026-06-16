@@ -53,23 +53,23 @@ export function EntityModal({ open, title, fields, initial, onSubmit, onClose }:
         <Button variant="outline" onClick={onClose}>Cancelar</Button>
         <Button onClick={submit}>Guardar</Button>
       </>}>
-      <div className="space-y-4">
+      <div className="space-y-3">
         {fields.map((f) => (
-          <div key={f.name}>
-            <label className="text-xs font-medium text-gray-500">{f.label}{f.required && ' *'}</label>
+          <div key={f.name} className="opera-field">
+            <label className="opera-label">{f.label}{f.required && ' *'}</label>
             {f.type === 'select' ? (
               <select value={String(values[f.name] ?? '')} onChange={(e) => set(f.name, e.target.value)}
-                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm">
+                className="opera-control">
                 <option value="">—</option>
                 {(f.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
               </select>
             ) : f.type === 'textarea' ? (
               <textarea value={String(values[f.name] ?? '')} onChange={(e) => set(f.name, e.target.value)} rows={3}
-                placeholder={f.placeholder} className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" />
+                placeholder={f.placeholder} className="opera-control" />
             ) : (
               <input type={f.type ?? 'text'} step={f.step} value={String(values[f.name] ?? '')}
                 placeholder={f.placeholder} onChange={(e) => set(f.name, e.target.value, f.type)}
-                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" />
+                className="opera-control" />
             )}
           </div>
         ))}

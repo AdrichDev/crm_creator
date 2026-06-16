@@ -2,27 +2,39 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { MODULES, CATEGORY_LABEL, type ModuleCategory } from '@/lib/config/modules';
-import { useProjects } from '@/lib/tenant-config-context';
-import { Icon } from '@/components/ui/icon';
+import { useProjects, useRole } from '@/lib/tenant-config-context';
+import { moduleEmoji } from '@/lib/config/icons';
 import { cn } from '@/lib/utils';
-import { LayoutGrid } from 'lucide-react';
+import { moduleAllowedForRole, DEMO_USERS, type Role } from '@/lib/config/roles';
+import { LogOut } from 'lucide-react';
+
+const PANEL_TITLE: Record<Role, string> = {
+  admin: 'Centro de Mando',
+  trabajador: 'Mi Panel',
+  cliente: 'Mi Cuenta',
+};
 
 export function Sidebar() {
   const { config, closeProject } = useProjects();
+  const { role } = useRole();
   const pathname = usePathname();
   const router = useRouter();
 
-  const active = MODULES.filter((m) => config.modules[m.id]);
+  const active = MODULES.filter((m) => config.modules[m.id] && moduleAllowedForRole(role, m.id));
   const groups = (Object.keys(CATEGORY_LABEL) as ModuleCategory[])
     .map((cat) => ({ cat, items: active.filter((m) => m.category === cat) }))
     .filter((g) => g.items.length > 0);
 
-  function toConsole() { closeProject(); router.push('/'); }
+  const user = DEMO_USERS[role];
+
+  // "Salir": cuando exista landing/login conectado, irá allí. De momento
+  // cierra el proyecto y vuelve a la consola (dashboard general).
+  function salir() { closeProject(); router.push('/'); }
 
   return (
-    <aside className="dark-scroll hidden w-64 shrink-0 flex-col border-r border-line bg-ink md:flex">
-      {/* Identidad del proyecto */}
-      <div className="flex items-center gap-3 px-5 py-5">
+    <aside className="opera-sidebar dark-scroll">
+      {/* Identidad del negocio */}
+      <div className="flex items-center gap-3 px-5 pt-5">
         <div className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-xl text-sm font-bold text-white shadow-lg"
           style={config.branding.logoImage ? undefined : { background: 'linear-gradient(135deg, var(--brand-secondary), var(--brand-primary))' }}>
           {config.branding.logoImage
@@ -35,30 +47,20 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* Volver al dashboard general */}
-      <div className="px-3 pb-2">
-        <button onClick={toConsole}
-          className="flex w-full items-center gap-2.5 rounded-xl border border-line px-3 py-2 text-sm text-gray-300 transition hover:border-[var(--gold)] hover:text-gold">
-          <LayoutGrid className="h-4 w-4" /> Todos los proyectos
-        </button>
-      </div>
+      <p className="opera-sidebar-title">{PANEL_TITLE[role]}</p>
 
-      <nav className="flex-1 space-y-5 overflow-y-auto px-3 pb-6">
+      <nav className="opera-sidebar-links">
         {groups.map((g) => (
           <div key={g.cat}>
-            <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500">{CATEGORY_LABEL[g.cat]}</p>
-            <ul className="space-y-0.5">
+            <p className="group-label">{CATEGORY_LABEL[g.cat]}</p>
+            <ul className="m-0 list-none p-0">
               {g.items.map((m) => {
                 const label = config.terminology[m.termKey] ?? m.defaultLabel;
                 const isActive = pathname === m.href || (m.href !== '/panel' && pathname.startsWith(m.href));
                 return (
                   <li key={m.id}>
-                    <Link href={m.href}
-                      className={cn('flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition',
-                        isActive
-                          ? 'bg-ink-2 text-gold ring-1 ring-[var(--gold)]/30'
-                          : 'text-gray-400 hover:bg-white/5 hover:text-white')}>
-                      <Icon name={m.icon} className="h-4 w-4" />
+                    <Link href={m.href} className={cn(isActive && 'active')}>
+                      <span className="w-5 text-center text-base leading-none">{moduleEmoji(config.business.vertical, m.id)}</span>
                       <span className="truncate">{label}</span>
                     </Link>
                   </li>
@@ -69,9 +71,22 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="border-t border-line px-5 py-3">
-        <p className="font-display text-sm text-gold">OperaOS</p>
-        <p className="text-[11px] text-gray-500">Business OS para negocios locales</p>
+      {/* Usuario logado (según perfil activo) + salir */}
+      <div className="opera-sidebar-foot">
+        <div className="flex items-center gap-3 px-2 py-2">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-xs font-semibold text-white shadow"
+            style={{ background: 'linear-gradient(135deg, var(--brand-secondary), var(--brand-primary))' }}>
+            {user.iniciales}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-white">{user.nombre}</p>
+            <p className="truncate text-[11px] text-gold">{user.rolLabel}</p>
+          </div>
+          <button onClick={salir} title="Salir"
+            className="rounded-lg p-2 text-gray-400 transition hover:bg-white/5 hover:text-red-400">
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
       </div>
     </aside>
   );

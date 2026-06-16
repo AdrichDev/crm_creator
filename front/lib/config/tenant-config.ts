@@ -46,6 +46,8 @@ export interface TenantConfig {
   };
   /** Tarjetas favoritas del dashboard (máx. 6). */
   favorites?: Favorite[];
+  /** Interruptor maestro del tenant. undefined/true = activo; false = en mantenimiento. */
+  tenantEnabled?: boolean;
   setupComplete: boolean;
 }
 

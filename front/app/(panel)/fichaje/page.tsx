@@ -46,7 +46,7 @@ export default function Page() {
       </div>
       <Table head={['Empleado', 'Fecha', 'Entrada', 'Salida', 'Horas']}>
         {items.map((f) => (
-          <tr key={f.id} className="hover:bg-gray-50">
+          <tr key={f.id}>
             <Td className="font-medium text-gray-900">{f.empleado}</Td>
             <Td>{f.fecha}</Td><Td>{f.entrada}</Td><Td>{f.salida || '—'}</Td><Td>{f.horas ? f.horas + ' h' : '—'}</Td>
           </tr>

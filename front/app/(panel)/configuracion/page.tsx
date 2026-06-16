@@ -1,80 +1,101 @@
 'use client';
 import { useState } from 'react';
-import { useTenantConfig } from '@/lib/tenant-config-context';
-import { VERTICALS, VERTICAL_MAP, type VerticalId } from '@/lib/config/verticals';
-import { ModuleToggleGrid } from '@/components/config/module-toggle-grid';
+import { useTenantConfig, useRole } from '@/lib/tenant-config-context';
+import { ModuleGuard } from '@/components/layout/module-guard';
+import { VERTICAL_MAP } from '@/lib/config/verticals';
 import { BrandingForm } from '@/components/config/branding-form';
-import { PageHeader, Card, CardBody, Button, Badge } from '@/components/ui/primitives';
+import { PageHeader, Card, CardBody, Button, Badge, Toggle } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 
-type Tab = 'modulos' | 'marca' | 'negocio';
+type Tab = 'estado' | 'marca' | 'negocio';
+const TAB_LABEL: Record<Tab, string> = { estado: 'Estado', marca: 'Marca', negocio: 'Negocio' };
+const TABS: Tab[] = ['estado', 'marca', 'negocio'];
 
 export default function ConfiguracionPage() {
-  const { config, toggleModule, update, applyVertical, reset } = useTenantConfig();
-  const [tab, setTab] = useState<Tab>('modulos');
-  const [saved, setSaved] = useState(false);
+  const { config, update, reset } = useTenantConfig();
+  const { role } = useRole();
+  const isAdmin = role === 'admin';
 
-  function flashSaved() { setSaved(true); setTimeout(() => setSaved(false), 1500); }
+  const [tab, setTab] = useState<Tab>('estado');
+
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  function guardar() {
+    // Los cambios ya persisten en vivo; el botón da feedback explícito de guardado.
+    setSaving(true); setSaved(false);
+    setTimeout(() => { setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 1800); }, 700);
+  }
+
+  const enabled = config.tenantEnabled !== false;
 
   return (
-    <div>
-      <PageHeader title="Configuración" subtitle="Activa módulos, ajusta tu marca y los datos del negocio."
-        action={saved ? <Badge tone="green">Guardado</Badge> : undefined} />
+    <ModuleGuard module="configuracion">
+      <PageHeader title="Configuración" subtitle="Estado del tenant, marca y datos del negocio."
+        action={
+          <div className="flex items-center gap-2">
+            {saved && <Badge tone="green">Guardado</Badge>}
+            <Button onClick={guardar} disabled={saving}>{saving ? 'Guardando…' : 'Guardar'}</Button>
+          </div>
+        } />
 
-      <div className="mb-6 flex gap-1 rounded-xl bg-gray-100 p-1 w-fit">
-        {(['modulos', 'marca', 'negocio'] as Tab[]).map((t) => (
+      <div className="mb-6 flex w-fit gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
+        {TABS.map((t) => (
           <button key={t} onClick={() => setTab(t)}
-            className={cn('rounded-lg px-4 py-1.5 text-sm font-medium capitalize transition',
-              tab === t ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500')}>
-            {t === 'modulos' ? 'Módulos' : t === 'marca' ? 'Marca' : 'Negocio'}
+            className={cn('rounded-lg px-4 py-1.5 text-sm font-medium transition',
+              tab === t ? 'text-[var(--acc)]' : 'text-gray-400 hover:text-white')}
+            style={tab === t ? { background: 'color-mix(in srgb, var(--acc) 18%, transparent)' } : undefined}>
+            {TAB_LABEL[t]}
           </button>
         ))}
       </div>
 
-      {tab === 'modulos' && (
-        <div className="space-y-5">
-          <Card><CardBody className="flex flex-wrap items-center gap-3">
-            <span className="text-sm text-gray-500">Aplicar preset de un tipo de negocio:</span>
-            <select value={config.business.vertical}
-              onChange={(e) => { applyVertical(e.target.value as VerticalId); flashSaved(); }}
-              className="rounded-xl border border-gray-300 px-3 py-1.5 text-sm">
-              {VERTICALS.map((v) => <option key={v.id} value={v.id}>{v.emoji} {v.label}</option>)}
-            </select>
-            <span className="text-xs text-gray-400">Reaplica módulos y terminología recomendados.</span>
-          </CardBody></Card>
-          <ModuleToggleGrid modules={config.modules} terminology={config.terminology}
-            onToggle={(id, on) => { toggleModule(id, on); flashSaved(); }} />
-        </div>
+      {/* Estado del tenant: interruptor maestro */}
+      {tab === 'estado' && (
+        <Card><CardBody className="space-y-5">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="font-medium text-white">Tenant activo</p>
+              <p className="mt-1 text-sm text-[var(--panel-muted)]">
+                Apaga el tenant completo para mantenimiento, actualizaciones o sincronización con la base de datos.
+                Mientras esté apagado, el panel queda en modo mantenimiento.
+              </p>
+            </div>
+            <Toggle checked={enabled} onChange={(v) => update({ tenantEnabled: v })} />
+          </div>
+          <Badge tone={enabled ? 'green' : 'red'}>{enabled ? 'Operativo' : 'En mantenimiento'}</Badge>
+        </CardBody></Card>
       )}
 
       {tab === 'marca' && (
         <BrandingForm primary={config.branding.primary} secondary={config.branding.secondary} logoText={config.branding.logoText}
           logoImage={config.branding.logoImage} designSource={config.branding.designSource}
-          onChange={(patch) => { update({ branding: { ...config.branding, ...patch } }); flashSaved(); }} />
+          onChange={(patch) => update({ branding: { ...config.branding, ...patch } })} />
       )}
 
       {tab === 'negocio' && (
         <Card><CardBody className="space-y-4">
           <div>
-            <label className="text-xs font-medium text-gray-500">Nombre</label>
+            <label className="opera-label">Nombre</label>
             <input value={config.business.name}
               onChange={(e) => update({ business: { ...config.business, name: e.target.value } })}
-              className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" />
+              className="opera-control" />
           </div>
           {([['phone', 'Teléfono'], ['email', 'Email'], ['address', 'Dirección']] as const).map(([k, label]) => (
             <div key={k}>
-              <label className="text-xs font-medium text-gray-500">{label}</label>
+              <label className="opera-label">{label}</label>
               <input value={(config.business as Record<string, string>)[k] ?? ''}
                 onChange={(e) => update({ business: { ...config.business, [k]: e.target.value } })}
-                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" />
+                className="opera-control" />
             </div>
           ))}
-          <p className="text-xs text-gray-400">Tipo: {VERTICAL_MAP[config.business.vertical].label}</p>
-          <div className="border-t border-gray-100 pt-4">
-            <Button variant="outline" onClick={() => { if (confirm('¿Reiniciar toda la configuración?')) reset(); }}>Reiniciar configuración</Button>
-          </div>
+          <p className="text-xs text-[var(--panel-muted)]">Tipo: {VERTICAL_MAP[config.business.vertical].label}</p>
+          {isAdmin && (
+            <div className="border-t border-white/10 pt-4">
+              <Button variant="outline" onClick={() => { if (confirm('¿Reiniciar toda la configuración?')) reset(); }}>Reiniciar configuración</Button>
+            </div>
+          )}
         </CardBody></Card>
       )}
-    </div>
+    </ModuleGuard>
   );
 }

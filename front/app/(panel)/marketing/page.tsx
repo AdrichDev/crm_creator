@@ -39,7 +39,7 @@ export default function Page() {
       </div>
       <Table head={['Campaña', 'Canal', 'Estado', 'Enviados', 'Aperturas', '']}>
         {items.map((c) => (
-          <tr key={c.id} className="hover:bg-gray-50">
+          <tr key={c.id}>
             <Td className="font-medium text-gray-900">{c.nombre}</Td>
             <Td><Badge>{c.canal}</Badge></Td>
             <Td><Badge tone={tone(c.estado)}>{c.estado}</Badge></Td>

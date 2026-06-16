@@ -11,6 +11,7 @@ export type ModuleId =
   | 'vacaciones'
   | 'productos'
   | 'ventas'
+  | 'facturas'
   | 'marketing'
   | 'configuracion';
 
@@ -42,6 +43,7 @@ export const MODULES: ModuleDef[] = [
   { id: 'vacaciones', termKey: 'vacaciones', defaultLabel: 'Vacaciones', description: 'Solicitudes y aprobación de ausencias.', category: 'personas', icon: 'Plane', href: '/vacaciones', recommends: ['empleados'] },
   { id: 'productos', termKey: 'productos', defaultLabel: 'Productos', description: 'Inventario: stock, categorías y proveedores.', category: 'retail', icon: 'Package', href: '/productos' },
   { id: 'ventas', termKey: 'ventas', defaultLabel: 'Ventas / TPV', description: 'Tickets, métodos de pago y caja.', category: 'retail', icon: 'Receipt', href: '/ventas', recommends: ['productos'] },
+  { id: 'facturas', termKey: 'facturas', defaultLabel: 'Facturas', description: 'Facturación y documentos del cliente.', category: 'retail', icon: 'Euro', href: '/facturas', recommends: ['clientes'] },
   { id: 'marketing', termKey: 'marketing', defaultLabel: 'Marketing', description: 'Campañas, fidelización y notificaciones.', category: 'marketing', icon: 'Megaphone', href: '/marketing', recommends: ['clientes'] },
   { id: 'configuracion', termKey: 'configuracion', defaultLabel: 'Configuración', description: 'Módulos, branding y terminología.', category: 'core', icon: 'Settings', href: '/configuracion', mandatory: true },
 ];

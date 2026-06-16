@@ -40,7 +40,7 @@ export default function Page() {
       </div>
       <Table head={['Cliente', 'Servicio', 'Profesional', 'Fecha', 'Hora', 'Estado', '']}>
         {items.map((c) => (
-          <tr key={c.id} className="hover:bg-gray-50">
+          <tr key={c.id}>
             <Td className="font-medium text-gray-900">{c.cliente}</Td>
             <Td>{c.servicio}</Td><Td>{c.empleado}</Td><Td>{c.fecha}</Td><Td>{c.hora}</Td>
             <Td><Badge tone={tone(c.estado)}>{c.estado}</Badge></Td>

@@ -28,6 +28,8 @@ export default function Page() {
     setOpen(false);
   }
 
+  const bajoStock = items.filter((p) => Number(p.stock) < Number(p.minimo));
+
   return (
     <ModuleGuard module="productos">
       <PageHeader title={term} subtitle="Inventario: stock, categorías y proveedores."
@@ -37,9 +39,14 @@ export default function Page() {
         <Stat label="Stock bajo" value={items.filter(p => Number(p.stock) < Number(p.minimo)).length} hint="por debajo del mínimo" />
         <Stat label="Valor stock" value={'€' + items.reduce((a, p) => a + Number(p.stock) * Number(p.precio), 0).toFixed(0)} />
       </div>
+      {bajoStock.length > 0 && (
+        <div className="low-stock-alert">
+          <strong>Alerta de stock:</strong> {bajoStock.length} producto(s) por debajo del mínimo — {bajoStock.map((p) => p.nombre).join(', ')}.
+        </div>
+      )}
       <Table head={['Producto', 'Categoría', 'Stock', 'Mínimo', 'Precio', 'Proveedor', '']}>
         {items.map((p) => (
-          <tr key={p.id} className="hover:bg-gray-50">
+          <tr key={p.id}>
             <Td className="font-medium text-gray-900">{p.nombre}</Td>
             <Td><Badge>{p.categoria}</Badge></Td>
             <Td><span className={Number(p.stock) < Number(p.minimo) ? 'font-semibold text-red-600' : ''}>{p.stock}</span></Td>

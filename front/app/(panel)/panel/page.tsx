@@ -1,135 +1,137 @@
 'use client';
-import { useState } from 'react';
-import Link from 'next/link';
-import { useTenantConfig, useTerm } from '@/lib/tenant-config-context';
-import { MODULES, MODULE_MAP } from '@/lib/config/modules';
-import { MAX_FAVORITES, type Favorite } from '@/lib/config/tenant-config';
-import { Icon } from '@/components/ui/icon';
-import { PageHeader, Stat, Card, CardBody, Badge } from '@/components/ui/primitives';
-import { X, Star } from 'lucide-react';
-import * as mock from '@/lib/mock/data';
+import { useEffect, useMemo, useState } from 'react';
+import { useTenantConfig, useTerm, useRole } from '@/lib/tenant-config-context';
+import { moduleAllowedForRole } from '@/lib/config/roles';
+import { Stat } from '@/components/ui/primitives';
+import { useCollection } from '@/lib/data/use-collection';
+import { citas as seedCitas, type Cita, clientes as seedClientes } from '@/lib/mock/data';
 
-// Opciones genéricas que se pueden añadir a una tarjeta favorita.
-const FAV_OPTIONS = ['Ver todo', 'Nuevo', 'Hoy', 'Pendientes', 'Buscar'];
-const uid = () => 'f_' + Math.random().toString(36).slice(2, 8);
+const DOW = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+const DOW_FULL = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+const pad = (n: number) => String(n).padStart(2, '0');
+const dateStr = (y: number, m: number, d: number) => `${y}-${pad(m + 1)}-${pad(d)}`;
+const estadoTone = (s: string) => s === 'Completada' ? '#6aa8ff' : s === 'Cancelada' ? '#ff4757' : 'var(--acc)';
 
 export default function Dashboard() {
-  const { config, update } = useTenantConfig();
-  const termClientes = useTerm('clientes', 'clientes');
+  const { config } = useTenantConfig();
+  const { role } = useRole();
   const termCitas = useTerm('citas', 'Citas');
-  const m = config.modules;
-  const [adding, setAdding] = useState('');
+  const { items } = useCollection<Cita>('citas', seedCitas);
 
-  const stats = [
-    { label: 'Ingresos hoy', value: '€226', hint: '8 tickets', show: m.ventas },
-    { label: `${termCitas} hoy`, value: '5', hint: '3 confirmadas', show: m.citas },
-    { label: `${termClientes}`, value: String(mock.clientes.length), hint: '2 nuevos esta semana', show: m.clientes },
-    { label: 'Stock bajo', value: '2', hint: 'productos a reponer', show: m.productos },
-  ].filter((s) => s.show);
+  // Fechas SOLO en cliente (evita mismatch de hidratación con el servidor).
+  const [mounted, setMounted] = useState(false);
+  const [cursor, setCursor] = useState({ y: 2026, m: 5 });
+  const [selected, setSelected] = useState('');
+  const [todayStr, setTodayStr] = useState('');
 
-  const favorites: Favorite[] = config.favorites ?? [];
-  const activeModules = MODULES.filter((mm) => config.modules[mm.id] && mm.id !== 'dashboard' && mm.id !== 'configuracion');
-  const addable = activeModules.filter((mm) => !favorites.some((f) => f.target === mm.id));
+  useEffect(() => {
+    const d = new Date();
+    setCursor({ y: d.getFullYear(), m: d.getMonth() });
+    const ts = dateStr(d.getFullYear(), d.getMonth(), d.getDate());
+    setSelected(ts); setTodayStr(ts); setMounted(true);
+  }, []);
 
-  function setFavorites(next: Favorite[]) { update({ favorites: next }); }
-  function addFavorite(target: string) {
-    if (!target || favorites.length >= MAX_FAVORITES) return;
-    setFavorites([...favorites, { id: uid(), target: target as Favorite['target'], options: [] }]);
-    setAdding('');
+  const porDia = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const c of items) map.set(c.fecha, (map.get(c.fecha) ?? 0) + 1);
+    return map;
+  }, [items]);
+
+  const monthLabel = `${MESES[cursor.m]} ${cursor.y}`;
+  const firstWeekday = (new Date(cursor.y, cursor.m, 1).getDay() + 6) % 7; // lunes=0
+  const daysInMonth = new Date(cursor.y, cursor.m + 1, 0).getDate();
+
+  const cells: ({ d: number; date: string } | null)[] = [];
+  for (let i = 0; i < firstWeekday; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push({ d, date: dateStr(cursor.y, cursor.m, d) });
+
+  const citasDelDia = items.filter((c) => c.fecha === selected).sort((a, b) => a.hora.localeCompare(b.hora));
+
+  function cambiarMes(delta: number) {
+    setCursor((c) => {
+      const nm = c.m + delta;
+      return { y: c.y + Math.floor(nm / 12), m: ((nm % 12) + 12) % 12 };
+    });
   }
-  function removeFavorite(id: string) { setFavorites(favorites.filter((f) => f.id !== id)); }
-  function addOption(id: string, option: string) {
-    if (!option) return;
-    setFavorites(favorites.map((f) => (f.id === id && !f.options.includes(option) ? { ...f, options: [...f.options, option] } : f)));
-  }
-  function removeOption(id: string, option: string) {
-    setFavorites(favorites.map((f) => (f.id === id ? { ...f, options: f.options.filter((o) => o !== option) } : f)));
+
+  function labelDia(fecha: string) {
+    const dt = new Date(fecha + 'T00:00:00');
+    const wd = DOW_FULL[(dt.getDay() + 6) % 7];
+    return `${wd} ${dt.getDate()} de ${MESES[dt.getMonth()]}`;
   }
 
-  const label = (id: string) => config.terminology[MODULE_MAP[id as Favorite['target']].termKey] ?? MODULE_MAP[id as Favorite['target']].defaultLabel;
+  const showClientes = moduleAllowedForRole(role, 'clientes') && config.modules.clientes;
+  const kpis = [
+    { label: `${termCitas} totales`, value: items.length, accent: true },
+    { label: 'Confirmadas', value: items.filter((c) => c.estado === 'Confirmada').length },
+    { label: 'Pendientes', value: items.filter((c) => c.estado === 'Pendiente').length },
+    ...(showClientes ? [{ label: 'Clientes', value: seedClientes.length }] : []),
+  ];
 
   return (
     <div>
-      <PageHeader title={`Hola, ${config.business.name}`} subtitle="Resumen de tu actividad." />
-
-      {stats.length > 0 && (
-        <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {stats.map((s) => <Stat key={s.label} label={s.label} value={s.value} hint={s.hint} />)}
+      <div className="panel-header">
+        <div>
+          <h1>Hola, {config.business.name}</h1>
+          <p className="subtitle">Resumen de tu actividad — agenda y próximas {termCitas.toLowerCase()}.</p>
         </div>
-      )}
+      </div>
 
-      {/* Favoritos (máx. 6 tarjetas grandes) */}
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="flex items-center gap-2 font-display text-lg font-semibold text-gray-900">
-          <Star className="h-5 w-5 text-[var(--gold)]" /> Favoritos
-        </h2>
-        {favorites.length < MAX_FAVORITES && addable.length > 0 && (
-          <div className="flex items-center gap-2">
-            <select value={adding} onChange={(e) => addFavorite(e.target.value)}
-              className="rounded-xl border border-gray-300 px-3 py-1.5 text-sm">
-              <option value="">+ Añadir favorito…</option>
-              {addable.map((mm) => <option key={mm.id} value={mm.id}>{label(mm.id)}</option>)}
-            </select>
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {kpis.map((k) => <Stat key={k.label} label={k.label} value={k.value} accent={k.accent} />)}
+      </div>
+
+      <div className="panel">
+        <div className="panel-header"><h2>Agenda</h2></div>
+
+        {!mounted ? (
+          <p className="empty-state">Cargando agenda…</p>
+        ) : (
+          <div className="calendar-layout">
+            {/* Calendario mensual */}
+            <div className="calendar-container">
+              <div className="calendar-header">
+                <button className="btn btn-outline btn-sm" onClick={() => cambiarMes(-1)}>&lt;</button>
+                <h3>{monthLabel}</h3>
+                <button className="btn btn-outline btn-sm" onClick={() => cambiarMes(1)}>&gt;</button>
+              </div>
+              <div className="calendar-grid-header">{DOW.map((d) => <div key={d}>{d}</div>)}</div>
+              <div className="calendar-days">
+                {cells.map((cell, i) => {
+                  if (!cell) return <div key={`e${i}`} className="calendar-day empty" />;
+                  const n = porDia.get(cell.date) ?? 0;
+                  const cls = ['calendar-day'];
+                  if (cell.date === selected) cls.push('active');
+                  if (cell.date === todayStr) cls.push('today');
+                  return (
+                    <div key={cell.date} className={cls.join(' ')} onClick={() => setSelected(cell.date)}>
+                      <span>{cell.d}</span>
+                      {n > 0 && <span className="appointment-dot" />}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Citas del día */}
+            <div className="day-appointments-panel">
+              <h3 className="capitalize">{selected ? labelDia(selected) : 'Selecciona un día'}</h3>
+              <div className="appointments-list">
+                {citasDelDia.length === 0
+                  ? <p className="empty-state">No hay {termCitas.toLowerCase()} para este día.</p>
+                  : citasDelDia.map((c) => (
+                    <div key={c.id} className="appointment-card" style={{ borderLeftColor: estadoTone(c.estado) }}>
+                      <div className="time">{c.hora}</div>
+                      <div className="client">{c.cliente}</div>
+                      <div className="meta">{c.servicio} · {c.empleado} · {c.estado}</div>
+                    </div>
+                  ))}
+              </div>
+            </div>
           </div>
         )}
       </div>
-
-      {favorites.length === 0 ? (
-        <Card className="mb-6"><CardBody className="py-10 text-center text-sm text-gray-400">
-          Aún no tienes favoritos. Añade hasta {MAX_FAVORITES} accesos grandes desde el selector de arriba.
-        </CardBody></Card>
-      ) : (
-        <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {favorites.map((f) => {
-            const def = MODULE_MAP[f.target];
-            const used = new Set(f.options);
-            const free = FAV_OPTIONS.filter((o) => !used.has(o));
-            return (
-              <Card key={f.id} className="relative overflow-hidden">
-                <button onClick={() => removeFavorite(f.id)} className="absolute right-2 top-2 rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"><X className="h-4 w-4" /></button>
-                <CardBody className="p-5">
-                  <Link href={def.href} className="flex items-center gap-3">
-                    <div className="grid h-12 w-12 place-items-center rounded-xl text-white shadow"
-                      style={{ background: 'linear-gradient(135deg, var(--brand-secondary), var(--brand-primary))' }}>
-                      <Icon name={def.icon} className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <p className="font-display text-lg font-semibold text-gray-900">{f.label ?? label(f.target)}</p>
-                      <p className="text-xs text-gray-400">{def.description}</p>
-                    </div>
-                  </Link>
-
-                  {/* Opciones del favorito */}
-                  <div className="mt-4 flex flex-wrap items-center gap-1.5">
-                    {f.options.map((o) => (
-                      <span key={o} className="inline-flex items-center gap-1 rounded-full bg-[var(--brand-primary)]/10 px-2.5 py-0.5 text-xs font-medium text-[var(--brand-primary)]">
-                        {o}<button onClick={() => removeOption(f.id, o)} className="hover:text-red-600"><X className="h-3 w-3" /></button>
-                      </span>
-                    ))}
-                    {free.length > 0 && (
-                      <select value="" onChange={(e) => addOption(f.id, e.target.value)}
-                        className="rounded-full border border-dashed border-gray-300 px-2 py-0.5 text-xs text-gray-500">
-                        <option value="">+ opción</option>
-                        {free.map((o) => <option key={o} value={o}>{o}</option>)}
-                      </select>
-                    )}
-                  </div>
-                </CardBody>
-              </Card>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Plan / módulos activos */}
-      <Card><CardBody>
-        <h2 className="mb-3 font-semibold text-gray-900">Tu plan</h2>
-        <p className="text-sm text-gray-500">Módulos activos en esta plataforma:</p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {activeModules.map((mm) => <Badge key={mm.id} tone="brand">{label(mm.id)}</Badge>)}
-        </div>
-        <Link href="/configuracion" className="mt-4 inline-block text-sm text-[var(--brand-primary)] hover:underline">Gestionar módulos →</Link>
-      </CardBody></Card>
     </div>
   );
 }

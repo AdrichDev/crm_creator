@@ -1,7 +1,8 @@
 'use client';
 import { useState } from 'react';
 import { ModuleGuard } from '@/components/layout/module-guard';
-import { useTerm } from '@/lib/tenant-config-context';
+import { useTerm, useRole } from '@/lib/tenant-config-context';
+import { canManage } from '@/lib/config/roles';
 import { PageHeader, Stat, Table, Td, Badge, Button } from '@/components/ui/primitives';
 import { EntityModal, type Field } from '@/components/ui/entity-modal';
 import { useCollection } from '@/lib/data/use-collection';
@@ -18,6 +19,8 @@ const FIELDS: Field[] = [
 
 export default function Page() {
   const term = useTerm('vacaciones', 'Vacaciones');
+  const { role } = useRole();
+  const gestiona = canManage(role); // solo admin aprueba/rechaza/elimina
   const { items, create, update, remove } = useCollection<Vacacion>('vacaciones', seed);
   const [open, setOpen] = useState(false);
   const tone = (s: string) => s === 'Aprobada' ? 'green' : s === 'Pendiente' ? 'amber' : 'red';
@@ -36,22 +39,24 @@ export default function Page() {
         <Stat label="Pendientes" value={items.filter(v => v.estado === 'Pendiente').length} />
         <Stat label="Días aprobados" value={items.filter(v => v.estado === 'Aprobada').reduce((a, v) => a + Number(v.dias), 0)} />
       </div>
-      <Table head={['Empleado', 'Tipo', 'Inicio', 'Fin', 'Días', 'Estado', '']}>
+      <Table head={['Empleado', 'Tipo', 'Inicio', 'Fin', 'Días', 'Estado', gestiona ? '' : null].filter((h) => h !== null) as string[]}>
         {items.map((v) => (
-          <tr key={v.id} className="hover:bg-gray-50">
+          <tr key={v.id}>
             <Td className="font-medium text-gray-900">{v.empleado}</Td>
             <Td>{v.tipo}</Td><Td>{v.inicio}</Td><Td>{v.fin}</Td><Td>{v.dias}</Td>
             <Td><Badge tone={tone(v.estado)}>{v.estado}</Badge></Td>
-            <Td>
-              {v.estado === 'Pendiente' ? (
-                <div className="flex justify-end gap-1">
-                  <button onClick={() => update(v.id, { estado: 'Aprobada' })} className="rounded-lg px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-50">Aprobar</button>
-                  <button onClick={() => update(v.id, { estado: 'Rechazada' })} className="rounded-lg px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50">Rechazar</button>
-                </div>
-              ) : (
-                <div className="flex justify-end"><button onClick={() => { if (confirm('¿Eliminar?')) remove(v.id); }} className="rounded-lg px-2 py-1 text-xs font-medium text-gray-500 hover:bg-gray-100">Eliminar</button></div>
-              )}
-            </Td>
+            {gestiona && (
+              <Td>
+                {v.estado === 'Pendiente' ? (
+                  <div className="flex justify-end gap-1">
+                    <button onClick={() => update(v.id, { estado: 'Aprobada' })} className="row-action approve">Aprobar</button>
+                    <button onClick={() => update(v.id, { estado: 'Rechazada' })} className="row-action danger">Rechazar</button>
+                  </div>
+                ) : (
+                  <div className="flex justify-end"><button onClick={() => { if (confirm('¿Eliminar?')) remove(v.id); }} className="row-action edit">Eliminar</button></div>
+                )}
+              </Td>
+            )}
           </tr>
         ))}
       </Table>

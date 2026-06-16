@@ -1,7 +1,9 @@
 // Datos de ejemplo (semillas). Al portar, el hook useCollection se conecta a
 // Supabase y estas semillas dejan de usarse.
 
-export interface Cliente { id: number; nombre: string; email: string; telefono: string; visitas: number; gastoTotal: number; segmento: string; ultimaVisita: string; }
+export interface Documento { id: number; nombre: string; tipo: string; tam: number; fecha: string; }
+export interface Cliente { id: number; nombre: string; email: string; telefono: string; visitas: number; gastoTotal: number; segmento: string; ultimaVisita: string; cif?: string; direccion?: string; contacto?: string; documentos?: Documento[]; }
+export interface Factura { id: number; numero: string; cliente: string; fecha: string; total: number; estado: string; documentos?: Documento[]; }
 export interface Cita { id: number; cliente: string; servicio: string; empleado: string; fecha: string; hora: string; estado: string; }
 export interface Servicio { id: number; nombre: string; duracion: number; precio: number; categoria: string; }
 export interface Empleado { id: number; nombre: string; rol: string; especialidad: string; estado: string; email: string; }
@@ -79,4 +81,10 @@ export const resenas: Resena[] = [
   { id: 1, autor: 'Ana G.', estrellas: 5, texto: 'El mejor sitio, repito seguro.', fecha: '2026-06-12' },
   { id: 2, autor: 'Marcos R.', estrellas: 4, texto: 'Muy buen trato y puntuales.', fecha: '2026-06-09' },
   { id: 3, autor: 'Elena P.', estrellas: 5, texto: 'Encantada con el resultado.', fecha: '2026-06-15' },
+];
+
+export const facturas: Factura[] = [
+  { id: 2001, numero: 'F-2026-001', cliente: 'Lucía Fernández', fecha: '2026-06-10', total: 120.0, estado: 'Pagada', documentos: [{ id: 1, nombre: 'factura-F-2026-001.pdf', tipo: 'application/pdf', tam: 84210, fecha: '2026-06-10' }] },
+  { id: 2002, numero: 'F-2026-002', cliente: 'Ana Gómez', fecha: '2026-06-12', total: 72.5, estado: 'Pendiente', documentos: [] },
+  { id: 2003, numero: 'F-2026-003', cliente: 'David Soler', fecha: '2026-06-14', total: 45.0, estado: 'Pagada', documentos: [] },
 ];

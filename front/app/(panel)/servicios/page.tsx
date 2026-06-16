@@ -38,7 +38,7 @@ export default function Page() {
       </div>
       <Table head={['Servicio', 'Categoría', 'Duración', 'Precio', '']}>
         {items.map((s) => (
-          <tr key={s.id} className="hover:bg-gray-50">
+          <tr key={s.id}>
             <Td className="font-medium text-gray-900">{s.nombre}</Td>
             <Td><Badge>{s.categoria}</Badge></Td><Td>{s.duracion} min</Td><Td>€{s.precio}</Td>
             <Td><RowActions onEdit={() => { setEditing(s); setOpen(true); }} onDelete={() => { if (confirm('¿Eliminar?')) remove(s.id); }} /></Td>
