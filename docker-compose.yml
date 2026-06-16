@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  db-crm:
+    image: postgres:16-alpine
+    container_name: crm-negocios-db
+    restart: unless-stopped
+    ports:
+      - "5434:5432" # Usa el puerto 5433 en tu PC para no chocar con el puerto 5432 de tus agentes
+    environment:
+      - POSTGRES_USER=crm_admin
+      - POSTGRES_PASSWORD=crm_password_seguro
+      - POSTGRES_DB=crm_production
+    volumes:
+      - crm_negocios_data:/var/lib/postgresql/data
+
+volumes:
+  crm_negocios_data:
