@@ -15,7 +15,7 @@
       "onError": "continueRegularOutput",
       "position": [
         0,
-        300
+        360
       ],
       "webhookId": "crm-automation"
     },
@@ -29,7 +29,7 @@
       "typeVersion": 2,
       "position": [
         240,
-        300
+        360
       ]
     },
     {
@@ -101,6 +101,28 @@
               },
               "renameOutput": true,
               "outputKey": "password.reset_requested"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "email.verification_requested",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "email.verification_requested"
             }
           ]
         },
@@ -114,7 +136,7 @@
       "typeVersion": 3.4,
       "position": [
         480,
-        300
+        360
       ]
     },
     {
@@ -150,7 +172,7 @@
       "onError": "continueRegularOutput",
       "position": [
         720,
-        300
+        240
       ],
       "credentials": {
         "smtp": {
@@ -175,7 +197,32 @@
       "onError": "continueRegularOutput",
       "position": [
         720,
-        480
+        400
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID",
+          "name": "SMTP CRM"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "achozas9@gmail.com",
+        "toEmail": "={{ $json.data.email }}",
+        "subject": "={{ '✅ Verifica tu email' + ($json.data.businessName ? ' — ' + $json.data.businessName : '') }}",
+        "emailFormat": "html",
+        "html": "<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 12px\">✅ ¡Hola {{ $json.data.firstName }}!</h2>\n  <p>Gracias por registrarte{{ $json.data.businessName ? ' en <b>' + $json.data.businessName + '</b>' : '' }}. Verifica tu email y elige tu contrase&ntilde;a para activar tu cuenta:</p>\n  <p style=\"text-align:center;margin:28px 0\">\n    <a href=\"{{ $json.data.verifyUrl }}\" style=\"background:{{ $json.primary }};color:#fff;padding:13px 26px;border-radius:10px;text-decoration:none;display:inline-block;font-weight:600\">✅ Verificar mi email</a>\n  </p>\n  <p style=\"font-size:13px;color:#666\">⏰ El enlace caduca el {{ $json.expiresHuman }}. Si no te registraste, ign&oacute;ralo. 🔒</p>\n</div>",
+        "options": {}
+      },
+      "id": "99999999-9999-4999-8999-999999999999",
+      "name": "Email: verificación",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "onError": "continueRegularOutput",
+      "position": [
+        720,
+        560
       ],
       "credentials": {
         "smtp": {
@@ -197,8 +244,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
       "position": [
-        960,
-        360
+        980,
+        420
       ]
     }
   ],
@@ -250,6 +297,13 @@
         ],
         [
           {
+            "node": "Email: verificación",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "Respond 200",
             "type": "main",
             "index": 0
@@ -269,6 +323,17 @@
       ]
     },
     "Email: reset contraseña": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email: verificación": {
       "main": [
         [
           {

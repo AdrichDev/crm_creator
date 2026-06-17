@@ -40,6 +40,7 @@ export function hashToken(token: string): string {
 // TTL por propósito (ms). Invitación más larga (el usuario puede tardar en abrir
 // el email de alta); reset corto por seguridad.
 export const TOKEN_TTL_MS = {
-  invite: 7 * 24 * 60 * 60 * 1000, // 7 días
-  reset: 30 * 60 * 1000,           // 30 minutos
+  invite: 7 * 24 * 60 * 60 * 1000,       // 7 días
+  reset: 30 * 60 * 1000,                 // 30 minutos
+  verify_email: 7 * 24 * 60 * 60 * 1000, // 7 días (alta de cliente: puede tardar en abrir el email)
 } as const;

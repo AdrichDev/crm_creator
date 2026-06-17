@@ -16,6 +16,7 @@ enum MemberRole {
   RECEPTIONIST
   PROFESSIONAL
   ACCOUNTANT
+  CLIENT
 }
 
 enum ResourceType {
@@ -190,9 +191,16 @@ model Holiday {
 model User {
   id                String   @id @default(cuid())
   email             String   @unique
+  // Handle único del cliente (auto-registro). Opcional: las filas existentes
+  // (admin/empleado por invitación) no lo tienen. Postgres permite múltiples NULL.
+  username          String?  @unique
+  phone             String?
   passwordHash      String
   firstName         String
   lastName          String?
+  // null hasta que el cliente verifica su email (auto-registro). Los usuarios
+  // creados por invitación/registro de owner nacen ya activos.
+  emailVerifiedAt   DateTime?
   status            String   @default("active")
   // Marca de tiempo del último cambio de contraseña. Se usa para invalidar
   // JWT emitidos antes del cambio/reset (authenticate compara con el `iat`).
@@ -222,6 +230,7 @@ model AuthToken {
 enum AuthTokenPurpose {
   invite
   reset
+  verify_email
 }
 
 model Membership {

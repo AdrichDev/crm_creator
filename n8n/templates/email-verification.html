@@ -1,0 +1,10 @@
+<!-- verificacion email (email.verification_requested). Vars: $json.data.{firstName,businessName?,verifyUrl} + $json.{logoHtml,primary,expiresHuman} -->
+<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222">
+  <div style="text-align:center;margin-bottom:18px">{{ $json.logoHtml }}</div>
+  <h2 style="margin:0 0 12px">✅ ¡Hola {{ $json.data.firstName }}!</h2>
+  <p>Gracias por registrarte{{ $json.data.businessName ? ' en <b>' + $json.data.businessName + '</b>' : '' }}. Verifica tu email y elige tu contrase&ntilde;a para activar tu cuenta:</p>
+  <p style="text-align:center;margin:28px 0">
+    <a href="{{ $json.data.verifyUrl }}" style="background:{{ $json.primary }};color:#fff;padding:13px 26px;border-radius:10px;text-decoration:none;display:inline-block;font-weight:600">✅ Verificar mi email</a>
+  </p>
+  <p style="font-size:13px;color:#666">⏰ El enlace caduca el {{ $json.expiresHuman }}. Si no te registraste, ign&oacute;ralo. 🔒</p>
+</div>

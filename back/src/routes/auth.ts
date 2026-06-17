@@ -16,6 +16,8 @@ export const authRouter = Router();
 const loginLimiter = rateLimit({ bucket: 'login', windowMs: 15 * 60_000, max: 20, keyOf: ipEmailKey });
 const forgotLimiter = rateLimit({ bucket: 'forgot', windowMs: 15 * 60_000, max: 5, keyOf: ipKey });
 const tokenLimiter = rateLimit({ bucket: 'token', windowMs: 15 * 60_000, max: 10, keyOf: ipKey });
+// Auto-registro de cliente: anti-spam de altas/emails por IP.
+const registerLimiter = rateLimit({ bucket: 'register', windowMs: 15 * 60_000, max: 5, keyOf: ipKey });
 
 // Endpoint de test: reinicia los contadores del rate limiter. Solo fuera de
 // producción (los tests e2e lo usan para aislarse entre ejecuciones). En
@@ -70,6 +72,12 @@ authRouter.post('/login', loginLimiter, async (req, res) => {
   if (!user || !passwordOk) {
     return res.status(401).json({ error: { code: 'bad_credentials', message: 'Credenciales incorrectas' } });
   }
+  // Gating: cuentas sin verificar (auto-registro de cliente pendiente) no entran.
+  // Se comprueba DESPUÉS de validar la contraseña → la fuga requiere ya conocerla
+  // (no abre oráculo de enumeración; ver AC-3.1).
+  if (user.status !== 'active') {
+    return res.status(403).json({ error: { code: 'email_no_verificado', message: 'Verifica tu email antes de entrar' } });
+  }
   const memberships = await prisma.membership.findMany({ where: { userId: user.id } });
   res.json({ token: signToken({ userId: user.id }), user: { id: user.id, email: user.email, firstName: user.firstName }, memberships });
 });
@@ -93,8 +101,15 @@ const setPasswordSchema = z.object({
   repeatPassword: z.string(),
 });
 
-/** Consume un token (invite|reset) y fija la nueva contraseña. Sella todo en una transacción. */
-async function consumeTokenAndSetPassword(plainToken: string, newPassword: string): Promise<'ok' | 'invalid_token'> {
+/**
+ * Consume un token (invite|reset|verify_email) y fija la nueva contraseña. Sella todo en una
+ * transacción. Con `markEmailVerified` (alta de cliente) marca además `emailVerifiedAt`.
+ */
+async function consumeTokenAndSetPassword(
+  plainToken: string,
+  newPassword: string,
+  opts: { markEmailVerified?: boolean } = {},
+): Promise<'ok' | 'invalid_token'> {
   const tokenHash = hashToken(plainToken);
   const record = await prisma.authToken.findFirst({
     where: { tokenHash, usedAt: null, expiresAt: { gt: new Date() } },
@@ -104,9 +119,17 @@ async function consumeTokenAndSetPassword(plainToken: string, newPassword: strin
   const passwordHash = await hashPassword(newPassword);
   const now = new Date();
   await prisma.$transaction([
-    prisma.user.update({ where: { id: record.userId }, data: { passwordHash, status: 'active', passwordChangedAt: now } }),
+    prisma.user.update({
+      where: { id: record.userId },
+      data: {
+        passwordHash,
+        status: 'active',
+        passwordChangedAt: now,
+        ...(opts.markEmailVerified ? { emailVerifiedAt: now } : {}),
+      },
+    }),
     prisma.authToken.update({ where: { id: record.id }, data: { usedAt: now } }),
-    // Invalida CUALQUIER otro token abierto del usuario (invite o reset).
+    // Invalida CUALQUIER otro token abierto del usuario (invite | reset | verify_email).
     prisma.authToken.updateMany({ where: { userId: record.userId, usedAt: null }, data: { usedAt: now } }),
   ]);
   return 'ok';
@@ -160,6 +183,73 @@ authRouter.post('/forgot-password', forgotLimiter, async (req, res) => {
     }
   }
   res.status(200).json({ message: 'Si el email existe, enviaremos instrucciones' });
+});
+
+// ---------------------------------------------------------------------------
+// Auto-registro de CLIENTE (el admin NO da de alta clientes). Crea cuenta
+// `pending` sin contraseña + token verify_email + email de verificación. El
+// cliente fija su contraseña al verificar (nunca se envía contraseña en claro).
+// ---------------------------------------------------------------------------
+const registerClientSchema = z.object({
+  firstName: z.string().trim().min(1),
+  email: z.string().trim().email().transform((s) => s.toLowerCase()),
+  // Handle: minúsculas, 3–30, [a-z0-9_].
+  username: z.string().trim().toLowerCase().regex(/^[a-z0-9_]{3,30}$/),
+  phone: z.string().trim().min(3).max(30),
+});
+
+authRouter.post('/register-client', registerLimiter, async (req, res) => {
+  const businessId = req.header('x-business-id');
+  if (!businessId) return res.status(400).json({ error: { code: 'missing_business', message: 'Falta el negocio' } });
+  const parsed = registerClientSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: { code: 'validation', message: 'Datos inválidos', details: parsed.error.flatten() } });
+  const d = parsed.data;
+  // Respuesta neutra: no revela si el email ya existe (anti-enumeración).
+  const NEUTRAL = { message: 'Si el email es válido, te enviaremos un enlace de verificación' };
+
+  const existing = await prisma.user.findUnique({ where: { email: d.email }, select: { id: true } });
+  if (existing) return res.status(200).json(NEUTRAL);
+
+  // username único (no es PII sensible): si colisiona, pedir otro.
+  const byUsername = await prisma.user.findUnique({ where: { username: d.username }, select: { id: true } });
+  if (byUsername) return res.status(409).json({ error: { code: 'username_taken', message: 'Ese usuario ya está en uso' } });
+
+  const business = await prisma.business.findUnique({ where: { id: businessId }, select: { id: true, name: true } });
+  if (!business) return res.status(400).json({ error: { code: 'invalid_business', message: 'Negocio no válido' } });
+
+  const { token, tokenHash } = generateAuthToken();
+  const expiresAt = new Date(Date.now() + TOKEN_TTL_MS.verify_email);
+  const user = await prisma.$transaction(async (tx) => {
+    // passwordHash = dummy bcrypt válido → nunca casa con ninguna contraseña hasta
+    // que el cliente fije la suya al verificar.
+    const u = await tx.user.create({ data: { email: d.email, username: d.username, phone: d.phone, firstName: d.firstName, passwordHash: DUMMY_PASSWORD_HASH, status: 'pending' } });
+    await tx.membership.create({ data: { userId: u.id, businessId, role: 'CLIENT' } });
+    await tx.authToken.create({ data: { userId: u.id, tokenHash, purpose: 'verify_email', expiresAt } });
+    return u;
+  });
+
+  void emit('email.verification_requested', {
+    userId: user.id,
+    email: user.email,
+    firstName: user.firstName,
+    businessName: business.name,
+    verifyUrl: `${process.env.FRONT_URL ?? 'http://localhost:3002'}/verify-email?token=${token}`,
+    expiresAt: expiresAt.toISOString(),
+  }, { businessId });
+
+  res.status(200).json(NEUTRAL);
+});
+
+// POST /auth/verify-email — consume token verify_email: verifica email + fija contraseña.
+authRouter.post('/verify-email', tokenLimiter, async (req, res) => {
+  const parsed = setPasswordSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: { code: 'validation', message: 'Datos inválidos' } });
+  const { token, newPassword, repeatPassword } = parsed.data;
+  if (newPassword !== repeatPassword) return res.status(422).json({ error: { code: 'mismatch', message: 'Las contraseñas no coinciden' } });
+  if (validatePassword(newPassword)) return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con al menos una letra y un número)' } });
+  const result = await consumeTokenAndSetPassword(token, newPassword, { markEmailVerified: true });
+  if (result === 'invalid_token') return res.status(400).json({ error: { code: 'invalid_token', message: 'Enlace inválido o caducado' } });
+  res.status(204).end();
 });
 
 // POST /auth/change-password — usuario logueado: antigua + nueva + repetir.

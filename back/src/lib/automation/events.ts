@@ -2,7 +2,7 @@
 // `data` lleva SOLO lo que la plantilla necesita (minimización de PII).
 // Convención: dominio.hecho_en_pasado.
 
-export type AutomationEventName = 'user.invited' | 'password.reset_requested';
+export type AutomationEventName = 'user.invited' | 'password.reset_requested' | 'email.verification_requested';
 
 // Branding del tenant para que el email vaya acorde a cada cliente.
 // Opcional: si falta, la plantilla usa valores por defecto neutros.
@@ -29,6 +29,15 @@ export interface AutomationPayloads {
     firstName: string;
     businessName?: string;
     resetUrl: string;    // enlace /reset-password?token=...
+    expiresAt: string;   // ISO
+    branding?: EmailBranding;
+  };
+  'email.verification_requested': {
+    userId: string;
+    email: string;
+    firstName: string;
+    businessName?: string;
+    verifyUrl: string;   // enlace /verify-email?token=... (verifica + fija contraseña)
     expiresAt: string;   // ISO
     branding?: EmailBranding;
   };
