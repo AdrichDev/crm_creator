@@ -38,3 +38,7 @@ Thumbs.db
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# Backups de base de datos (datos sensibles)
+back/backups/
+front/test-results/
