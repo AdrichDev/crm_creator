@@ -9,7 +9,7 @@ export async function provisionTenant(id: string, cfg: TenantConfig): Promise<Pr
     const res = await fetch('/api/projects/provision', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, name: cfg.business.name, vertical: cfg.business.vertical, modules: cfg.modules }),
+      body: JSON.stringify({ id, name: cfg.business.name, vertical: cfg.business.vertical, modules: cfg.modules, clienteId: cfg.business.clienteId ?? null }),
     });
     const data = (await res.json()) as ProvisionResult;
     if (!res.ok || !data.ok) console.warn('[provision] no se pudo crear el schema:', data.error);

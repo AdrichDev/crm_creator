@@ -10,6 +10,7 @@ interface Body {
   id: string;
   name?: string;
   vertical?: string;
+  clienteId?: string | null;
   modules?: Partial<Record<ModuleId, boolean>>;
 }
 
@@ -19,6 +20,16 @@ async function ensureRegistry(client: import('pg').PoolClient) {
     project_id  text,
     name        text,
     vertical    text,
+    created_at  timestamptz not null default now(),
+    updated_at  timestamptz not null default now()
+  );`);
+  // Vínculo proyecto CRM ↔ cliente real de agents-agency.
+  await client.query(`create table if not exists public.crm_project (
+    id_crm      text primary key,
+    id_cliente  text,
+    nombre      text,
+    vertical    text,
+    schema_name text,
     created_at  timestamptz not null default now(),
     updated_at  timestamptz not null default now()
   );`);
@@ -46,6 +57,13 @@ export async function POST(req: Request) {
        values ($1, $2, $3, $4)
        on conflict (schema_name) do update set name = excluded.name, vertical = excluded.vertical, updated_at = now()`,
       [schema, body.id, body.name ?? null, body.vertical ?? null],
+    );
+    await client.query(
+      `insert into public.crm_project (id_crm, id_cliente, nombre, vertical, schema_name)
+       values ($1, $2, $3, $4, $5)
+       on conflict (id_crm) do update set id_cliente = excluded.id_cliente, nombre = excluded.nombre,
+         vertical = excluded.vertical, schema_name = excluded.schema_name, updated_at = now()`,
+      [body.id, body.clienteId ?? null, body.name ?? null, body.vertical ?? null, schema],
     );
     await client.query('commit');
     return NextResponse.json({ ok: true, schema });
