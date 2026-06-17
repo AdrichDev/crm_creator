@@ -7,6 +7,7 @@ import { useCollection } from '@/lib/data/use-collection';
 import { citas as seedCitas, type Cita, clientes as seedClientes } from '@/lib/mock/data';
 import { DOW, DOW_FULL, MESES } from '@/lib/config/constants';
 import { pad, dateStr } from '@/lib/utils/format';
+import { WorkerChips } from '@/components/panel/worker-chips';
 
 const estadoTone = (s: string) => s === 'Completada' ? '#6aa8ff' : s === 'Cancelada' ? '#ff4757' : 'var(--acc)';
 
@@ -83,6 +84,9 @@ function PanelDashboard() {
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {kpis.map((k) => <Stat key={k.label} label={k.label} value={k.value} accent={k.accent} />)}
       </div>
+
+      {/* Chips configurables (accesos rápidos) — solo en la vista del trabajador. */}
+      {role === 'trabajador' && <WorkerChips />}
 
       <div className="panel">
         <div className="panel-header"><h2>Agenda</h2></div>
