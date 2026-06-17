@@ -2,8 +2,8 @@
 
 ## Fase 0 — Infra
 - [ ] 0.1 Arrancar n8n (`docker compose --profile n8n up -d`), crear API key, fijar `N8N_BASE_URL`/`N8N_API_KEY`.
-- [ ] 0.2 Definir `AUTOMATION_WEBHOOK_SECRET` y verificación de firma en el backend.
-- [ ] 0.3 Capa `lib/automation` en el back: emisor de eventos con `eventId` (idempotencia) + retry/fallo suave.
+- [x] 0.2 Definir `AUTOMATION_WEBHOOK_SECRET` y firma HMAC en el backend (`lib/automation/signer.ts` sign/verify sobre `timestamp.body`; env keys en `env.ts`).
+- [x] 0.3 Capa `lib/automation` en el back: `emit(name, data, {businessId, eventId?})` con `eventId` (idempotencia), retry con backoff, timeout y FALLO SUAVE (nunca throw; no-op si `AUTOMATION_WEBHOOK_URL` vacío). Eventos `user.invited`, `password.reset_requested`. (Cola persistente en Postgres → diferida; emisor en proceso por ahora.)
 
 ## Fase 1 — Credenciales (prioritario, sostiene auth)
 - [ ] 1.1 Flujo n8n "email alta usuario" + plantilla.
