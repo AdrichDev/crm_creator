@@ -2,26 +2,42 @@
 /**
  * Generador guiado del CRM completo (OperaOS).
  *
- * Crea una copia independiente y arrancable (back + front) con SOLO los módulos
- * elegidos, y escribe el `.env` del backend y el `.env.local` del front con los
- * datos que vas introduciendo paso a paso (nombre de BD, conexión, credenciales,
- * puertos, secreto JWT…).
+ * Crea una copia independiente con SOLO los módulos elegidos (poda páginas del
+ * front y montajes de rutas del backend de los módulos desactivados).
  *
- * Uso:
- *   node generar.mjs                  # asistente interactivo paso a paso
+ * Dos modos:
+ *   node generar.mjs                  # DEPLOY (default): zip limpio, sin infra
+ *                                     #   horneada. Escribe .env.example + DEPLOY.md.
+ *                                     #   La BD/secretos/URLs se ponen en el panel
+ *                                     #   del host (Vercel/Cloudflare) o se inyectan
+ *                                     #   en runtime desde tu SaaS.
+ *   node generar.mjs --local          # LOCAL: pregunta BD/puertos/JWT y deja un
+ *                                     #   back/.env y front/.env.local listos para
+ *                                     #   `npm run dev` en tu máquina.
  *   node generar.mjs --from manifest.json   # toma vertical/módulos de un manifest
  *
  * No instala nada ni necesita servicios corriendo: solo copia archivos y escribe
- * el .env. Requiere Node 18+.
+ * env/README. Requiere Node 18+.
  */
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const rl = createInterface({ input, output });
+
+// Modo: DEPLOY por defecto; LOCAL solo con --local.
+const LOCAL = process.argv.includes('--local');
+
+// Schema de PostgreSQL: namespace en el DATABASE_URL. Casi siempre 'public' y no
+// tiene que ver con schema.prisma (que ya va en el zip). Constante, no se pregunta.
+const PG_SCHEMA = 'public';
+// Puertos por defecto para LOCAL (en Vercel/Cloudflare los gestiona la plataforma).
+const DEFAULT_BACK_PORT = '4000';
+const DEFAULT_FRONT_PORT = '3002';
 
 // Módulos activables (dashboard y configuración van siempre).
 const MODULES = ['clientes', 'citas', 'servicios', 'empleados', 'fichaje', 'vacaciones', 'productos', 'ventas', 'facturas', 'estadisticas', 'marketing'];
@@ -69,7 +85,8 @@ function copyDir(src, dest) {
 }
 
 async function main() {
-  console.log('\n\x1b[1m=== Generador del CRM completo (OperaOS) ===\x1b[0m');
+  console.log(`\n\x1b[1m=== Generador del CRM completo (OperaOS) — modo ${LOCAL ? 'LOCAL' : 'DEPLOY'} ===\x1b[0m`);
+  if (!LOCAL) console.log('\x1b[2mZip limpio sin infra horneada. BD/secretos/URLs se configuran en el host (ver DEPLOY.md). Usa --local para un .env listo para tu máquina.\x1b[0m');
 
   // Manifest opcional
   let manifest = null;
@@ -106,22 +123,26 @@ async function main() {
   }
   const activeSet = new Set(active);
 
-  section('3) Base de datos (PostgreSQL)');
-  const dbName = await ask('Nombre de la base de datos', slug.replace(/-/g, '_'));
-  const dbHost = await ask('Host', 'localhost');
-  const dbPort = await ask('Puerto', '5432');
-  const dbUser = await ask('Usuario', 'postgres');
-  const dbPass = await ask('Contraseña', 'postgres');
-  const dbSchema = await ask('Schema', 'public');
+  // ---- Infra: SOLO en modo LOCAL ----
+  let db = null, backPort = DEFAULT_BACK_PORT, frontPort = DEFAULT_FRONT_PORT, jwtSecret = '', connectApi = true;
+  if (LOCAL) {
+    section('3) Base de datos (PostgreSQL, local)');
+    const dbName = await ask('Nombre de la base de datos', slug.replace(/-/g, '_'));
+    const dbHost = await ask('Host', 'localhost');
+    const dbPort = await ask('Puerto', '5432');
+    const dbUser = await ask('Usuario', 'postgres');
+    const dbPass = await ask('Contraseña', 'postgres');
+    db = { name: dbName, host: dbHost, port: dbPort, user: dbUser, pass: dbPass, schema: PG_SCHEMA };
 
-  section('4) Backend y seguridad');
-  const backPort = await ask('Puerto del backend', '4000');
-  const frontPort = await ask('Puerto del front', '3002');
-  const jwt = await ask('JWT_SECRET (deja vacío para autogenerar)', '');
-  const jwtSecret = jwt || ('op_' + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2));
+    section('4) Backend y seguridad (local)');
+    backPort = await ask('Puerto del backend', DEFAULT_BACK_PORT);
+    frontPort = await ask('Puerto del front', DEFAULT_FRONT_PORT);
+    const jwt = await ask('JWT_SECRET (deja vacío para autogenerar)', '');
+    jwtSecret = jwt || ('op_' + crypto.randomBytes(24).toString('hex'));
 
-  section('5) Conexión front ↔ backend');
-  const connectApi = await askYesNo('¿El front debe consumir esta API directamente?', true);
+    section('5) Conexión front ↔ backend (local)');
+    connectApi = await askYesNo('¿El front debe consumir esta API directamente?', true);
+  }
 
   // ---- Generación ----
   const out = path.join(ROOT, 'generated', slug);
@@ -157,33 +178,46 @@ async function main() {
     fs.writeFileSync(idxPath, idx);
   }
 
-  // Escribir .env del backend
-  const pass = encodeURIComponent(dbPass);
-  const databaseUrl = `postgresql://${dbUser}:${pass}@${dbHost}:${dbPort}/${dbName}?schema=${dbSchema}`;
-  const backEnv = `# Generado por generar.mjs para ${nombre}
+  if (LOCAL) writeLocalArtifacts({ out, nombre, slug, active, db, backPort, frontPort, jwtSecret, connectApi });
+  else writeDeployArtifacts({ out, nombre, slug, active });
+
+  // Manifest del proyecto generado
+  fs.writeFileSync(path.join(out, 'PROYECTO.json'), JSON.stringify({
+    name: nombre, slug, mode: LOCAL ? 'local' : 'deploy', modules: active,
+    db: db ? { name: db.name, host: db.host, port: db.port, user: db.user, schema: db.schema } : null,
+    backPort: LOCAL ? backPort : null, frontPort: LOCAL ? frontPort : null,
+    connectApi: LOCAL ? connectApi : null, generatedAt: new Date().toISOString(),
+  }, null, 2));
+
+  rl.close();
+  console.log(`\n\x1b[32m✓ CRM generado en: generated/${slug}\x1b[0m`);
+  console.log('  - Módulos incluidos:', active.join(', '));
+  if (LOCAL) {
+    console.log('  - back/.env y front/.env.local escritos con tus datos.');
+    console.log(`\nSiguiente: abre generated/${slug}/COMO_ARRANCAR.md y sigue los pasos.`);
+  } else {
+    console.log('  - back/.env.example y front/.env.local.example con placeholders (sin secretos ni localhost).');
+    console.log(`\nSiguiente: abre generated/${slug}/DEPLOY.md y configura las env vars en tu host.`);
+  }
+}
+
+// ── Modo LOCAL: .env reales + README de arranque en tu máquina ──────────────
+function writeLocalArtifacts({ out, nombre, slug, active, db, backPort, frontPort, jwtSecret, connectApi }) {
+  const pass = encodeURIComponent(db.pass);
+  const databaseUrl = `postgresql://${db.user}:${pass}@${db.host}:${db.port}/${db.name}?schema=${db.schema}`;
+  fs.writeFileSync(path.join(out, 'back', '.env'), `# Generado por generar.mjs (LOCAL) para ${nombre}
 DATABASE_URL="${databaseUrl}"
 JWT_SECRET="${jwtSecret}"
 PORT=${backPort}
 CORS_ORIGIN="http://localhost:${frontPort}"
-`;
-  fs.writeFileSync(path.join(out, 'back', '.env'), backEnv);
-
-  // Escribir .env.local del front
-  const frontEnv = `# Generado por generar.mjs para ${nombre}
+`);
+  fs.writeFileSync(path.join(out, 'front', '.env.local'), `# Generado por generar.mjs (LOCAL) para ${nombre}
 NEXT_PUBLIC_API_URL=${connectApi ? `http://localhost:${backPort}` : ''}
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
-`;
-  fs.writeFileSync(path.join(out, 'front', '.env.local'), frontEnv);
+`);
 
-  // Manifest del proyecto generado
-  fs.writeFileSync(path.join(out, 'PROYECTO.json'), JSON.stringify({
-    name: nombre, slug, modules: active, db: { name: dbName, host: dbHost, port: dbPort, user: dbUser, schema: dbSchema },
-    backPort, frontPort, connectApi, generatedAt: new Date().toISOString(),
-  }, null, 2));
-
-  // README con el paso a paso
-  fs.writeFileSync(path.join(out, 'COMO_ARRANCAR.md'), `# ${nombre} — CRM generado
+  fs.writeFileSync(path.join(out, 'COMO_ARRANCAR.md'), `# ${nombre} — CRM generado (local)
 
 Módulos: ${active.join(', ')}
 
@@ -192,11 +226,11 @@ Módulos: ${active.join(', ')}
 cd back
 npm install
 npm run prisma:generate
-npm run db:push      # crea las tablas en ${dbName}
+npm run db:push      # crea las tablas en ${db.name}
 npm run seed         # datos demo (opcional)
 npm run dev          # http://localhost:${backPort}
 \`\`\`
-El \`.env\` ya está escrito con tu base de datos (${dbName} en ${dbHost}:${dbPort}).
+El \`.env\` ya está escrito con tu base de datos (${db.name} en ${db.host}:${db.port}).
 
 ## 2. Front
 \`\`\`bash
@@ -206,15 +240,76 @@ npm run dev          # http://localhost:${frontPort}
 \`\`\`
 ${connectApi ? `El front ya apunta a la API (NEXT_PUBLIC_API_URL=http://localhost:${backPort}).` : 'El front arranca en modo local (sin API).'}
 
-> Antes asegúrate de tener PostgreSQL arrancado y la base de datos \`${dbName}\` creada
+> Antes asegúrate de tener PostgreSQL arrancado y la base de datos \`${db.name}\` creada
 > (o deja que \`prisma db push\` la use si tu usuario tiene permisos).
 `);
+}
 
-  rl.close();
-  console.log(`\n\x1b[32m✓ CRM generado en: generated/${slug}\x1b[0m`);
-  console.log('  - back/.env y front/.env.local escritos con tus datos.');
-  console.log('  - Módulos incluidos:', active.join(', '));
-  console.log(`\nSiguiente: abre generated/${slug}/COMO_ARRANCAR.md y sigue los pasos.`);
+// ── Modo DEPLOY: .env.example con placeholders + guía de despliegue ─────────
+function writeDeployArtifacts({ out, nombre, slug, active }) {
+  fs.writeFileSync(path.join(out, 'back', '.env.example'), `# === Backend de ${nombre} ===
+# NO comitees secretos. Define estas variables en el panel de tu host
+# (Vercel/Cloudflare/Railway/Render…) o inyéctalas en runtime desde tu SaaS.
+
+# Conexión PostgreSQL. La gestionas tú en runtime/host:
+DATABASE_URL=            # postgresql://USER:PASS@HOST:5432/${slug.replace(/-/g, '_')}?schema=${PG_SCHEMA}
+
+# Secreto de firma de sesión. Genera uno fuerte: openssl rand -hex 32
+JWT_SECRET=
+
+# Puerto: solo relevante en hosts con proceso largo. En Vercel/Cloudflare
+# (serverless/edge) lo gestiona la plataforma; puedes omitirlo.
+PORT=${DEFAULT_BACK_PORT}
+
+# Origen permitido por CORS = dominio REAL del front (no localhost).
+CORS_ORIGIN=            # https://tu-front.com
+`);
+
+  fs.writeFileSync(path.join(out, 'front', '.env.local.example'), `# === Front de ${nombre} ===
+# Las NEXT_PUBLIC_* se HORNEAN en build. Defínelas en el panel del host
+# (estarán disponibles al compilar). No necesitas un .env.local en deploy.
+
+NEXT_PUBLIC_API_URL=        # URL pública de la API, p. ej. https://api.tu-app.com
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+`);
+
+  fs.writeFileSync(path.join(out, 'DEPLOY.md'), `# ${nombre} — Despliegue
+
+Módulos: ${active.join(', ')}
+
+Este zip NO trae infra horneada (sin BD, sin secretos, sin localhost). Tú defines
+las variables en el panel de tu host o las inyectas en runtime desde tu SaaS.
+
+## Variables (panel del host)
+
+### Backend
+| Variable | Valor |
+|----------|-------|
+| \`DATABASE_URL\` | \`postgresql://USER:PASS@HOST:5432/DB?schema=${PG_SCHEMA}\` (la inyectas tú) |
+| \`JWT_SECRET\` | secreto fuerte — \`openssl rand -hex 32\` |
+| \`CORS_ORIGIN\` | dominio real del front, p. ej. \`https://tu-front.com\` |
+| \`PORT\` | omitir en Vercel/Cloudflare (lo gestiona la plataforma) |
+
+### Front
+| Variable | Valor |
+|----------|-------|
+| \`NEXT_PUBLIC_API_URL\` | URL pública de la API, p. ej. \`https://api.tu-app.com\` |
+
+> \`NEXT_PUBLIC_*\` se hornea en BUILD: defínela ANTES de compilar en el panel.
+
+## Notas
+- **Puertos**: Vercel/Cloudflare asignan el routing; no fijes \`PORT\` ni uses \`localhost\`.
+- **BD en runtime**: si tu SaaS inyecta la conexión, deja \`DATABASE_URL\` solo en el
+  entorno de ejecución; Prisma la lee al arrancar.
+- **Migraciones**: ejecuta \`prisma migrate deploy\` (o \`db push\`) contra la BD destino
+  como paso de release, con \`DATABASE_URL\` ya apuntando a producción.
+- Plantillas de variables en \`back/.env.example\` y \`front/.env.local.example\`.
+
+## Arrancar en local (si lo necesitas)
+Regenera en modo local: \`node generar.mjs --local\` (pregunta BD/puertos/JWT y deja
+un \`.env\` listo para \`npm run dev\`).
+`);
 }
 
 main().catch((e) => { console.error(e); rl.close(); process.exit(1); });
