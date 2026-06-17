@@ -14,5 +14,33 @@ services:
     volumes:
       - crm_negocios_data:/var/lib/postgresql/data
 
+  # Automatizaciones (perfil opcional): docker compose --profile n8n up -d
+  # n8n consume los eventos de dominio que emite el back (best-effort). El CRM
+  # NUNCA depende de que este servicio esté arriba.
+  n8n:
+    image: n8nio/n8n:2.58.0
+    container_name: crm-n8n
+    profiles: ["n8n"]
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+      - GENERIC_TIMEZONE=Europe/Madrid
+      # Necesario para que el nodo Code del dispatcher pueda usar require('crypto')
+      # y verificar la firma HMAC del webhook.
+      - NODE_FUNCTION_ALLOW_BUILTIN=crypto
+      # Clave de cifrado de credenciales de n8n (define N8N_ENCRYPTION_KEY en tu .env).
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-change-me-please}
+      # MISMO secreto que el back (AUTOMATION_WEBHOOK_SECRET). El dispatcher lo lee
+      # via $env para recomputar el HMAC y rechazar firmas invalidas.
+      - AUTOMATION_WEBHOOK_SECRET=${AUTOMATION_WEBHOOK_SECRET}
+    volumes:
+      - crm_n8n_data:/home/node/.n8n
+
 volumes:
   crm_negocios_data:
+  crm_n8n_data:
