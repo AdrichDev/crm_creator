@@ -130,6 +130,7 @@ model Business {
   modules      SectorModule[]
   settings     BusinessSetting[]
   notifications Notification[]
+  invoices     Invoice[]
 }
 
 model Location {
@@ -509,6 +510,23 @@ model SaleLine {
   unitPrice Decimal  @default(0)
   subtotal  Decimal  @default(0)
   @@index([saleId])
+}
+
+// Facturación. Espejo del tipo `Factura` del front del CRM (creador_CRM/front).
+// `documentos` guarda los adjuntos (incl. data URL para previsualizar) como JSON.
+model Invoice {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  numero     String
+  cliente    String
+  servicio   String?
+  fecha      String
+  total      Decimal  @default(0)
+  estado     String   @default("Pendiente")
+  documentos Json?
+  createdAt  DateTime @default(now())
+  @@index([businessId])
 }
 
 model Campaign {

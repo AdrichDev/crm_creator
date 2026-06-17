@@ -30,6 +30,8 @@ export interface TenantConfig {
     phone?: string;
     email?: string;
     address?: string;
+    /** Id del cliente real en agents-agency (vínculo crm_project.id_cliente). */
+    clienteId?: string;
   };
   modules: Record<ModuleId, boolean>;
   terminology: Terminology;
@@ -46,6 +48,8 @@ export interface TenantConfig {
   };
   /** Tarjetas favoritas del dashboard (máx. 6). */
   favorites?: Favorite[];
+  /** Interruptor maestro del tenant. undefined/true = activo; false = en mantenimiento. */
+  tenantEnabled?: boolean;
   setupComplete: boolean;
 }
 

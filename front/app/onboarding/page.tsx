@@ -1,7 +1,8 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useProjects } from '@/lib/tenant-config-context';
+import { prepareClientOptions, type ClientLite } from '@/lib/clients/picker';
 import { configFromVertical } from '@/lib/config/tenant-config';
 import type { VerticalId } from '@/lib/config/verticals';
 import { VERTICAL_MAP } from '@/lib/config/verticals';
@@ -21,6 +22,32 @@ export default function Onboarding() {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [draft, setDraft] = useState(() => configFromVertical('peluqueria', ''));
+
+  // Clientes reales (de agents-agency) para vincular el proyecto.
+  const [clients, setClients] = useState<ClientLite[]>([]);
+  const [clientSearch, setClientSearch] = useState('');
+  const [clientsError, setClientsError] = useState('');
+  useEffect(() => {
+    fetch('/api/clients')
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((data) => setClients(Array.isArray(data) ? data : []))
+      .catch(() => setClientsError('No se pudieron cargar los clientes (¿backend de agents-agency arrancado?).'));
+  }, []);
+  const clientOptions = useMemo(() => prepareClientOptions(clients, clientSearch), [clients, clientSearch]);
+
+  function pickClient(c: ClientLite) {
+    setDraft((d) => ({
+      ...d,
+      business: {
+        ...d.business,
+        clienteId: c.id,
+        name: c.nombre || d.business.name,
+        email: c.email ?? d.business.email,
+        phone: c.telefono ?? d.business.phone,
+        address: c.direccion ?? d.business.address,
+      },
+    }));
+  }
 
   function pickVertical(v: VerticalId) {
     const preset = configFromVertical(v, draft.business.name);
@@ -79,6 +106,29 @@ export default function Onboarding() {
               <input value={draft.business.name} placeholder="p. ej. Estudio Lúa"
                 onChange={(e) => setDraft({ ...draft, business: { ...draft.business, name: e.target.value } })}
                 className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" />
+            </CardBody></Card>
+
+            {/* Vincular cliente real (de agents-agency): alfabético, máx. 20 + scroll, filtro */}
+            <Card><CardBody>
+              <label className="text-xs font-medium text-gray-500">Cliente vinculado</label>
+              <input value={clientSearch} onChange={(e) => setClientSearch(e.target.value)}
+                placeholder="Filtrar clientes por nombre…"
+                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" />
+              {clientsError && <p className="mt-2 text-xs text-amber-600">{clientsError}</p>}
+              <div className="mt-2 max-h-64 divide-y divide-gray-100 overflow-y-auto rounded-xl border border-gray-200">
+                {clientOptions.ordenados.length === 0 ? (
+                  <p className="p-3 text-sm text-gray-400">Sin clientes.</p>
+                ) : clientOptions.ordenados.map((c) => (
+                  <button key={c.id} type="button" onClick={() => pickClient(c)}
+                    className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition hover:bg-gray-50 ${
+                      draft.business.clienteId === c.id ? 'bg-[var(--brand-primary)]/10 font-medium text-gray-900' : 'text-gray-700'
+                    }`}>
+                    <span>{c.nombre}</span>
+                    {draft.business.clienteId === c.id && <span className="text-xs text-[var(--brand-primary)]">vinculado ✓</span>}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-[11px] text-gray-400">{clientOptions.total} cliente(s){clientOptions.hayScroll ? ' · desplázate para ver más' : ''}. Al elegir uno se rellenan los Datos.</p>
             </CardBody></Card>
           </div>
         )}

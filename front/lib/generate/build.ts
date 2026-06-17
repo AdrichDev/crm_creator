@@ -5,7 +5,7 @@ import { MODULES, type ModuleId } from '@/lib/config/modules';
 import { MODULE_TABLES, RELATIONS, type GenTable } from './schemas';
 
 const DATA_ORDER: ModuleId[] = [
-  'clientes', 'servicios', 'empleados', 'citas', 'fichaje', 'vacaciones', 'productos', 'ventas', 'marketing',
+  'clientes', 'servicios', 'empleados', 'citas', 'fichaje', 'vacaciones', 'productos', 'ventas', 'facturas', 'marketing',
 ];
 
 export function activeDataModules(cfg: TenantConfig): ModuleId[] {

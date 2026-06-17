@@ -78,6 +78,24 @@ export const MODULE_TABLES: Partial<Record<ModuleId, GenTable[]>> = {
     { name: 'metodo_pago', sql: "text not null default 'Tarjeta'", prisma: 'metodoPago String @default("Tarjeta") @map("metodo_pago")' },
     { name: 'total', sql: 'numeric(12,2) not null default 0', prisma: 'total Decimal @default(0)' },
   ] }],
+  facturas: [
+    { table: 'facturas', model: 'Factura', cols: [
+      { name: 'numero', sql: 'text not null', prisma: 'numero String' },
+      { name: 'cliente_id', sql: 'uuid', prisma: 'clienteId String? @map("cliente_id")' },
+      { name: 'cliente_nombre', sql: 'text', prisma: 'clienteNombre String? @map("cliente_nombre")' },
+      { name: 'fecha', sql: 'date not null default current_date', prisma: 'fecha DateTime @default(now()) @db.Date' },
+      { name: 'total', sql: 'numeric(12,2) not null default 0', prisma: 'total Decimal @default(0)' },
+      { name: 'estado', sql: "text not null default 'Pendiente'", prisma: 'estado String @default("Pendiente")' },
+    ] },
+    { table: 'documentos', model: 'Documento', cols: [
+      { name: 'nombre', sql: 'text not null', prisma: 'nombre String' },
+      { name: 'tipo', sql: 'text', prisma: 'tipo String?' },
+      { name: 'tam', sql: 'integer', prisma: 'tam Int?' },
+      { name: 'fecha', sql: 'date not null default current_date', prisma: 'fecha DateTime @default(now()) @db.Date' },
+      { name: 'factura_id', sql: 'uuid', prisma: 'facturaId String? @map("factura_id")' },
+      { name: 'cliente_id', sql: 'uuid', prisma: 'clienteId String? @map("cliente_id")' },
+    ] },
+  ],
   marketing: [{ table: 'campanas', model: 'Campana', cols: [
     { name: 'nombre', sql: 'text not null', prisma: 'nombre String' },
     { name: 'canal', sql: "text not null default 'Email'", prisma: 'canal String @default("Email")' },
@@ -95,4 +113,7 @@ export const RELATIONS: { module: ModuleId; needs: ModuleId; table: string; col:
   { module: 'fichaje', needs: 'empleados', table: 'fichajes', col: 'empleado_id', ref: 'empleados', name: 'fk_fichajes_empleado' },
   { module: 'vacaciones', needs: 'empleados', table: 'ausencias', col: 'empleado_id', ref: 'empleados', name: 'fk_ausencias_empleado' },
   { module: 'ventas', needs: 'clientes', table: 'ventas', col: 'cliente_id', ref: 'clientes', name: 'fk_ventas_cliente' },
+  { module: 'facturas', needs: 'clientes', table: 'facturas', col: 'cliente_id', ref: 'clientes', name: 'fk_facturas_cliente' },
+  { module: 'facturas', needs: 'facturas', table: 'documentos', col: 'factura_id', ref: 'facturas', name: 'fk_documentos_factura' },
+  { module: 'facturas', needs: 'clientes', table: 'documentos', col: 'cliente_id', ref: 'clientes', name: 'fk_documentos_cliente' },
 ];
