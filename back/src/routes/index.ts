@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.js';
-import { staffOnly } from '../middleware/rbac.js';
+import { staffOnly, staffOrClient } from '../middleware/rbac.js';
 import { crudRouter } from '../lib/crud.js';
 import { authRouter } from './auth.js';
 import { meRouter } from './me.js';
@@ -24,16 +24,18 @@ api.use(authenticate);
 // Endpoints client-scoped (CLIENT solo ve SUS datos). ANTES del guard staffOnly.
 api.use('/me', meRouter);
 
+// Catálogo: lectura para cualquier miembro (incl. CLIENT, para reservar); escritura solo staff.
+api.use('/locations', staffOrClient, crudRouter('location', { fields: ['name', 'address', 'timezone', 'currency', 'phone', 'email', 'onlineBookingEnabled', 'active'] }));
+api.use('/services', staffOrClient, crudRouter('service', { fields: ['name', 'description', 'category', 'durationMin', 'price', 'tax', 'requiresResource', 'resourceType', 'requiresProfessional', 'onlineBookable', 'color', 'bufferBefore', 'bufferAfter', 'requiresConsent', 'requiresPackage', 'active'] }));
+api.use('/products', staffOrClient, crudRouter('product', { fields: ['name', 'category', 'stock', 'stockMinimo', 'price', 'supplier'] }));
+
 // A partir de aquí, SOLO staff (empleo). El rol CLIENT recibe 403 en todo lo de gestión.
 // Cierra el hallazgo CRÍTICO F1/F2 de sec-review.md (crud/dashboard/bookings/packages sin guard).
 api.use(staffOnly);
 
-api.use('/locations', crudRouter('location', { fields: ['name', 'address', 'timezone', 'currency', 'phone', 'email', 'onlineBookingEnabled', 'active'] }));
 api.use('/employees', crudRouter('employee', { fields: ['locationId', 'firstName', 'lastName', 'email', 'phone', 'specialty', 'color', 'status', 'hireDate', 'vacationTotal', 'vacationUsed', 'commission'] }));
 api.use('/customers', crudRouter('customer', { fields: ['firstName', 'lastName', 'phone', 'email', 'birthDate', 'gender', 'address', 'acquisitionChannel', 'notes', 'preferences', 'consentComms', 'status'], include: { tags: true } }));
-api.use('/services', crudRouter('service', { fields: ['name', 'description', 'category', 'durationMin', 'price', 'tax', 'requiresResource', 'resourceType', 'requiresProfessional', 'onlineBookable', 'color', 'bufferBefore', 'bufferAfter', 'requiresConsent', 'requiresPackage', 'active'] }));
 api.use('/resources', crudRouter('resource', { fields: ['locationId', 'name', 'type', 'capacity', 'status', 'locationNote', 'description', 'metadata'] }));
-api.use('/products', crudRouter('product', { fields: ['name', 'category', 'stock', 'stockMinimo', 'price', 'supplier'] }));
 api.use('/sales', crudRouter('sale', { fields: ['customerId', 'customerName', 'date', 'paymentMethod', 'total'], include: { lines: true } }));
 api.use('/invoices', crudRouter('invoice', { fields: ['numero', 'cliente', 'servicio', 'fecha', 'total', 'estado', 'documentos'] }));
 api.use('/campaigns', crudRouter('campaign', { fields: ['name', 'channel', 'status', 'sent', 'opens'] }));

@@ -1,6 +1,7 @@
 'use client';
 import { getSupabase, getActiveTenantId, isSupabaseEnabled } from '@/lib/supabase/client';
 import { apiFetch, isApiEnabled } from '@/lib/api/client';
+import { getMyBookings, mapBookingStatus } from '@/lib/api/me';
 
 import { TABLE_MAP, toDbRow, fromDbRow } from '@/lib/supabase/tables';
 
@@ -98,22 +99,51 @@ const API_PATH: Record<string, string> = {
   marketing: '/campaigns',
 };
 
+// Rol activo del panel (mismo origen que useRole → 'saas.role.v1').
+function activeRole(): string | null {
+  try { return typeof window !== 'undefined' ? window.localStorage.getItem('saas.role.v1') : null; } catch { return null; }
+}
+// Datos de staff que el rol cliente NO debe pedir (recibiría 403). Devolvemos vacío.
+const CLIENT_DENY = new Set(['clientes', 'empleados', 'ventas', 'fichaje', 'vacaciones', 'marketing', 'facturas']);
+
 const apiBackend: DataBackend = {
   remote: true,
   async list(key, seed) {
+    // El cliente solo ve SUS datos (/me/*) y el catálogo (servicios/productos vía flujo normal).
+    if (activeRole() === 'cliente') {
+      if (CLIENT_DENY.has(key)) return [] as typeof seed;
+      if (key === 'citas') {
+        try {
+          const rows = await getMyBookings();
+          return rows.map((b) => ({
+            id: b.id,
+            cliente: 'Tú',
+            servicio: b.service?.name ?? '',
+            empleado: '',
+            fecha: (b.startAt ?? '').slice(0, 10),
+            hora: (b.startAt ?? '').slice(11, 16),
+            estado: mapBookingStatus(b.status),
+          })) as unknown as typeof seed;
+        } catch { return [] as typeof seed; }
+      }
+      // servicios/productos (catálogo) y resto → flujo normal de abajo.
+    }
     const path = API_PATH[key]; if (!path) return seed;
     try { return (await apiFetch<typeof seed>(path)) ?? seed; } catch { return seed; }
   },
   async create(key, item) {
+    if (activeRole() === 'cliente') return; // el cliente no escribe datos de gestión.
     const path = API_PATH[key]; if (!path) return;
     const { id: _omit, ...data } = item as Record<string, unknown>;
     await apiFetch(path, { method: 'POST', body: JSON.stringify(data) });
   },
   async update(key, id, patch) {
+    if (activeRole() === 'cliente') return;
     const path = API_PATH[key]; if (!path) return;
     await apiFetch(`${path}/${id}`, { method: 'PATCH', body: JSON.stringify(patch) });
   },
   async remove(key, id) {
+    if (activeRole() === 'cliente') return;
     const path = API_PATH[key]; if (!path) return;
     await apiFetch(`${path}/${id}`, { method: 'DELETE' });
   },

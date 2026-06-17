@@ -177,3 +177,23 @@ test('RBAC: CLIENT recibe 403 en endpoints de staff y solo accede a /me (scoped)
   const prof = await api('/me/profile', {}, token, businessId);
   assert.equal(prof.status, 200);
 });
+
+test('catálogo: CLIENT puede LEER servicios/productos pero NO escribir', async (t) => {
+  if (!backUp) return t.skip('back down');
+  const businessId = await newBusiness();
+  const email = `cat_${uniq()}@test.local`;
+  const user = await prisma.user.create({ data: { email, firstName: 'Cat', passwordHash: await hashPassword('cliente-pass-1'), status: 'active', emailVerifiedAt: new Date() } });
+  created.userIds.add(user.id);
+  await prisma.membership.create({ data: { userId: user.id, businessId, role: 'CLIENT' } });
+  const login = await api('/auth/login', { method: 'POST', body: JSON.stringify({ email, password: 'cliente-pass-1' }) });
+  const token = login.body!.token as string;
+
+  // Lectura de catálogo → 200.
+  for (const path of ['/services', '/products', '/locations']) {
+    const r = await api(path, {}, token, businessId);
+    assert.equal(r.status, 200, `${path} GET debería ser 200 para CLIENT, fue ${r.status}`);
+  }
+  // Escritura de catálogo → 403.
+  const w = await api('/services', { method: 'POST', body: JSON.stringify({ name: 'Hack', durationMin: 30, price: 0 }) }, token, businessId);
+  assert.equal(w.status, 403);
+});

@@ -31,8 +31,9 @@ export const ROLE_LABEL: Record<Role, string> = {
 const ROLE_MODULES: Record<Role, ModuleId[] | '*'> = {
   admin: '*',
   trabajador: ['dashboard', 'citas', 'clientes', 'servicios', 'productos', 'fichaje', 'vacaciones', 'ventas'],
-  // El cliente entra a Configuración, pero solo para el switch del tenant + Marca/Negocio.
-  cliente: ['dashboard', 'citas', 'servicios', 'productos', 'facturas', 'configuracion'],
+  // Portal del cliente: SUS citas (/me/bookings) + catálogo (servicios/productos, solo lectura) +
+  // Configuración (perfil/marca). Sin dashboard ni facturas (staff-only / pendiente de scoping).
+  cliente: ['citas', 'servicios', 'productos', 'configuracion'],
 };
 
 export function moduleAllowedForRole(role: Role, id: ModuleId): boolean {
@@ -49,10 +50,11 @@ const READONLY_FOR: Record<Role, ModuleId[] | '*' | null> = {
   trabajador: ['servicios', 'productos', 'empleados', 'marketing', 'configuracion'],
   cliente: '*',
 };
-// Excepciones: módulos donde el rol SÍ puede actuar (p. ej. el cliente reserva citas
-// y puede guardar marca/negocio + el switch del tenant en Configuración).
+// Excepciones: módulos donde el rol SÍ puede actuar. El cliente es de SOLO LECTURA
+// (ve sus citas/catálogo) salvo Configuración (perfil/marca + switch del tenant).
+// La reserva online (crear/cancelar citas) queda fuera de alcance — fase posterior.
 const WRITE_EXCEPTIONS: Partial<Record<Role, ModuleId[]>> = {
-  cliente: ['citas', 'configuracion'],
+  cliente: ['configuracion'],
 };
 
 export function canWrite(role: Role, id: ModuleId): boolean {
