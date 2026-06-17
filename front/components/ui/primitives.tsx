@@ -86,6 +86,19 @@ export function Button({ children, variant = 'primary', onClick, type = 'button'
   return <button type={type} onClick={onClick} disabled={disabled} className={cn(variants[variant], className)}>{children}</button>;
 }
 
+const ICON_BTN_BASE = 'inline-grid place-items-center w-8 h-8 rounded-lg border border-white/10 text-[var(--panel-muted)] transition hover:text-[var(--acc)] hover:border-[var(--acc)]';
+
+/** Botón de acción con icono para celdas de tabla (ver/editar/eliminar). `danger` lo tematiza en rojo. */
+export function IconButton({ title, onClick, danger, className, children }:
+  { title: string; onClick?: () => void; danger?: boolean; className?: string; children: ReactNode }) {
+  return (
+    <button type="button" title={title} onClick={onClick}
+      className={cn(ICON_BTN_BASE, danger && 'hover:!border-red-500/60 hover:!text-red-400', className)}>
+      {children}
+    </button>
+  );
+}
+
 export function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <button type="button" disabled={disabled} onClick={() => onChange(!checked)}

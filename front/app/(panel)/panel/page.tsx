@@ -1,19 +1,21 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { useTenantConfig, useTerm, useRole } from '@/lib/tenant-config-context';
-import { moduleAllowedForRole } from '@/lib/config/roles';
-import { Stat } from '@/components/ui/primitives';
+import { moduleAllowedForRole, DEMO_USERS } from '@/lib/config/roles';
+import { Stat, Table, Td, Badge } from '@/components/ui/primitives';
 import { useCollection } from '@/lib/data/use-collection';
 import { citas as seedCitas, type Cita, clientes as seedClientes } from '@/lib/mock/data';
+import { DOW, DOW_FULL, MESES } from '@/lib/config/constants';
+import { pad, dateStr } from '@/lib/utils/format';
 
-const DOW = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
-const DOW_FULL = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-const pad = (n: number) => String(n).padStart(2, '0');
-const dateStr = (y: number, m: number, d: number) => `${y}-${pad(m + 1)}-${pad(d)}`;
 const estadoTone = (s: string) => s === 'Completada' ? '#6aa8ff' : s === 'Cancelada' ? '#ff4757' : 'var(--acc)';
 
-export default function Dashboard() {
+export default function DashboardPage() {
+  const { role } = useRole();
+  return role === 'cliente' ? <ClienteDashboard /> : <PanelDashboard />;
+}
+
+function PanelDashboard() {
   const { config } = useTenantConfig();
   const { role } = useRole();
   const termCitas = useTerm('citas', 'Citas');
@@ -130,6 +132,75 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Dashboard de CLIENTE — clon de "Mis Citas" de JorjotasBarber.
+// Sin columna "Cliente" (todas las citas son suyas); stats + tabla + anular.
+// ───────────────────────────────────────────────────────────────────────────
+function ClienteDashboard() {
+  const { config } = useTenantConfig();
+  const termCitas = useTerm('citas', 'Citas');
+  const { items, update } = useCollection<Cita>('citas', seedCitas);
+  const yo = DEMO_USERS.cliente.nombre;
+
+  const mias = items
+    .filter((c) => c.cliente === yo)
+    .sort((a, b) => (b.fecha + b.hora).localeCompare(a.fecha + a.hora));
+  const pendientes = mias.filter((c) => c.estado === 'Confirmada' || c.estado === 'Pendiente').length;
+  const completadas = mias.filter((c) => c.estado === 'Completada').length;
+
+  const tone = (s: string) =>
+    s === 'Confirmada' ? 'blue' : s === 'Completada' ? 'green' : s === 'Cancelada' ? 'red' : 'amber';
+
+  function anular(c: Cita) {
+    if (confirm('¿Anular esta reserva?')) update(c.id, { estado: 'Cancelada' });
+  }
+
+  return (
+    <div>
+      <div className="panel-header">
+        <div>
+          <h1>Hola, {DEMO_USERS.cliente.nombre.split(' ')[0]}</h1>
+          <p className="subtitle">Tus {termCitas.toLowerCase()} programadas en {config.business.name}.</p>
+        </div>
+      </div>
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Stat label={`${termCitas} pendientes`} value={pendientes} accent />
+        <Stat label={`${termCitas} completadas`} value={completadas} />
+        <Stat label="Total" value={mias.length} />
+      </div>
+
+      <div className="panel">
+        <div className="panel-header"><h2>Mis {termCitas.toLowerCase()} programadas</h2></div>
+        {mias.length === 0 ? (
+          <p className="empty-state">No tienes {termCitas.toLowerCase()} todavía.</p>
+        ) : (
+          <Table head={['Fecha y hora', 'Servicio', 'Profesional', 'Estado', '']}>
+            {mias.map((c) => {
+              const cancelable = c.estado === 'Confirmada' || c.estado === 'Pendiente';
+              return (
+                <tr key={c.id}>
+                  <Td className="font-medium text-[var(--panel-text)]">{c.fecha} · {c.hora}</Td>
+                  <Td>{c.servicio}</Td>
+                  <Td>{c.empleado}</Td>
+                  <Td><Badge tone={tone(c.estado)}>{c.estado}</Badge></Td>
+                  <Td>
+                    <div className="flex justify-end">
+                      {cancelable && (
+                        <button className="row-action danger" onClick={() => anular(c)}>Anular</button>
+                      )}
+                    </div>
+                  </Td>
+                </tr>
+              );
+            })}
+          </Table>
         )}
       </div>
     </div>

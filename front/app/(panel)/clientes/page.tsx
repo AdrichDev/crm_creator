@@ -1,15 +1,16 @@
 'use client';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ModuleGuard } from '@/components/layout/module-guard';
-import { useTerm, useRole } from '@/lib/tenant-config-context';
+import { useTerm, useRole, useTenantConfig } from '@/lib/tenant-config-context';
 import { canWrite } from '@/lib/config/roles';
-import { PageHeader, Stat, Table, Td, Badge, Button } from '@/components/ui/primitives';
+import { clientesMock, clienteExtraFields } from '@/lib/config/sector-data';
+import { PageHeader, Stat, Table, Td, Badge, Button, IconButton } from '@/components/ui/primitives';
 import { EntityModal, type Field } from '@/components/ui/entity-modal';
 import { Modal } from '@/components/ui/modal';
 import { DocumentosPanel } from '@/components/ui/documentos-panel';
 import { useCollection } from '@/lib/data/use-collection';
-import { clientes as seed, type Cliente, type Documento, facturas as facturasSeed, type Factura } from '@/lib/mock/data';
+import { type Cliente, type Documento, facturas as facturasSeed, type Factura } from '@/lib/mock/data';
 import { UserPlus, Info, Euro, Pencil, Trash2 } from 'lucide-react';
 
 const FIELDS: Field[] = [
@@ -25,13 +26,15 @@ const FIELDS: Field[] = [
   { name: 'ultimaVisita', label: 'Última visita', type: 'date' },
 ];
 
-const iconBtn = 'inline-grid place-items-center w-8 h-8 rounded-lg border border-white/10 text-[var(--panel-muted)] transition hover:text-[var(--acc)] hover:border-[var(--acc)]';
-
 export default function Page() {
   const term = useTerm('clientes', 'Clientes');
   const router = useRouter();
   const { role } = useRole();
+  const { config } = useTenantConfig();
+  const vertical = config.business.vertical;
   const puedeEditar = canWrite(role, 'clientes');
+  const seed = useMemo(() => clientesMock(vertical), [vertical]);
+  const extraFields = clienteExtraFields(vertical);
   const { items, create, update, remove } = useCollection<Cliente>('clientes', seed);
   const { items: facturas } = useCollection<Factura>('facturas', facturasSeed);
   const conFactura = new Set(facturas.map((f) => f.cliente));
@@ -91,18 +94,18 @@ export default function Page() {
             </Td>
             <Td>
               <div className="flex items-center justify-end gap-2">
-                <button className={iconBtn} title="Ver ficha y documentos" onClick={() => setInfo(c)}>
+                <IconButton title="Ver ficha y documentos" onClick={() => setInfo(c)}>
                   <Info className="h-4 w-4" />
-                </button>
+                </IconButton>
                 {puedeEditar && (
                   <>
-                    <button className={iconBtn} title="Editar" onClick={() => onEdit(c)}>
+                    <IconButton title="Editar" onClick={() => onEdit(c)}>
                       <Pencil className="h-4 w-4" />
-                    </button>
-                    <button className={`${iconBtn} hover:!border-red-500/60 hover:!text-red-400`} title="Eliminar"
+                    </IconButton>
+                    <IconButton danger title="Eliminar"
                       onClick={() => { if (confirm('¿Eliminar cliente?')) remove(c.id); }}>
                       <Trash2 className="h-4 w-4" />
-                    </button>
+                    </IconButton>
                   </>
                 )}
               </div>
@@ -122,7 +125,14 @@ export default function Page() {
                  ['gastoTotal', 'Gasto total'], ['ultimaVisita', 'Última visita']] as const).map(([k, label]) => (
                 <div key={k}>
                   <span className="text-[var(--panel-muted)]">{label}</span>
-                  <p className="text-white">{String((actual as Record<string, unknown>)[k] ?? '—') || '—'}</p>
+                  <p className="text-white">{String((actual as unknown as Record<string, unknown>)[k] ?? '—') || '—'}</p>
+                </div>
+              ))}
+              {/* Campos extendidos propios del sector (especie/raza, nº historia, expediente…) */}
+              {extraFields.map((f) => (
+                <div key={f.name}>
+                  <span className="text-[var(--panel-muted)]">{f.label}</span>
+                  <p className="text-white">{actual.extra?.[f.name] || '—'}</p>
                 </div>
               ))}
             </div>
