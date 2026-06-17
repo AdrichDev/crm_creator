@@ -1,14 +1,10 @@
-<!--
-  Plantilla: alta de usuario (evento user.invited)
-  Variables n8n disponibles bajo $json.data:
-    firstName, email, businessName?, inviteUrl, expiresAt
-  PII mínima: solo nombre + enlace con token de un solo uso. No incluir contraseñas.
--->
+<!-- alta usuario (user.invited). Vars: $json.data.{firstName,businessName?,inviteUrl} + $json.{logoHtml,primary,expiresHuman} -->
 <div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222">
-  <h2 style="margin:0 0 12px">Hola {{ $json.data.firstName }},</h2>
-  <p>Se ha creado una cuenta para ti{{ $json.data.businessName ? ' en ' + $json.data.businessName : '' }}. Para activarla y elegir tu contraseña, usa el siguiente enlace:</p>
-  <p style="text-align:center;margin:24px 0">
-    <a href="{{ $json.data.inviteUrl }}" style="background:#4f46e5;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;display:inline-block">Activar mi cuenta</a>
+  <div style="text-align:center;margin-bottom:18px">{{ $json.logoHtml }}</div>
+  <h2 style="margin:0 0 12px">👋 Hola {{ $json.data.firstName }},</h2>
+  <p>Se ha creado tu cuenta{{ $json.data.businessName ? ' en <b>' + $json.data.businessName + '</b>' : '' }}. Act&iacute;vala y elige tu contrase&ntilde;a:</p>
+  <p style="text-align:center;margin:28px 0">
+    <a href="{{ $json.data.inviteUrl }}" style="background:{{ $json.primary }};color:#fff;padding:13px 26px;border-radius:10px;text-decoration:none;display:inline-block;font-weight:600">✨ Activar mi cuenta</a>
   </p>
-  <p style="font-size:13px;color:#666">El enlace caduca el {{ $json.data.expiresAt }}. Si no esperabas este correo, ignóralo.</p>
+  <p style="font-size:13px;color:#666">⏰ El enlace caduca el {{ $json.expiresHuman }}. Si no esperabas este correo, ign&oacute;ralo. 🔒</p>
 </div>
