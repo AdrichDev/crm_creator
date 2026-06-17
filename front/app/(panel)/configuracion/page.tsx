@@ -4,15 +4,16 @@ import { useTenantConfig, useRole } from '@/lib/tenant-config-context';
 import { ModuleGuard } from '@/components/layout/module-guard';
 import { VERTICAL_MAP } from '@/lib/config/verticals';
 import { BrandingForm } from '@/components/config/branding-form';
+import { ModuleGridPanel } from '@/components/config/module-grid-panel';
 import { PageHeader, Card, CardBody, Button, Badge, Toggle } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 
-type Tab = 'estado' | 'marca' | 'negocio';
-const TAB_LABEL: Record<Tab, string> = { estado: 'Estado', marca: 'Marca', negocio: 'Negocio' };
-const TABS: Tab[] = ['estado', 'marca', 'negocio'];
+type Tab = 'estado' | 'modulos' | 'marca' | 'negocio';
+const TAB_LABEL: Record<Tab, string> = { estado: 'Estado', modulos: 'Módulos', marca: 'Marca', negocio: 'Negocio' };
+const TABS: Tab[] = ['estado', 'modulos', 'marca', 'negocio'];
 
 export default function ConfiguracionPage() {
-  const { config, update, reset } = useTenantConfig();
+  const { config, update, reset, toggleModule } = useTenantConfig();
   const { role } = useRole();
   const isAdmin = role === 'admin';
 
@@ -63,6 +64,16 @@ export default function ConfiguracionPage() {
             <Toggle checked={enabled} onChange={(v) => update({ tenantEnabled: v })} />
           </div>
           <Badge tone={enabled ? 'green' : 'red'}>{enabled ? 'Operativo' : 'En mantenimiento'}</Badge>
+        </CardBody></Card>
+      )}
+
+      {/* Módulos: activa/desactiva funcionalidades del CRM (incl. Facturación) */}
+      {tab === 'modulos' && (
+        <Card><CardBody className="space-y-4">
+          <p className="text-sm text-[var(--panel-muted)]">
+            Activa o desactiva los módulos del panel. Los obligatorios no se pueden apagar.
+          </p>
+          <ModuleGridPanel modules={config.modules} onToggle={toggleModule} terminology={config.terminology} />
         </CardBody></Card>
       )}
 

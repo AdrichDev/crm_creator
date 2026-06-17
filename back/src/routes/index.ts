@@ -25,6 +25,7 @@ api.use('/services', crudRouter('service', { fields: ['name', 'description', 'ca
 api.use('/resources', crudRouter('resource', { fields: ['locationId', 'name', 'type', 'capacity', 'status', 'locationNote', 'description', 'metadata'] }));
 api.use('/products', crudRouter('product', { fields: ['name', 'category', 'stock', 'stockMinimo', 'price', 'supplier'] }));
 api.use('/sales', crudRouter('sale', { fields: ['customerId', 'customerName', 'date', 'paymentMethod', 'total'], include: { lines: true } }));
+api.use('/invoices', crudRouter('invoice', { fields: ['numero', 'cliente', 'servicio', 'fecha', 'total', 'estado', 'documentos'] }));
 api.use('/campaigns', crudRouter('campaign', { fields: ['name', 'channel', 'status', 'sent', 'opens'] }));
 api.use('/fichajes', crudRouter('fichaje', { fields: ['employeeId', 'employeeName', 'date', 'checkIn', 'checkOut', 'hours'] }));
 api.use('/tags', crudRouter('tag', { fields: ['name', 'color'] }));

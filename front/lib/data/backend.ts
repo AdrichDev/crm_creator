@@ -18,7 +18,12 @@ export interface DataBackend {
 // ---------------------------------------------------------------------------
 // Backend LOCAL (actual): localStorage sembrado desde mock.
 // ---------------------------------------------------------------------------
-const storageKey = (key: string) => `saas.data.${key}.v1`;
+// Namespacing por proyecto activo: cada negocio tiene sus propios datos (y sus
+// mocks sectoriales) en local, sin mezclarse entre proyectos.
+function activeProject(): string {
+  try { return localStorage.getItem('saas.active-project.v1') || 'default'; } catch { return 'default'; }
+}
+const storageKey = (key: string) => `saas.data.${activeProject()}.${key}.v1`;
 
 function read<T>(key: string, seed: T[]): T[] {
   try {
@@ -89,6 +94,7 @@ const API_PATH: Record<string, string> = {
   vacaciones: '/time-off',
   productos: '/products',
   ventas: '/sales',
+  facturas: '/invoices',
   marketing: '/campaigns',
 };
 
