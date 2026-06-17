@@ -16,6 +16,7 @@ const DEFAULT_EMOJI: Record<ModuleId, string> = {
   ventas: '🧾',
   facturas: '💶',
   marketing: '📣',
+  estadisticas: '📈',
   configuracion: '⚙️',
 };
 
