@@ -15,7 +15,9 @@ export default function Consola() {
 
   function nuevo() { router.push('/onboarding'); }
   function abrir(id: string) { openProject(id); router.push('/panel'); }
-  function editar(id: string) { openProject(id); router.push('/configuracion'); }
+  // UC-1: "Editar" reabre el ONBOARDING en modo edición (pre-cargado con la config
+  // del proyecto), no el editor campo-a-campo. `/configuracion` sigue disponible.
+  function editar(id: string) { router.push(`/onboarding?projectId=${id}`); }
   async function generar(id: string) {
     const p = projects.find((x) => x.id === id); if (!p) return;
     setBusy(id);

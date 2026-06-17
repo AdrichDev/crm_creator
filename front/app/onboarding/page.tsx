@@ -1,27 +1,39 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useProjects } from '@/lib/tenant-config-context';
 import { prepareClientOptions, type ClientLite } from '@/lib/clients/picker';
 import { configFromVertical } from '@/lib/config/tenant-config';
+import { draftForEdit } from '@/lib/onboarding/edit-mode';
 import type { VerticalId } from '@/lib/config/verticals';
 import { VERTICAL_MAP } from '@/lib/config/verticals';
 import type { ModuleId } from '@/lib/config/modules';
 import { MODULE_MAP } from '@/lib/config/modules';
+import type { DesignTokens } from '@/lib/config/tenant-config';
 import { VerticalPicker } from '@/components/config/vertical-picker';
 import { ModuleToggleGrid } from '@/components/config/module-toggle-grid';
 import { BrandingForm } from '@/components/config/branding-form';
+import { AiBrandingSuggest } from '@/components/config/ai-branding-suggest';
 import { Button, Card, CardBody } from '@/components/ui/primitives';
 import { Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const STEPS = ['Tipo de negocio', 'Módulos', 'Marca', 'Datos'];
 
-export default function Onboarding() {
-  const { createProject, openProject } = useProjects();
+function OnboardingInner() {
+  const { createProject, openProject, setConfig, projects } = useProjects();
   const router = useRouter();
+  const params = useSearchParams();
+
+  // UC-1: con `?projectId=` el onboarding entra en MODO EDICIÓN (pre-cargado).
+  // Sin él → modo alta (comportamiento de siempre, intacto).
+  const projectId = params.get('projectId');
+  const editing = projects.find((p) => p.id === projectId) ?? null;
+  const isEdit = !!editing;
+
   const [step, setStep] = useState(0);
-  const [draft, setDraft] = useState(() => configFromVertical('peluqueria', ''));
+  const [draft, setDraft] = useState(() =>
+    editing ? draftForEdit(editing.config) : configFromVertical('peluqueria', ''));
 
   // Clientes reales (de agents-agency) para vincular el proyecto.
   const [clients, setClients] = useState<ClientLite[]>([]);
@@ -50,6 +62,10 @@ export default function Onboarding() {
   }
 
   function pickVertical(v: VerticalId) {
+    if (v === draft.business.vertical) return;
+    // En edición, cambiar de vertical MACHACA módulos/marca/terminología con el preset.
+    // Avisar y confirmar para no perder la configuración existente sin querer.
+    if (isEdit && !confirm('Cambiar de sector reemplaza módulos, marca y terminología por el preset del nuevo sector. ¿Continuar?')) return;
     const preset = configFromVertical(v, draft.business.name);
     setDraft({ ...preset, business: { ...preset.business, name: draft.business.name } });
   }
@@ -57,7 +73,7 @@ export default function Onboarding() {
     if (MODULE_MAP[id]?.mandatory) return;
     setDraft({ ...draft, modules: { ...draft.modules, [id]: on } });
   }
-  function brand(patch: Partial<{ primary: string; secondary: string; logoText: string; logoImage: string; designSource: string }>) {
+  function brand(patch: Partial<{ primary: string; secondary: string; logoText: string; logoImage: string; designSource: string; tokens: DesignTokens }>) {
     setDraft({ ...draft, branding: { ...draft.branding, ...patch } });
   }
   function finish() {
@@ -65,6 +81,15 @@ export default function Onboarding() {
     const cfg = { ...draft, business: { ...draft.business, name },
       branding: { ...draft.branding, logoText: draft.branding.logoText || name.slice(0, 2).toUpperCase() },
       setupComplete: true };
+    if (isEdit && editing) {
+      // UC-1: persistir SOBRE el proyecto existente, sin crear uno nuevo.
+      // setConfig reemplaza la config del proyecto activo en localStorage; quitar un
+      // módulo solo lo OCULTA (su flag a false), no borra datos del proyecto.
+      openProject(editing.id);
+      setConfig(cfg);
+      router.push('/');
+      return;
+    }
     const id = createProject(cfg);
     openProject(id);
     router.replace('/panel');
@@ -80,8 +105,8 @@ export default function Onboarding() {
           <ChevronLeft className="h-4 w-4" /> Volver a proyectos
         </button>
         <div className="mb-2 text-center">
-          <h1 className="font-display text-3xl font-semibold text-gray-900">Configura el negocio</h1>
-          <p className="mt-1 text-sm text-gray-500">Elige qué incluye la plataforma. Podrás cambiarlo cuando quieras.</p>
+          <h1 className="font-display text-3xl font-semibold text-gray-900">{isEdit ? 'Editar el negocio' : 'Configura el negocio'}</h1>
+          <p className="mt-1 text-sm text-gray-500">{isEdit ? 'Ajusta apartados, marca y datos. Los cambios se guardan sobre este proyecto.' : 'Elige qué incluye la plataforma. Podrás cambiarlo cuando quieras.'}</p>
         </div>
 
         {/* Stepper */}
@@ -135,13 +160,24 @@ export default function Onboarding() {
 
         {step === 1 && (
           <>
-            <p className="mb-3 text-sm text-gray-500">{activeCount} módulos activos. Activa o desactiva lo que necesites.</p>
+            <p className="mb-3 text-sm text-gray-500">{activeCount} módulos activos. Activa o desactiva lo que necesites.{isEdit ? ' Al desactivar un apartado se oculta; sus datos se conservan.' : ''}</p>
             <ModuleToggleGrid modules={draft.modules} onToggle={toggle} terminology={draft.terminology} />
           </>
         )}
 
         {step === 2 && (
-          <BrandingForm primary={draft.branding.primary} secondary={draft.branding.secondary} logoText={draft.branding.logoText} logoImage={draft.branding.logoImage} designSource={draft.branding.designSource} onChange={brand} />
+          <div className="space-y-4">
+            {/* UC-3 · Sugerir branding con IA (desde el contexto del negocio, reversible). */}
+            <Card><CardBody>
+              <AiBrandingSuggest
+                business={{ name: draft.business.name, vertical: draft.business.vertical }}
+                clientId={draft.business.clienteId ?? null}
+                current={{ primary: draft.branding.primary, secondary: draft.branding.secondary, tokens: draft.branding.tokens }}
+                onApply={brand}
+              />
+            </CardBody></Card>
+            <BrandingForm primary={draft.branding.primary} secondary={draft.branding.secondary} logoText={draft.branding.logoText} logoImage={draft.branding.logoImage} designSource={draft.branding.designSource} onChange={brand} />
+          </div>
         )}
 
         {step === 3 && (
@@ -168,9 +204,18 @@ export default function Onboarding() {
           </Button>
           {step < STEPS.length - 1
             ? <Button onClick={() => setStep((s) => s + 1)}>Siguiente <ChevronRight className="h-4 w-4" /></Button>
-            : <Button onClick={finish}><Check className="h-4 w-4" /> Crear proyecto</Button>}
+            : <Button onClick={finish}><Check className="h-4 w-4" /> {isEdit ? 'Guardar cambios' : 'Crear proyecto'}</Button>}
         </div>
       </div>
     </div>
+  );
+}
+
+export default function Onboarding() {
+  // useSearchParams exige un límite <Suspense> para no romper el build estático.
+  return (
+    <Suspense fallback={<div className="grid min-h-screen place-items-center bg-surface text-gray-400">Cargando…</div>}>
+      <OnboardingInner />
+    </Suspense>
   );
 }
