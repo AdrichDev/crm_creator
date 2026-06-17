@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.js';
+import { staffOnly } from '../middleware/rbac.js';
 import { crudRouter } from '../lib/crud.js';
 import { authRouter } from './auth.js';
+import { meRouter } from './me.js';
 import { bookingsRouter } from './bookings.js';
 import { timeOffRouter } from './timeoff.js';
 import { packagesRouter } from './packages.js';
@@ -18,6 +20,13 @@ api.use('/branding', brandingRouter);
 
 // A partir de aquí, todo requiere token (y resuelve el tenant activo)
 api.use(authenticate);
+
+// Endpoints client-scoped (CLIENT solo ve SUS datos). ANTES del guard staffOnly.
+api.use('/me', meRouter);
+
+// A partir de aquí, SOLO staff (empleo). El rol CLIENT recibe 403 en todo lo de gestión.
+// Cierra el hallazgo CRÍTICO F1/F2 de sec-review.md (crud/dashboard/bookings/packages sin guard).
+api.use(staffOnly);
 
 api.use('/locations', crudRouter('location', { fields: ['name', 'address', 'timezone', 'currency', 'phone', 'email', 'onlineBookingEnabled', 'active'] }));
 api.use('/employees', crudRouter('employee', { fields: ['locationId', 'firstName', 'lastName', 'email', 'phone', 'specialty', 'color', 'status', 'hireDate', 'vacationTotal', 'vacationUsed', 'commission'] }));

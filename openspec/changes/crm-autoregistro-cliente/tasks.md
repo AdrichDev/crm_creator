@@ -32,4 +32,4 @@
 - [x] V.2 Tests back (node:test): 6 nuevos (`auth-client-register.e2e`) — pending, login pre-verify→403, verify→active+login, unicidad email/username, 400 sin business, respuesta neutra. 43 existentes siguen verdes.
 - [x] V.3 n8n e2e: email verificación entregado (`success`), firma inválida→401.
 - [x] V.4 Front: `npm test` 67 verdes; demo-auth eliminado sin romper el gate.
-- [~] V.5 Seguridad: token un solo uso/expira ✓, sin password en claro ✓, registro neutro ✓, 403 gating ✓. PENDIENTE: revisar que RBAC del back no concede a `CLIENT` operaciones de admin (solo se ocultó en UI; falta auditar endpoints de escritura).
+- [x] V.5 Seguridad: token un solo uso/expira ✓, sin password en claro ✓, registro neutro ✓, 403 gating ✓. AUDITORÍA RBAC (`sec-review.md`): hallazgo CRÍTICO F1/F2 (crud/dashboard/bookings/packages sin guard → CLIENT leía/borraba toda la PII) → CERRADO con `staffOnly` (deny-by-default) + router `/me` scoped + test de regresión. Veredicto APTO-CON-FIXES. Pendiente no bloqueante: cablear front CLIENT a `/me/*`, matriz EMPLOYEE/ADMIN (F3).

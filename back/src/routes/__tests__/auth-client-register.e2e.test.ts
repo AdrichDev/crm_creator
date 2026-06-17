@@ -147,3 +147,33 @@ test('login de cuenta no verificada (status pending) → 403 email_no_verificado
   assert.equal(login.status, 403);
   assert.equal((login.body!.error as { code: string }).code, 'email_no_verificado');
 });
+
+test('RBAC: CLIENT recibe 403 en endpoints de staff y solo accede a /me (scoped)', async (t) => {
+  if (!backUp) return t.skip('back down');
+  const businessId = await newBusiness();
+  const email = `rbac_${uniq()}@test.local`;
+  // Crea un CLIENT verificado con contraseña conocida (vía prisma para ir directo).
+  const user = await prisma.user.create({ data: { email, firstName: 'Cli', passwordHash: await hashPassword('cliente-pass-1'), status: 'active', emailVerifiedAt: new Date() } });
+  created.userIds.add(user.id);
+  await prisma.membership.create({ data: { userId: user.id, businessId, role: 'CLIENT' } });
+
+  const login = await api('/auth/login', { method: 'POST', body: JSON.stringify({ email, password: 'cliente-pass-1' }) });
+  assert.equal(login.status, 200, JSON.stringify(login.body));
+  const token = login.body!.token as string;
+
+  // Endpoints de staff → 403 (antes: leía/borraba toda la PII del negocio).
+  for (const path of ['/customers', '/employees', '/invoices', '/dashboard']) {
+    const r = await api(path, {}, token, businessId);
+    assert.equal(r.status, 403, `${path} debería ser 403 para CLIENT, fue ${r.status}`);
+  }
+  // Escritura también bloqueada.
+  const w = await api('/customers', { method: 'POST', body: JSON.stringify({ firstName: 'Hack' }) }, token, businessId);
+  assert.equal(w.status, 403);
+
+  // Endpoints client-scoped → 200 (sus propios datos; vacío si no tiene ficha de Customer).
+  const mine = await api('/me/bookings', {}, token, businessId);
+  assert.equal(mine.status, 200);
+  assert.ok(Array.isArray(mine.body));
+  const prof = await api('/me/profile', {}, token, businessId);
+  assert.equal(prof.status, 200);
+});
