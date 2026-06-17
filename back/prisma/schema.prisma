@@ -188,15 +188,40 @@ model Holiday {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  firstName    String
-  lastName     String?
-  status       String   @default("active")
-  createdAt    DateTime @default(now())
-  memberships  Membership[]
-  employee     Employee?
+  id                String   @id @default(cuid())
+  email             String   @unique
+  passwordHash      String
+  firstName         String
+  lastName          String?
+  status            String   @default("active")
+  // Marca de tiempo del último cambio de contraseña. Se usa para invalidar
+  // JWT emitidos antes del cambio/reset (authenticate compara con el `iat`).
+  passwordChangedAt DateTime?
+  createdAt         DateTime @default(now())
+  memberships       Membership[]
+  employee          Employee?
+  authTokens        AuthToken[]
+}
+
+// Token de un solo uso para invitación (fijar contraseña inicial) o reset.
+// En BD solo vive el hash SHA-256 del token; el token en claro únicamente
+// viaja en el enlace del email. Válido = usedAt IS NULL AND expiresAt > now().
+model AuthToken {
+  id        String          @id @default(cuid())
+  userId    String
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String
+  purpose   AuthTokenPurpose
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime        @default(now())
+  @@index([userId])
+  @@index([tokenHash])
+}
+
+enum AuthTokenPurpose {
+  invite
+  reset
 }
 
 model Membership {
