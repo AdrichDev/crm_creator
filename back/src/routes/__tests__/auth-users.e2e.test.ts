@@ -151,7 +151,7 @@ test('reset-password invalida los demás tokens del usuario', async (t) => {
   const reset = await api('/auth/reset-password', { method: 'POST', body: JSON.stringify({ token: t1, newPassword: 'reset-pass-9', repeatPassword: 'reset-pass-9' }) });
   assert.equal(reset.status, 204);
   // El segundo token quedó invalidado.
-  const second = await api('/auth/reset-password', { method: 'POST', body: JSON.stringify({ token: t2, newPassword: 'reset-pass-x', repeatPassword: 'reset-pass-x' }) });
+  const second = await api('/auth/reset-password', { method: 'POST', body: JSON.stringify({ token: t2, newPassword: 'reset-pass-x9', repeatPassword: 'reset-pass-x9' }) });
   assert.equal(second.status, 400);
 });
 
@@ -230,4 +230,23 @@ test('rate limit en forgot-password (max 5 / ventana)', async (t) => {
     if (r.status === 429) { got429 = true; break; }
   }
   assert.ok(got429, 'esperaba un 429 tras superar el límite de forgot-password');
+});
+
+// blueteam MEDIA: el email se normaliza (trim+lowercase) en un único punto, así
+// que registrarse con mayúsculas y loguear en minúsculas debe funcionar.
+test('login normaliza el email (case-insensitive)', async (t) => {
+  if (!backUp) return t.skip('back down');
+  const email = `Mixed_${uniq()}@Test.Local`;
+  const r = await api('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ businessName: `Biz ${uniq()}`, email, password: 'admin-pass-123', firstName: 'Admin' }),
+  });
+  assert.equal(r.status, 201, `register falló: ${JSON.stringify(r.body)}`);
+  created.businessIds.add((r.body!.business as { id: string }).id);
+  created.userIds.add((r.body!.user as { id: string }).id);
+  // El email se guardó normalizado.
+  assert.equal((r.body!.user as { email: string }).email, email.toLowerCase());
+  // login con el email en minúsculas debe funcionar pese a haberse registrado con mayúsculas.
+  const login = await api('/auth/login', { method: 'POST', body: JSON.stringify({ email: email.toLowerCase(), password: 'admin-pass-123' }) });
+  assert.equal(login.status, 200, 'login con email normalizado debe funcionar');
 });

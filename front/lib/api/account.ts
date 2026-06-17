@@ -4,10 +4,11 @@ import { apiFetch } from './client';
 
 // Política espejo del back (lib/password.ts). Solo feedback en cliente; la
 // validación de verdad ocurre en el servidor.
-export const PASSWORD_MIN_LENGTH = 8;
+export const PASSWORD_MIN_LENGTH = 12;
 
 export function passwordPolicyError(pwd: string): string | null {
   if (pwd.length < PASSWORD_MIN_LENGTH) return `La contraseña debe tener al menos ${PASSWORD_MIN_LENGTH} caracteres.`;
+  if (!/[A-Za-z]/.test(pwd) || !/\d/.test(pwd)) return 'La contraseña debe incluir al menos una letra y un número.';
   return null;
 }
 

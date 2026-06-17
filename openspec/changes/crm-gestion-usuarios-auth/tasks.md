@@ -3,8 +3,8 @@
 > Requiere aprobación humana (seguridad + migración) antes de Fase 2.
 
 ## Fase 1 — Diseño y aprobación
-- [ ] 1.1 Aprobar política de contraseñas y caducidad de tokens con el humano.
-- [ ] 1.2 Decidir transporte de email (n8n webhook + plantilla) → ver `crm-n8n-automations`.
+- [x] 1.1 Política aprobada y ENDURECIDA (2026-06-17): contraseña mín 12 chars + variedad (≥1 letra y ≥1 dígito) en `lib/password.ts` (`validatePassword` → `too_short|needs_variety`), espejo front `lib/api/account.ts`, mensajes de ruta actualizados. Token TTL: invite 7 días, reset 30 min. Tests back 41/41, front 67/67, tsc limpio.
+- [x] 1.2 Transporte aprobado: webhook HMAC → n8n (emisor `lib/automation`, fallo suave). El flujo n8n real se cubre en `crm-n8n-automations`.
 
 ## Fase 2 — Backend (Prisma + rutas)
 - [x] 2.1 Migración aditiva: `AuthToken` (userId, tokenHash, purpose, expiresAt, usedAt) + `User.passwordChangedAt`. NO toca `crm_project`/`tenants_registry`. (Sustituye a `PasswordResetToken` del diseño según correcciones del devil: invite + reset comparten tabla con `purpose`.)
@@ -25,7 +25,9 @@
 
 ## Fase 4 — Seguridad y tests
 - [x] 4.1 Tests: hashing/no fuga de passwordHash, RBAC, token un-solo-uso/expiración, respuesta neutra forgot, rate limit, invalidación de sesión (27 tests back, todos verde).
-- [ ] 4.2 Revisión `cybersec:blueteam-*` del flujo de credenciales. (Pendiente: revisión independiente.)
+- [x] 4.2 Revisión `cybersec:blueteam-coordinator` del flujo de credenciales (2026-06-17): VEREDICTO APROBADO-CON-NOTAS, 0 crítico/alto. Hashing, tokens (un-solo-uso/expiración/invalidación), RBAC, invalidación JWT, HMAC webhook y forgot neutro = sólidos.
+  - 2 MEDIA **corregidas + detección**: (a) normalización de email (trim+lowercase) en register/login → e2e casing; (b) oráculo de timing en login → `DUMMY_PASSWORD_HASH` (bcrypt.compare siempre) → test H5. Back 43/43, tsc limpio.
+  - 2 BAJA **diferidas** (gates de despliegue, no bloquean): rate-limit en memoria → Redis al escalar multi-réplica + limiter por-email; `trust proxy` documentar nº exacto de proxies. Migración email→citext = gate humano (toca BD) si se decide unicidad case-insensitive a nivel BD.
 
 ## Verificación
 - [x] V.1 `npm test` verde (front 67 + back 27). `tsc` limpio (front+back). `next build` OK.

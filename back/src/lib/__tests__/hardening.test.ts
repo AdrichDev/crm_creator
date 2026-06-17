@@ -138,7 +138,17 @@ test('H4: validatePassword rechaza password de 7 chars (como en register)', () =
   assert.equal(result, 'too_short', 'contraseña de 7 chars debe devolver too_short');
 });
 
-test('H4: validatePassword acepta password de 8 chars exactos', () => {
-  const result = validatePassword('12345678');
-  assert.equal(result, null, '8 chars debe pasar la política');
+test('H4: validatePassword rechaza 8 chars (política endurecida ≥12)', () => {
+  assert.equal(validatePassword('12345678'), 'too_short', '8 chars ya no pasa (mínimo 12)');
+});
+
+test('H4: validatePassword acepta 12 chars con letra + dígito', () => {
+  assert.equal(validatePassword('abcdefghijk1'), null, '12 chars con variedad debe pasar la política');
+});
+
+// blueteam MEDIA: igualador de tiempo del login (anti-enumeración por timing).
+test('H5: DUMMY_PASSWORD_HASH es un hash bcrypt válido que ninguna entrada satisface', async () => {
+  const { verifyPassword, DUMMY_PASSWORD_HASH } = await import('../auth.js');
+  assert.match(DUMMY_PASSWORD_HASH, /^\$2[aby]\$\d{2}\$/, 'debe ser un hash bcrypt');
+  assert.equal(await verifyPassword('cualquier-intento', DUMMY_PASSWORD_HASH), false);
 });

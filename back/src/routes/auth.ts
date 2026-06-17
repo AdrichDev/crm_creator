@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../prisma.js';
-import { hashPassword, verifyPassword, signToken } from '../lib/auth.js';
+import { hashPassword, verifyPassword, signToken, DUMMY_PASSWORD_HASH } from '../lib/auth.js';
 import { authenticate } from '../middleware/auth.js';
 import type { AuthedRequest } from '../middleware/types.js';
 import { validatePassword, generateAuthToken, hashToken, TOKEN_TTL_MS } from '../lib/password.js';
@@ -27,7 +27,9 @@ if (process.env.NODE_ENV !== 'production') {
 const registerSchema = z.object({
   businessName: z.string().min(1),
   vertical: z.string().default('custom'),
-  email: z.string().email(),
+  // Email normalizado en un único punto (trim + lowercase) para que lookup,
+  // unicidad y clave de rate-limit no diverjan (blueteam MEDIA).
+  email: z.string().trim().email().transform((s) => s.toLowerCase()),
   // H4: política mínima en schema para feedback rápido; validatePassword es la
   // verdad canónica (mismo mínimo que set/reset/change-password).
   password: z.string().min(1),
@@ -41,7 +43,7 @@ authRouter.post('/register', async (req, res) => {
   if (!parsed.success) return res.status(422).json({ error: { code: 'validation', message: 'Datos inválidos', details: parsed.error.flatten() } });
   const d = parsed.data;
   // H4: política de contraseña coherente con set/reset/change-password.
-  if (validatePassword(d.password)) return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 8 caracteres)' } });
+  if (validatePassword(d.password)) return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con al menos una letra y un número)' } });
   const exists = await prisma.user.findUnique({ where: { email: d.email } });
   if (exists) return res.status(409).json({ error: { code: 'email_taken', message: 'Email ya registrado' } });
 
@@ -58,11 +60,14 @@ authRouter.post('/register', async (req, res) => {
 });
 
 authRouter.post('/login', loginLimiter, async (req, res) => {
-  const schema = z.object({ email: z.string().email(), password: z.string() });
+  const schema = z.object({ email: z.string().trim().email().transform((s) => s.toLowerCase()), password: z.string() });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: { code: 'validation', message: 'Datos inválidos' } });
   const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
-  if (!user || !(await verifyPassword(parsed.data.password, user.passwordHash))) {
+  // Siempre pagamos un bcrypt.compare (contra un hash dummy si el usuario no
+  // existe) para igualar el tiempo de respuesta → sin oráculo de enumeración.
+  const passwordOk = await verifyPassword(parsed.data.password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
+  if (!user || !passwordOk) {
     return res.status(401).json({ error: { code: 'bad_credentials', message: 'Credenciales incorrectas' } });
   }
   const memberships = await prisma.membership.findMany({ where: { userId: user.id } });
@@ -113,7 +118,7 @@ authRouter.post('/set-password', tokenLimiter, async (req, res) => {
   if (!parsed.success) return res.status(422).json({ error: { code: 'validation', message: 'Datos inválidos' } });
   const { token, newPassword, repeatPassword } = parsed.data;
   if (newPassword !== repeatPassword) return res.status(422).json({ error: { code: 'mismatch', message: 'Las contraseñas no coinciden' } });
-  if (validatePassword(newPassword)) return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 8 caracteres)' } });
+  if (validatePassword(newPassword)) return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con al menos una letra y un número)' } });
   const result = await consumeTokenAndSetPassword(token, newPassword);
   if (result === 'invalid_token') return res.status(400).json({ error: { code: 'invalid_token', message: 'Enlace inválido o caducado' } });
   res.status(204).end();
@@ -125,7 +130,7 @@ authRouter.post('/reset-password', tokenLimiter, async (req, res) => {
   if (!parsed.success) return res.status(422).json({ error: { code: 'validation', message: 'Datos inválidos' } });
   const { token, newPassword, repeatPassword } = parsed.data;
   if (newPassword !== repeatPassword) return res.status(422).json({ error: { code: 'mismatch', message: 'Las contraseñas no coinciden' } });
-  if (validatePassword(newPassword)) return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 8 caracteres)' } });
+  if (validatePassword(newPassword)) return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con al menos una letra y un número)' } });
   const result = await consumeTokenAndSetPassword(token, newPassword);
   if (result === 'invalid_token') return res.status(400).json({ error: { code: 'invalid_token', message: 'Enlace inválido o caducado' } });
   res.status(204).end();
@@ -173,7 +178,7 @@ authRouter.post('/change-password', authenticate, async (req: AuthedRequest, res
     return res.status(401).json({ error: { code: 'bad_credentials', message: 'Contraseña actual incorrecta' } });
   }
   if (newPassword !== repeatPassword) return res.status(422).json({ error: { code: 'mismatch', message: 'Las contraseñas no coinciden' } });
-  if (validatePassword(newPassword)) return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 8 caracteres)' } });
+  if (validatePassword(newPassword)) return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con al menos una letra y un número)' } });
   if (newPassword === oldPassword) return res.status(422).json({ error: { code: 'same_password', message: 'La nueva contraseña debe ser distinta de la actual' } });
   const now = new Date();
   await prisma.$transaction([

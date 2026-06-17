@@ -35,5 +35,5 @@
 
 ## Verificación final
 - [x] V.1 `npm test` (vitest) verde — 40/40, 7 archivos. `tsc --noEmit` limpio + `next build` OK.
-- [ ] V.2 Revisión visual claro/oscuro en `npm run dev`.
+- [ ] V.2 Revisión visual claro/oscuro en `npm run dev`. (Código verificado theme-safe 2026-06-17: páginas del scope sin colores hardcodeados — el único residual del scope es `bg-white/[0.03]` translúcido, válido en ambos temas; los residuales `text-gray-900` están en config/onboarding, fuera de este change. Pendiente solo el vistazo humano.)
 - [x] V.3 Admin no ve tokens en ninguna pantalla (eliminados de Estadísticas/Marketing).
