@@ -98,7 +98,10 @@ function OnboardingInner() {
   const activeCount = Object.values(draft.modules).filter(Boolean).length;
 
   return (
-    <div className="min-h-screen bg-surface">
+    // Onboarding hereda el tema (claro/oscuro) vía .crm-console: rejilla de fondo
+    // en todo el main + tokens --panel-* que voltean con data-theme. Los grises
+    // fijos del diseño se remapean a tokens en globals.css (scope .onboarding).
+    <div className="crm-console onboarding min-h-screen">
       <div className="mx-auto max-w-4xl px-5 py-10">
         <button onClick={() => router.push('/')}
           className="mb-6 inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 transition hover:border-gray-900 hover:text-gray-900">

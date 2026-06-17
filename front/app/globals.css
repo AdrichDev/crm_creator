@@ -58,6 +58,41 @@ body {
   border: 1px solid var(--line);
 }
 
+/* ── Onboarding (app/onboarding) ──────────────────────────────────────────
+   El asistente se escribió con grises fijos (diseño claro), así que no seguía
+   el toggle y en oscuro se veía negro. Remapeamos esas utilidades a tokens
+   --panel-* (scoped a .onboarding) para que TODO el flujo voltee con el tema.
+   La rejilla de fondo la aporta .crm-console y cubre solo el main. */
+.onboarding .text-gray-900,
+.onboarding .text-gray-800,
+.onboarding .text-gray-700 { color: var(--panel-text); }
+.onboarding .text-gray-600,
+.onboarding .text-gray-500,
+.onboarding .text-gray-400,
+.onboarding .text-gray-300 { color: var(--panel-muted); }
+
+.onboarding .border-gray-300,
+.onboarding .border-gray-200,
+.onboarding .border-gray-100 { border-color: var(--line); }
+.onboarding .divide-gray-100 > :not([hidden]) ~ :not([hidden]) { border-color: var(--line); }
+
+.onboarding .bg-white { background-color: var(--panel-card); }
+.onboarding .bg-gray-50,
+.onboarding .bg-gray-100 { background-color: var(--panel-bg); }
+.onboarding .bg-gray-200 { background-color: var(--line); }
+
+.onboarding .hover\:bg-gray-50:hover,
+.onboarding .hover\:bg-gray-100:hover { background-color: var(--panel-bg); }
+.onboarding .hover\:border-gray-900:hover { border-color: var(--panel-text); }
+.onboarding .hover\:text-gray-900:hover { color: var(--panel-text); }
+
+/* Inputs/selects del asistente: fondo de tarjeta + texto del tema. */
+.onboarding input:not([type="color"]),
+.onboarding textarea,
+.onboarding select { background-color: var(--panel-card); color: var(--panel-text); }
+.onboarding input::placeholder,
+.onboarding textarea::placeholder { color: var(--panel-muted); }
+
 /* ── Modo claro (sigue el SO o el toggle; data-theme="light" en <html>) ── */
 :root[data-theme="light"] {
   --ink: #eef0f4;
