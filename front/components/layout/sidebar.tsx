@@ -20,7 +20,9 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
 
-  const active = MODULES.filter((m) => config.modules[m.id] && moduleAllowedForRole(role, m.id));
+  // Los módulos obligatorios (dashboard, configuración) se muestran siempre,
+  // aunque una config antigua no los tenga marcados — el rol sigue filtrando.
+  const active = MODULES.filter((m) => (config.modules[m.id] || m.mandatory) && moduleAllowedForRole(role, m.id));
   const groups = (Object.keys(CATEGORY_LABEL) as ModuleCategory[])
     .map((cat) => ({ cat, items: active.filter((m) => m.category === cat) }))
     .filter((g) => g.items.length > 0);
