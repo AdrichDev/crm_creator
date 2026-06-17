@@ -93,6 +93,12 @@ body {
 .onboarding input::placeholder,
 .onboarding textarea::placeholder { color: var(--panel-muted); }
 
+/* El asistente usa SIEMPRE acento azul (independiente del brand del tenant):
+   botón "Siguiente"/"Crear" (btn-primary → var(--acc)), progreso del stepper
+   (var(--brand-primary)) y botón "Atrás" (btn-ghost). */
+.onboarding { --acc: #2563eb; --acc-light: #3b82f6; --brand-primary: #2563eb; --brand-secondary: #3b82f6; }
+.onboarding .btn-ghost { color: var(--acc); }
+
 /* ── Modo claro (sigue el SO o el toggle; data-theme="light" en <html>) ── */
 :root[data-theme="light"] {
   --ink: #eef0f4;
@@ -152,6 +158,18 @@ body {
 
 .dark-scroll::-webkit-scrollbar { width: 8px; }
 .dark-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 8px; }
+
+/* Scrollbar que sigue la gama del tema (claro/oscuro) vía --panel-muted.
+   Para listas que viven sobre --panel-card (p. ej. el combobox de cliente). */
+.theme-scroll::-webkit-scrollbar { width: 8px; }
+.theme-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--panel-muted) 45%, transparent);
+  border-radius: 8px;
+}
+.theme-scroll::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--panel-muted) 70%, transparent);
+}
+.theme-scroll { scrollbar-color: color-mix(in srgb, var(--panel-muted) 45%, transparent) transparent; }
 
 /* =========================================================================
    PANEL MAESTRO — réplica del Centro de Mando de Jorjota's Barber.
@@ -270,7 +288,9 @@ body {
 .btn-outline { background: transparent; color: var(--panel-muted); border-color: rgba(255,255,255,0.12); }
 .btn-outline:hover { color: var(--acc); border-color: var(--acc); background: color-mix(in srgb, var(--acc) 6%, transparent); }
 .btn-ghost { background: transparent; color: var(--panel-muted); }
-.btn-ghost:hover { color: #fff; background: rgba(255,255,255,0.05); }
+/* Hover del botón "Atrás": usa el acento (mismo color que el texto de "Siguiente",
+   btn-primary) en vez de #fff fijo — que en modo claro era invisible. */
+.btn-ghost:hover { color: var(--acc); background: color-mix(in srgb, var(--acc) 8%, transparent); }
 .btn-sm { padding: .35rem .7rem; font-size: .8rem; }
 .btn-block-lg { width: 100%; padding: 1rem; font-size: 1.1rem; }
 

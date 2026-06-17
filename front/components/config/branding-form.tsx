@@ -1,5 +1,5 @@
 'use client';
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import JSZip from 'jszip';
 import { Card, CardBody } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
@@ -16,6 +16,8 @@ interface Props {
   logoImage?: string;
   designSource?: string;
   onChange: (patch: Patch) => void;
+  /** Bloque que se renderiza JUSTO debajo de "Importar diseño" (p. ej. Sugerir branding con IA). */
+  aiSlot?: ReactNode;
 }
 
 // Extrae una paleta del CSS de la landing (heurística: variables de marca primero,
@@ -47,7 +49,7 @@ function extractPalette(css: string): { primary?: string; secondary?: string } {
   return out;
 }
 
-export function BrandingForm({ primary, secondary, logoText, logoImage, designSource, onChange }: Props) {
+export function BrandingForm({ primary, secondary, logoText, logoImage, designSource, onChange, aiSlot }: Props) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const logoRef = useRef<HTMLInputElement>(null);
@@ -164,6 +166,8 @@ export function BrandingForm({ primary, secondary, logoText, logoImage, designSo
           </div>
           {note && <p className="mt-2 text-xs text-gray-600">{note}</p>}
         </div>
+        {/* Sugerir branding con IA: justo debajo de importar diseño de la landing. */}
+        {aiSlot}
       </CardBody></Card>
 
       {/* Paso 2 — Imagen de marca para el sidebar */}

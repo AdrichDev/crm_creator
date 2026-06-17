@@ -38,7 +38,7 @@ export default function Consola() {
                 <span className="font-display text-lg font-bold">O</span>
               </div>
               <div>
-                <p className="font-display text-xl font-semibold text-white">OperaOS · Consola</p>
+                <p className="font-display text-xl font-semibold text-[var(--panel-text)]">OperaOS · Consola</p>
                 <p className="text-xs text-gray-400">Diseña y genera la app de gestión de cada cliente</p>
               </div>
             </div>

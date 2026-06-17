@@ -49,6 +49,16 @@ export interface TenantConfig {
     /** Tokens completos extraídos por la IA de la landing (paleta, tipografía, forma). */
     tokens?: DesignTokens;
   };
+  /** Conexión a la base de datos del proyecto (manual, opcional; editable a futuro). */
+  database?: {
+    host?: string;
+    port?: string;
+    name?: string;
+    user?: string;
+    password?: string;
+    /** URL completa de conexión, si se prefiere a los campos sueltos. */
+    url?: string;
+  };
   /** Tarjetas favoritas del dashboard (máx. 6). */
   favorites?: Favorite[];
   /** Interruptor maestro del tenant. undefined/true = activo; false = en mantenimiento. */

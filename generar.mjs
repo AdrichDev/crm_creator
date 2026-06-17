@@ -24,17 +24,20 @@ const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const rl = createInterface({ input, output });
 
 // Módulos activables (dashboard y configuración van siempre).
-const MODULES = ['clientes', 'citas', 'servicios', 'empleados', 'fichaje', 'vacaciones', 'productos', 'ventas', 'marketing'];
+const MODULES = ['clientes', 'citas', 'servicios', 'empleados', 'fichaje', 'vacaciones', 'productos', 'ventas', 'facturas', 'estadisticas', 'marketing'];
 
 // módulo -> carpeta de página del front
 const FRONT_ROUTE = {
   clientes: 'clientes', citas: 'citas', servicios: 'servicios', empleados: 'empleados',
-  fichaje: 'fichaje', vacaciones: 'vacaciones', productos: 'productos', ventas: 'ventas', marketing: 'marketing',
+  fichaje: 'fichaje', vacaciones: 'vacaciones', productos: 'productos', ventas: 'ventas',
+  facturas: 'facturas', estadisticas: 'estadisticas', marketing: 'marketing',
 };
-// módulo -> ruta montada en el backend (routes/index.ts)
+// módulo -> ruta montada en el backend (routes/index.ts).
+// `estadisticas` es front-only (localStorage), no tiene backend → sin entrada aquí.
 const BACK_MOUNT = {
   clientes: '/customers', citas: '/bookings', servicios: '/services', empleados: '/employees',
-  fichaje: '/fichajes', vacaciones: '/time-off', productos: '/products', ventas: '/sales', marketing: '/campaigns',
+  fichaje: '/fichajes', vacaciones: '/time-off', productos: '/products', ventas: '/sales',
+  facturas: '/invoices', marketing: '/campaigns',
 };
 
 function slugify(s) {
@@ -88,8 +91,12 @@ async function main() {
 
   section('2) Módulos a incluir');
   let active;
-  if (manifest?.dataModules) {
-    active = manifest.dataModules.filter((m) => MODULES.includes(m));
+  // `activeModules` incluye TODOS los módulos activados (incl. front-only como
+  // estadisticas); `dataModules` solo los que tienen tabla. Preferir el primero
+  // para no perder módulos seleccionados.
+  const fromManifest = manifest?.activeModules ?? manifest?.dataModules;
+  if (fromManifest) {
+    active = fromManifest.filter((m) => MODULES.includes(m));
     console.log(`Del manifest: ${active.join(', ')}`);
   } else {
     console.log(`Disponibles: ${MODULES.join(', ')}`);
@@ -131,7 +138,7 @@ async function main() {
   // Podar páginas del front de módulos desactivados
   for (const m of MODULES) {
     if (!activeSet.has(m)) {
-      const dir = path.join(out, 'front', 'app', '(panel)', FRONT_ROUTE[m]);
+      const dir = path.join(out, 'front', 'app', '(crm)', FRONT_ROUTE[m]);
       fs.rmSync(dir, { recursive: true, force: true });
     }
   }
@@ -143,6 +150,7 @@ async function main() {
     for (const m of MODULES) {
       if (!activeSet.has(m)) {
         const mount = BACK_MOUNT[m];
+        if (!mount) continue; // módulo front-only (p. ej. estadisticas): nada que podar en backend
         idx = idx.replace(new RegExp(`^(api\\.use\\('${mount.replace('/', '\\/')}'.*)$`, 'm'), '// [módulo desactivado] $1');
       }
     }

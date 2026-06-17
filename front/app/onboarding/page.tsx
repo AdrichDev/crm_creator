@@ -1,8 +1,9 @@
 'use client';
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useProjects } from '@/lib/tenant-config-context';
-import { prepareClientOptions, type ClientLite } from '@/lib/clients/picker';
+import type { ClientLite } from '@/lib/clients/picker';
+import { ClientCombobox } from '@/components/config/client-combobox';
 import { configFromVertical } from '@/lib/config/tenant-config';
 import { draftForEdit } from '@/lib/onboarding/edit-mode';
 import type { VerticalId } from '@/lib/config/verticals';
@@ -18,7 +19,7 @@ import { Button, Card, CardBody } from '@/components/ui/primitives';
 import { Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const STEPS = ['Tipo de negocio', 'Módulos', 'Marca', 'Datos'];
+const STEPS = ['Tipo de negocio', 'Módulos', 'Marca', 'Base de datos', 'Datos'];
 
 function OnboardingInner() {
   const { createProject, openProject, setConfig, projects } = useProjects();
@@ -31,13 +32,15 @@ function OnboardingInner() {
   const editing = projects.find((p) => p.id === projectId) ?? null;
   const isEdit = !!editing;
 
-  const [step, setStep] = useState(0);
+  // En edición se entra directo a "Módulos" (paso 2): no se permite cambiar el
+  // cliente/nombre, así que el paso 0 (Tipo de negocio/cliente) queda bloqueado.
+  const minStep = isEdit ? 1 : 0;
+  const [step, setStep] = useState(minStep);
   const [draft, setDraft] = useState(() =>
     editing ? draftForEdit(editing.config) : configFromVertical('peluqueria', ''));
 
   // Clientes reales (de agents-agency) para vincular el proyecto.
   const [clients, setClients] = useState<ClientLite[]>([]);
-  const [clientSearch, setClientSearch] = useState('');
   const [clientsError, setClientsError] = useState('');
   useEffect(() => {
     fetch('/api/clients')
@@ -45,7 +48,6 @@ function OnboardingInner() {
       .then((data) => setClients(Array.isArray(data) ? data : []))
       .catch(() => setClientsError('No se pudieron cargar los clientes (¿backend de agents-agency arrancado?).'));
   }, []);
-  const clientOptions = useMemo(() => prepareClientOptions(clients, clientSearch), [clients, clientSearch]);
 
   function pickClient(c: ClientLite) {
     setDraft((d) => ({
@@ -76,6 +78,9 @@ function OnboardingInner() {
   function brand(patch: Partial<{ primary: string; secondary: string; logoText: string; logoImage: string; designSource: string; tokens: DesignTokens }>) {
     setDraft({ ...draft, branding: { ...draft.branding, ...patch } });
   }
+  function db(patch: Partial<NonNullable<typeof draft.database>>) {
+    setDraft({ ...draft, database: { ...draft.database, ...patch } });
+  }
   function finish() {
     const name = draft.business.name.trim() || VERTICAL_MAP[draft.business.vertical].label;
     const cfg = { ...draft, business: { ...draft.business, name },
@@ -104,7 +109,7 @@ function OnboardingInner() {
     <div className="crm-console onboarding min-h-screen">
       <div className="mx-auto max-w-4xl px-5 py-10">
         <button onClick={() => router.push('/')}
-          className="mb-6 inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 transition hover:border-gray-900 hover:text-gray-900">
+          className="mb-6 inline-flex items-center gap-1.5 rounded-lg border border-[var(--acc)]/40 px-3 py-1.5 text-sm font-medium text-[var(--acc)] transition hover:border-[var(--acc)] hover:bg-[color-mix(in_srgb,var(--acc)_8%,transparent)]">
           <ChevronLeft className="h-4 w-4" /> Volver a proyectos
         </button>
         <div className="mb-2 text-center">
@@ -129,34 +134,11 @@ function OnboardingInner() {
         {step === 0 && (
           <div className="space-y-4">
             <VerticalPicker value={draft.business.vertical} onChange={pickVertical} />
-            <Card><CardBody>
-              <label className="text-xs font-medium text-gray-500">Nombre del negocio</label>
-              <input value={draft.business.name} placeholder="p. ej. Estudio Lúa"
-                onChange={(e) => setDraft({ ...draft, business: { ...draft.business, name: e.target.value } })}
-                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" />
-            </CardBody></Card>
 
-            {/* Vincular cliente real (de agents-agency): alfabético, máx. 20 + scroll, filtro */}
+            {/* Cliente: combobox que filtra la lista real (agents-agency); al elegir
+                uno se fija el nombre del negocio y se rellenan los Datos. */}
             <Card><CardBody>
-              <label className="text-xs font-medium text-gray-500">Cliente vinculado</label>
-              <input value={clientSearch} onChange={(e) => setClientSearch(e.target.value)}
-                placeholder="Filtrar clientes por nombre…"
-                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" />
-              {clientsError && <p className="mt-2 text-xs text-amber-600">{clientsError}</p>}
-              <div className="mt-2 max-h-64 divide-y divide-gray-100 overflow-y-auto rounded-xl border border-gray-200">
-                {clientOptions.ordenados.length === 0 ? (
-                  <p className="p-3 text-sm text-gray-400">Sin clientes.</p>
-                ) : clientOptions.ordenados.map((c) => (
-                  <button key={c.id} type="button" onClick={() => pickClient(c)}
-                    className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition hover:bg-gray-50 ${
-                      draft.business.clienteId === c.id ? 'bg-[var(--brand-primary)]/10 font-medium text-gray-900' : 'text-gray-700'
-                    }`}>
-                    <span>{c.nombre}</span>
-                    {draft.business.clienteId === c.id && <span className="text-xs text-[var(--brand-primary)]">vinculado ✓</span>}
-                  </button>
-                ))}
-              </div>
-              <p className="mt-1 text-[11px] text-gray-400">{clientOptions.total} cliente(s){clientOptions.hayScroll ? ' · desplázate para ver más' : ''}. Al elegir uno se rellenan los Datos.</p>
+              <ClientCombobox clients={clients} selectedId={draft.business.clienteId} onPick={pickClient} error={clientsError} />
             </CardBody></Card>
           </div>
         )}
@@ -170,20 +152,50 @@ function OnboardingInner() {
 
         {step === 2 && (
           <div className="space-y-4">
-            {/* UC-3 · Sugerir branding con IA (desde el contexto del negocio, reversible). */}
-            <Card><CardBody>
-              <AiBrandingSuggest
-                business={{ name: draft.business.name, vertical: draft.business.vertical }}
-                clientId={draft.business.clienteId ?? null}
-                current={{ primary: draft.branding.primary, secondary: draft.branding.secondary, tokens: draft.branding.tokens }}
-                onApply={brand}
-              />
-            </CardBody></Card>
-            <BrandingForm primary={draft.branding.primary} secondary={draft.branding.secondary} logoText={draft.branding.logoText} logoImage={draft.branding.logoImage} designSource={draft.branding.designSource} onChange={brand} />
+            {/* Marca: importar diseño de la landing y, justo debajo, sugerir branding
+                con IA (trabajo del operador → no cuenta tokens del cliente). */}
+            <BrandingForm primary={draft.branding.primary} secondary={draft.branding.secondary} logoText={draft.branding.logoText} logoImage={draft.branding.logoImage} designSource={draft.branding.designSource} onChange={brand}
+              aiSlot={
+                <AiBrandingSuggest
+                  business={{ name: draft.business.name, vertical: draft.business.vertical }}
+                  current={{ primary: draft.branding.primary, secondary: draft.branding.secondary, tokens: draft.branding.tokens }}
+                  onApply={brand}
+                  landingSource={draft.branding.designSource}
+                />
+              } />
           </div>
         )}
 
         {step === 3 && (
+          <Card><CardBody className="space-y-4">
+            <div>
+              <p className="text-sm font-semibold text-gray-900">Base de datos</p>
+              <p className="text-xs text-gray-500">Conexión a la BD del proyecto. Todo manual y opcional: si lo dejas vacío, no pasa nada — se puede configurar más adelante.</p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {([['host', 'Host'], ['port', 'Puerto'], ['name', 'Base de datos'], ['user', 'Usuario']] as const).map(([k, label]) => (
+                <div key={k}>
+                  <label className="text-xs font-medium text-gray-500">{label}</label>
+                  <input value={draft.database?.[k] ?? ''} onChange={(e) => db({ [k]: e.target.value } as Partial<NonNullable<typeof draft.database>>)}
+                    className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" />
+                </div>
+              ))}
+              <div>
+                <label className="text-xs font-medium text-gray-500">Contraseña</label>
+                <input type="password" value={draft.database?.password ?? ''} onChange={(e) => db({ password: e.target.value })}
+                  className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500">URL de conexión (si se prefiere a los campos sueltos)</label>
+              <input value={draft.database?.url ?? ''} onChange={(e) => db({ url: e.target.value })}
+                placeholder="postgresql://usuario:password@host:puerto/basedatos"
+                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" />
+            </div>
+          </CardBody></Card>
+        )}
+
+        {step === 4 && (
           <Card><CardBody className="space-y-4">
             {([['phone', 'Teléfono'], ['email', 'Email'], ['address', 'Dirección']] as const).map(([k, label]) => (
               <div key={k}>
@@ -202,7 +214,9 @@ function OnboardingInner() {
         )}
 
         <div className="mt-8 flex items-center justify-between">
-          <Button variant="ghost" onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0}>
+          {/* En edición, "Atrás" se desactiva en Módulos: no se puede volver al paso
+              del cliente (su nombre no es editable). */}
+          <Button variant="ghost" onClick={() => setStep((s) => Math.max(minStep, s - 1))} disabled={step <= minStep}>
             <ChevronLeft className="h-4 w-4" /> Atrás
           </Button>
           {step < STEPS.length - 1
