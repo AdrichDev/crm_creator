@@ -31,3 +31,13 @@ export function forgotPassword(email: string): Promise<{ message: string }> {
 export function resetPassword(token: string, newPassword: string, repeatPassword: string): Promise<void> {
   return apiFetch<void>('/auth/reset-password', { method: 'POST', body: JSON.stringify({ token, newPassword, repeatPassword }) });
 }
+
+/** Auto-registro de cliente. Respuesta neutra (no revela si el email existe). */
+export function registerClient(input: { firstName: string; email: string; username: string; phone: string }): Promise<{ message: string }> {
+  return apiFetch<{ message: string }>('/auth/register-client', { method: 'POST', body: JSON.stringify(input) });
+}
+
+/** Verifica el email del cliente y fija su contraseña (token del enlace). */
+export function verifyEmail(token: string, newPassword: string, repeatPassword: string): Promise<void> {
+  return apiFetch<void>('/auth/verify-email', { method: 'POST', body: JSON.stringify({ token, newPassword, repeatPassword }) });
+}

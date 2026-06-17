@@ -7,7 +7,7 @@ import { resolveModuleEmoji } from '@/lib/config/icons';
 import { cn } from '@/lib/utils';
 import { moduleAllowedForRole, DEMO_USERS, type Role } from '@/lib/config/roles';
 import { GENERATED_TENANT } from '@/lib/config/generated-tenant';
-import { logout } from '@/lib/auth/demo-auth';
+import { logout } from '@/lib/auth/session';
 import { LogOut } from 'lucide-react';
 
 const PANEL_TITLE: Record<Role, string> = {

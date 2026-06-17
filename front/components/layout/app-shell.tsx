@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 import { Sidebar } from './sidebar';
 import { useProjects } from '@/lib/tenant-config-context';
 import { GENERATED_TENANT } from '@/lib/config/generated-tenant';
-import { isAuthed } from '@/lib/auth/demo-auth';
+import { isAuthed } from '@/lib/auth/session';
 import { ArrowLeft, Download } from 'lucide-react';
 import { generateAndDownload } from '@/lib/generate/build';
 import { ROLES, type Role } from '@/lib/config/roles';

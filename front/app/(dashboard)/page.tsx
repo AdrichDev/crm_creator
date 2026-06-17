@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { GENERATED_TENANT } from '@/lib/config/generated-tenant';
-import { isAuthed } from '@/lib/auth/demo-auth';
+import { isAuthed } from '@/lib/auth/session';
 import { useProjects } from '@/lib/tenant-config-context';
 import { MODULES } from '@/lib/config/modules';
 import { VERTICAL_MAP } from '@/lib/config/verticals';

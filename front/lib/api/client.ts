@@ -13,8 +13,11 @@ function token(): string | null {
   return window.localStorage.getItem('saas.token');
 }
 function businessId(): string | null {
-  if (typeof window === 'undefined') return null;
-  return window.localStorage.getItem('saas.business.id');
+  // En el CRM generado, el negocio puede venir baked como NEXT_PUBLIC_BUSINESS_ID
+  // (necesario para el auto-registro de cliente, que ocurre antes del login).
+  const env = process.env.NEXT_PUBLIC_BUSINESS_ID || null;
+  if (typeof window === 'undefined') return env;
+  return window.localStorage.getItem('saas.business.id') || env;
 }
 
 export async function apiFetch<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
