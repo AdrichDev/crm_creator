@@ -13,18 +13,24 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
       "onError": "continueRegularOutput",
-      "position": [0, 300],
+      "position": [
+        0,
+        300
+      ],
       "webhookId": "crm-automation"
     },
     {
       "parameters": {
-        "jsCode": "// Verificacion de seguridad del webhook del CRM.\n// 1) Firma HMAC-SHA256 sobre `${timestamp}.${rawBody}` con AUTOMATION_WEBHOOK_SECRET.\n//    rawBody se reconstruye en el MISMO orden de claves que firma el back\n//    (eventId,name,businessId,occurredAt,data) -> JSON.stringify deterministico.\n// 2) Ventana anti-replay de 5 min sobre X-Automation-Timestamp.\n// 3) Idempotencia por eventId en workflow static data (defensa en profundidad\n//    frente a reintentos del emisor).\nconst crypto = require('crypto');\nconst secret = $env.AUTOMATION_WEBHOOK_SECRET || '';\nconst item = $input.all()[0].json;\nconst headers = item.headers || {};\nconst body = item.body || {};\n\nconst envelope = {\n  eventId: body.eventId,\n  name: body.name,\n  businessId: body.businessId,\n  occurredAt: body.occurredAt,\n  data: body.data,\n};\nconst rawBody = JSON.stringify(envelope);\nconst ts = Number(headers['x-automation-timestamp']);\nconst sig = String(headers['x-automation-signature'] || '');\n\nlet validSig = false;\ntry {\n  const expected = crypto.createHmac('sha256', secret).update(`${ts}.${rawBody}`).digest('hex');\n  const a = Buffer.from(expected, 'hex');\n  const b = Buffer.from(sig, 'hex');\n  validSig = a.length === b.length && crypto.timingSafeEqual(a, b);\n} catch (e) {\n  validSig = false;\n}\n\nconst fresh = Number.isFinite(ts) && Math.abs(Date.now() - ts) < 5 * 60 * 1000;\n\nconst store = $getWorkflowStaticData('global');\nstore.seen = store.seen || {};\nconst duplicate = !!store.seen[body.eventId];\n\nlet route;\nif (!secret || !validSig || !fresh) route = 'auth_failed';\nelse if (duplicate) route = 'duplicate';\nelse {\n  store.seen[body.eventId] = Date.now();\n  route = body.name;\n}\n\nreturn [{ json: { route, eventId: body.eventId, businessId: body.businessId, name: body.name, data: body.data } }];"
+        "jsCode": "const crypto = require('crypto');\nconst secret = $env.AUTOMATION_WEBHOOK_SECRET || '';\nconst item = $input.all()[0].json;\nconst headers = item.headers || {};\nconst body = item.body || {};\nconst envelope = { eventId: body.eventId, name: body.name, businessId: body.businessId, occurredAt: body.occurredAt, data: body.data };\nconst rawBody = JSON.stringify(envelope);\nconst ts = Number(headers['x-automation-timestamp']);\nconst sig = String(headers['x-automation-signature'] || '');\nlet validSig = false;\ntry {\n  const expected = crypto.createHmac('sha256', secret).update(`${ts}.${rawBody}`).digest('hex');\n  const a = Buffer.from(expected, 'hex');\n  const b = Buffer.from(sig, 'hex');\n  validSig = a.length === b.length && crypto.timingSafeEqual(a, b);\n} catch (e) { validSig = false; }\nconst fresh = Number.isFinite(ts) && Math.abs(Date.now() - ts) < 5 * 60 * 1000;\nconst store = $getWorkflowStaticData('global');\nstore.seen = store.seen || {};\nconst duplicate = !!store.seen[body.eventId];\nlet route;\nif (!secret || !validSig || !fresh) route = 'auth_failed';\nelse if (duplicate) route = 'duplicate';\nelse { store.seen[body.eventId] = Date.now(); route = body.name; }\nreturn [{ json: { route, eventId: body.eventId, businessId: body.businessId, name: body.name, data: body.data } }];"
       },
       "id": "22222222-2222-4222-8222-222222222222",
       "name": "Verify & Route",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [220, 300]
+      "position": [
+        240,
+        300
+      ]
     },
     {
       "parameters": {
@@ -32,12 +38,19 @@
           "values": [
             {
               "conditions": {
-                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 },
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
                 "conditions": [
                   {
                     "leftValue": "={{ $json.route }}",
                     "rightValue": "auth_failed",
-                    "operator": { "type": "string", "operation": "equals" }
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
                   }
                 ],
                 "combinator": "and"
@@ -47,12 +60,19 @@
             },
             {
               "conditions": {
-                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 },
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
                 "conditions": [
                   {
                     "leftValue": "={{ $json.route }}",
                     "rightValue": "user.invited",
-                    "operator": { "type": "string", "operation": "equals" }
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
                   }
                 ],
                 "combinator": "and"
@@ -62,12 +82,19 @@
             },
             {
               "conditions": {
-                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 },
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
                 "conditions": [
                   {
                     "leftValue": "={{ $json.route }}",
                     "rightValue": "password.reset_requested",
-                    "operator": { "type": "string", "operation": "equals" }
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
                   }
                 ],
                 "combinator": "and"
@@ -77,29 +104,39 @@
             }
           ]
         },
-        "options": { "fallbackOutput": "extra" }
+        "options": {
+          "fallbackOutput": "extra"
+        }
       },
       "id": "33333333-3333-4333-8333-333333333333",
       "name": "Route by event",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.4,
-      "position": [440, 300]
+      "position": [
+        480,
+        300
+      ]
     },
     {
       "parameters": {
         "respondWith": "text",
         "responseBody": "unauthorized",
-        "options": { "responseCode": 401 }
+        "options": {
+          "responseCode": 401
+        }
       },
       "id": "44444444-4444-4444-8444-444444444444",
       "name": "Respond 401",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
-      "position": [660, 120]
+      "position": [
+        720,
+        100
+      ]
     },
     {
       "parameters": {
-        "fromEmail": "no-reply@tudominio.com",
+        "fromEmail": "achozas9@gmail.com",
         "toEmail": "={{ $json.data.email }}",
         "subject": "={{ ($json.data.businessName || 'Tu cuenta') + ' — acceso a tu cuenta' }}",
         "emailFormat": "html",
@@ -111,14 +148,20 @@
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
       "onError": "continueRegularOutput",
-      "position": [660, 300],
+      "position": [
+        720,
+        300
+      ],
       "credentials": {
-        "smtp": { "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID", "name": "SMTP CRM" }
+        "smtp": {
+          "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID",
+          "name": "SMTP CRM"
+        }
       }
     },
     {
       "parameters": {
-        "fromEmail": "no-reply@tudominio.com",
+        "fromEmail": "achozas9@gmail.com",
         "toEmail": "={{ $json.data.email }}",
         "subject": "Restablecer tu contraseña",
         "emailFormat": "html",
@@ -130,46 +173,115 @@
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
       "onError": "continueRegularOutput",
-      "position": [660, 480],
+      "position": [
+        720,
+        480
+      ],
       "credentials": {
-        "smtp": { "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID", "name": "SMTP CRM" }
+        "smtp": {
+          "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID",
+          "name": "SMTP CRM"
+        }
       }
     },
     {
       "parameters": {
         "respondWith": "text",
         "responseBody": "ok",
-        "options": { "responseCode": 200 }
+        "options": {
+          "responseCode": 200
+        }
       },
       "id": "77777777-7777-4777-8777-777777777777",
       "name": "Respond 200",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
-      "position": [900, 360]
+      "position": [
+        960,
+        360
+      ]
     }
   ],
   "connections": {
     "Webhook": {
-      "main": [[{ "node": "Verify & Route", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Verify & Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Verify & Route": {
-      "main": [[{ "node": "Route by event", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Route by event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Route by event": {
       "main": [
-        [{ "node": "Respond 401", "type": "main", "index": 0 }],
-        [{ "node": "Email: alta usuario", "type": "main", "index": 0 }],
-        [{ "node": "Email: reset contraseña", "type": "main", "index": 0 }],
-        [{ "node": "Respond 200", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Respond 401",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email: alta usuario",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email: reset contraseña",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Email: alta usuario": {
-      "main": [[{ "node": "Respond 200", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Email: reset contraseña": {
-      "main": [[{ "node": "Respond 200", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
-  "settings": { "executionOrder": "v1" },
+  "settings": {
+    "executionOrder": "v1"
+  },
   "pinData": {}
 }

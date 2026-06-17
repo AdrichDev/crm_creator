@@ -33,6 +33,8 @@ services:
       # Necesario para que el nodo Code del dispatcher pueda usar require('crypto')
       # y verificar la firma HMAC del webhook.
       - NODE_FUNCTION_ALLOW_BUILTIN=crypto
+      # n8n >=1.x bloquea $env en nodos por defecto; el Code lee AUTOMATION_WEBHOOK_SECRET.
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
       # Clave de cifrado de credenciales de n8n (define N8N_ENCRYPTION_KEY en tu .env).
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-change-me-please}
       # MISMO secreto que el back (AUTOMATION_WEBHOOK_SECRET). El dispatcher lo lee
