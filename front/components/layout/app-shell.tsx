@@ -7,6 +7,7 @@ import { useProjects } from '@/lib/tenant-config-context';
 import { ArrowLeft, Download } from 'lucide-react';
 import { generateAndDownload } from '@/lib/generate/build';
 import { ROLES, type Role } from '@/lib/config/roles';
+import { ThemeToggle } from './theme-toggle';
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { config, ready, hasActive, closeProject, role, setRole } = useProjects();
@@ -33,6 +34,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             <button onClick={volver} className="btn btn-outline btn-sm">
               <ArrowLeft className="h-4 w-4" /> Volver
             </button>
+
+            <ThemeToggle />
+
 
             {/* Selector de perfil (filtrado de vista) */}
             <label className="opera-role-select">

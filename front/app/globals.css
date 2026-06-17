@@ -25,6 +25,8 @@
   --panel-card: #141414;
   --panel-text: #fdfdfd;
   --panel-muted: #8e8e8e;
+  /* Rejilla sutil — solo para la consola principal (no para los proyectos) */
+  --grid-color: rgba(255, 255, 255, 0.05);
 
   --heading-font: 'Playfair Display', Georgia, serif;
   --brand-font: 'Cinzel', serif;
@@ -37,6 +39,62 @@ body {
   font-family: 'Outfit', ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+
+/* ── Consola principal de creador_CRM (app/page.tsx) ──────────────────────
+   Aquí (y SOLO aquí) vive el modo claro/oscuro con fondo de rejilla estilo
+   agents-agency. Sigue el token --panel-* para volcarse con data-theme. */
+.crm-console {
+  min-height: 100vh;
+  background-color: var(--panel-bg);
+  background-image:
+    linear-gradient(var(--grid-color) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
+  background-size: 32px 32px;
+  background-position: center;
+  color: var(--panel-text);
+}
+.crm-console-card {
+  background: var(--panel-card);
+  border: 1px solid var(--line);
+}
+
+/* ── Modo claro (sigue el SO o el toggle; data-theme="light" en <html>) ── */
+:root[data-theme="light"] {
+  --ink: #eef0f4;
+  --ink-2: #ffffff;
+  --line: rgba(0, 0, 0, 0.10);
+  --surface: #eef0f4;
+  --panel-bg: #f4f5f7;
+  --panel-card: #ffffff;
+  --panel-text: #14151a;
+  --panel-muted: #5b6472;
+  --grid-color: rgba(15, 23, 42, 0.06);
+}
+/* Superficies/controles con valores oscuros fijos → re-tema en claro */
+:root[data-theme="light"] .opera-header { background: rgba(255, 255, 255, 0.9); }
+:root[data-theme="light"] .opera-brand-title { color: #14151a; }
+:root[data-theme="light"] .opera-role-select { background: rgba(0,0,0,0.04); }
+:root[data-theme="light"] .opera-role-select select { color: #14151a; }
+:root[data-theme="light"] .opera-control,
+:root[data-theme="light"] .tpv-select { background: #fff; border-color: rgba(0,0,0,0.15); color: #14151a; }
+:root[data-theme="light"] .opera-modal { background: #fff; }
+:root[data-theme="light"] .kpi-card .value { color: #14151a; }
+/* Utilidades Tailwind text-white usadas en el chrome → texto oscuro en claro */
+:root[data-theme="light"] .opera-sidebar .text-white,
+:root[data-theme="light"] .opera-main .text-white,
+:root[data-theme="light"] .opera-modal .text-white { color: #14151a; }
+
+/* Badges de estado en tema claro — los tonos oscuros pierden contraste sobre
+   blanco (--panel-card #fff). Re-tema a texto sólido oscuro sobre tinte claro,
+   garantizando ratio AA (>= 4.5:1) sin perder el color de marca de cada estado.
+   --acc es variable por tenant y puede quedar pálido en claro, así que gold/amber
+   usan un dorado oscuro fijo en vez de var(--acc). */
+:root[data-theme="light"] .tone-gold  { background: #f6ecca; color: #8a6516; }
+:root[data-theme="light"] .tone-green { background: #dcf5e6; color: #0f7a3d; }
+:root[data-theme="light"] .tone-amber { background: #fcecd0; color: #9a5b07; }
+:root[data-theme="light"] .tone-red   { background: #fde0e3; color: #c01525; }
+:root[data-theme="light"] .tone-blue  { background: #dde9fd; color: #1554c0; }
+:root[data-theme="light"] .tone-gray  { background: #eceef2; color: #44474f; }
 
 /* Tipografía de titulares premium */
 .font-display { font-family: 'Playfair Display', Georgia, serif; letter-spacing: -0.01em; }
@@ -58,7 +116,7 @@ body {
    Fondo obsidiana + acento dorado (varía por vertical vía --acc).
    ========================================================================= */
 
-/* Shell del panel (oscuro) */
+/* Shell del panel (oscuro) — fondo normal del proyecto, SIN rejilla */
 .opera-shell { display: flex; min-height: 100vh; background: var(--panel-bg); color: var(--panel-text); }
 
 /* Header superior del panel */

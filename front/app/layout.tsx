@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { TenantConfigProvider } from '@/lib/tenant-config-context';
 import { BrandingStyle } from '@/components/layout/branding-style';
+import { CrmThemeProvider } from '@/components/layout/theme-provider';
 
 export const metadata: Metadata = {
   title: 'SaaS Multi-Negocio',
@@ -14,6 +15,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="font-sans antialiased">
         <TenantConfigProvider>
           <BrandingStyle />
+          <CrmThemeProvider />
           {children}
         </TenantConfigProvider>
       </body>
