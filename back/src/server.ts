@@ -5,6 +5,9 @@ import { api } from './routes/index.js';
 import { notFound, errorHandler } from './middleware/error.js';
 
 const app = express();
+// Confiar en el proxy más cercano (configurable). Necesario para que req.ip
+// refleje la IP real del cliente cuando hay un reverse-proxy delante.
+app.set('trust proxy', env.trustProxy);
 app.use(cors({ origin: env.corsOrigin === '*' ? true : env.corsOrigin.split(',') }));
 app.use(express.json({ limit: '2mb' }));
 

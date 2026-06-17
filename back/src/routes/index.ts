@@ -7,6 +7,7 @@ import { timeOffRouter } from './timeoff.js';
 import { packagesRouter } from './packages.js';
 import { dashboardRouter } from './dashboard.js';
 import { brandingRouter } from './branding.js';
+import { usersRouter } from './users.js';
 
 export const api = Router();
 
@@ -31,6 +32,7 @@ api.use('/fichajes', crudRouter('fichaje', { fields: ['employeeId', 'employeeNam
 api.use('/tags', crudRouter('tag', { fields: ['name', 'color'] }));
 
 // Custom
+api.use('/users', usersRouter);
 api.use('/bookings', bookingsRouter);
 api.use('/time-off', timeOffRouter);
 api.use('/packages', packagesRouter);

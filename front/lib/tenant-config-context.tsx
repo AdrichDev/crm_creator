@@ -4,6 +4,7 @@ import {
   createContext, useContext, useEffect, useMemo, useState, useCallback, type ReactNode,
 } from 'react';
 import { MODULE_MAP, type ModuleId } from './config/modules';
+import type { WorkerChipId } from './config/worker-chips';
 import {
   type TenantConfig, DEFAULT_CONFIG, configFromVertical,
 } from './config/tenant-config';
@@ -43,6 +44,7 @@ interface Ctx {
   setConfig: (next: TenantConfig) => void;
   update: (patch: Partial<TenantConfig>) => void;
   toggleModule: (id: ModuleId, on: boolean) => void;
+  toggleWorkerChip: (id: WorkerChipId, on: boolean) => void;
   applyVertical: (vertical: VerticalId, name?: string) => void;
   reset: () => void;
 }
@@ -137,6 +139,9 @@ export function TenantConfigProvider({ children }: { children: ReactNode }) {
     if (MODULE_MAP[id]?.mandatory) return;
     mutateActive((c) => ({ ...c, modules: { ...c.modules, [id]: on } }));
   }, [mutateActive]);
+  const toggleWorkerChip = useCallback((id: WorkerChipId, on: boolean) => {
+    mutateActive((c) => ({ ...c, workerChips: { ...c.workerChips, [id]: on } }));
+  }, [mutateActive]);
   const applyVertical = useCallback((vertical: VerticalId, name?: string) => {
     mutateActive((c) => ({ ...configFromVertical(vertical, name ?? c.business.name), setupComplete: true }));
   }, [mutateActive]);
@@ -145,9 +150,9 @@ export function TenantConfigProvider({ children }: { children: ReactNode }) {
   const value = useMemo<Ctx>(() => ({
     ready, projects, activeId, hasActive: !!active, config, role, setRole,
     createProject, openProject, closeProject, deleteProject, markGenerated,
-    setConfig, update, toggleModule, applyVertical, reset,
+    setConfig, update, toggleModule, toggleWorkerChip, applyVertical, reset,
   }), [ready, projects, activeId, active, config, role, setRole, createProject, openProject, closeProject,
-       deleteProject, markGenerated, setConfig, update, toggleModule, applyVertical, reset]);
+       deleteProject, markGenerated, setConfig, update, toggleModule, toggleWorkerChip, applyVertical, reset]);
 
   return <C.Provider value={value}>{children}</C.Provider>;
 }

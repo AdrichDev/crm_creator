@@ -9,6 +9,9 @@ export const dynamic = 'force-dynamic';
 const ENDPOINT: Record<string, string> = {
   'market-study': '/api/market-studies',
   'marketing-plan': '/api/ai/marketing-plan',
+  // UC-3 · sugerencia de branding desde contexto del negocio (no landing).
+  // Reusa la generación genérica de agents-agency para mantener el metering.
+  'branding-suggest': '/api/ai/generate',
 };
 
 export async function POST(req: Request) {

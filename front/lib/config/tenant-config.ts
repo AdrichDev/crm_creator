@@ -1,4 +1,5 @@
 import { MODULES, type ModuleId } from './modules';
+import { emptyWorkerChips, type WorkerChipId } from './worker-chips';
 import { VERTICAL_MAP, type VerticalId } from './verticals';
 import type { Terminology } from './terminology';
 
@@ -34,6 +35,8 @@ export interface TenantConfig {
     clienteId?: string;
   };
   modules: Record<ModuleId, boolean>;
+  /** Chips activos del dashboard del trabajador (patrón `modules`). */
+  workerChips: Record<WorkerChipId, boolean>;
   terminology: Terminology;
   branding: {
     primary: string;
@@ -45,6 +48,16 @@ export interface TenantConfig {
     designSource?: string;
     /** Tokens completos extraídos por la IA de la landing (paleta, tipografía, forma). */
     tokens?: DesignTokens;
+  };
+  /** Conexión a la base de datos del proyecto (manual, opcional; editable a futuro). */
+  database?: {
+    host?: string;
+    port?: string;
+    name?: string;
+    user?: string;
+    password?: string;
+    /** URL completa de conexión, si se prefiere a los campos sueltos. */
+    url?: string;
   };
   /** Tarjetas favoritas del dashboard (máx. 6). */
   favorites?: Favorite[];
@@ -70,6 +83,7 @@ export function configFromVertical(vertical: VerticalId, name = ''): TenantConfi
   return {
     business: { name: name || v.label, vertical },
     modules,
+    workerChips: emptyWorkerChips(),
     terminology: { ...v.terminology },
     branding: { primary: v.branding.primary, secondary: v.branding.secondary, logoText: (name || v.label).slice(0, 2).toUpperCase() },
     setupComplete: false,
@@ -89,9 +103,10 @@ export function deserialize(raw: string | null): TenantConfig | null {
   try {
     const parsed = JSON.parse(raw) as TenantConfig;
     if (!parsed.business || !parsed.modules) return null;
-    // Asegura que módulos nuevos del catálogo existan en configs antiguas.
+    // Asegura que módulos/chips nuevos del catálogo existan en configs antiguas.
     const merged = { ...emptyModules(), ...parsed.modules };
-    return { ...parsed, modules: merged };
+    const mergedChips = { ...emptyWorkerChips(), ...parsed.workerChips };
+    return { ...parsed, modules: merged, workerChips: mergedChips };
   } catch {
     return null;
   }

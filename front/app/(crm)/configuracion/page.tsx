@@ -5,17 +5,25 @@ import { ModuleGuard } from '@/components/layout/module-guard';
 import { VERTICAL_MAP } from '@/lib/config/verticals';
 import { BrandingForm } from '@/components/config/branding-form';
 import { ModuleGridPanel } from '@/components/config/module-grid-panel';
+import { WorkerChipsGrid } from '@/components/config/worker-chips-grid';
+import { UsersPanel } from '@/components/config/users-panel';
+import { ChangePasswordForm } from '@/components/config/change-password-form';
 import { PageHeader, Card, CardBody, Button, Badge, Toggle } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 
-type Tab = 'estado' | 'modulos' | 'marca' | 'negocio';
-const TAB_LABEL: Record<Tab, string> = { estado: 'Estado', modulos: 'Módulos', marca: 'Marca', negocio: 'Negocio' };
-const TABS: Tab[] = ['estado', 'modulos', 'marca', 'negocio'];
+type Tab = 'estado' | 'modulos' | 'trabajador' | 'usuarios' | 'marca' | 'negocio';
+const TAB_LABEL: Record<Tab, string> = { estado: 'Estado', modulos: 'Módulos', trabajador: 'Trabajador', usuarios: 'Usuarios', marca: 'Marca', negocio: 'Negocio' };
+const BASE_TABS: Tab[] = ['estado', 'modulos', 'trabajador', 'marca', 'negocio'];
 
 export default function ConfiguracionPage() {
-  const { config, update, reset, toggleModule } = useTenantConfig();
+  const { config, update, reset, toggleModule, toggleWorkerChip } = useTenantConfig();
   const { role } = useRole();
   const isAdmin = role === 'admin';
+
+  // El tab "Usuarios" (gestión de cuentas + cambio de contraseña) es solo para admin.
+  const TABS: Tab[] = isAdmin
+    ? ['estado', 'modulos', 'trabajador', 'usuarios', 'marca', 'negocio']
+    : BASE_TABS;
 
   const [tab, setTab] = useState<Tab>('estado');
 
@@ -75,6 +83,25 @@ export default function ConfiguracionPage() {
           </p>
           <ModuleGridPanel modules={config.modules} onToggle={toggleModule} terminology={config.terminology} />
         </CardBody></Card>
+      )}
+
+      {/* Trabajador: chips configurables del dashboard del rol trabajador */}
+      {tab === 'trabajador' && (
+        <Card><CardBody className="space-y-4">
+          <p className="text-sm text-[var(--panel-muted)]">
+            Activa los chips (accesos rápidos) que verá el trabajador en su panel.
+            Un chip cuyo módulo dependiente esté apagado no se puede activar.
+          </p>
+          <WorkerChipsGrid chips={config.workerChips} modules={config.modules} onToggle={toggleWorkerChip} />
+        </CardBody></Card>
+      )}
+
+      {/* Usuarios: gestión de cuentas del negocio + cambio de contraseña (solo admin) */}
+      {tab === 'usuarios' && isAdmin && (
+        <div className="space-y-6">
+          <UsersPanel />
+          <ChangePasswordForm />
+        </div>
       )}
 
       {tab === 'marca' && (

@@ -15,7 +15,9 @@ export default function Consola() {
 
   function nuevo() { router.push('/onboarding'); }
   function abrir(id: string) { openProject(id); router.push('/panel'); }
-  function editar(id: string) { openProject(id); router.push('/configuracion'); }
+  // UC-1: "Editar" reabre el ONBOARDING en modo edición (pre-cargado con la config
+  // del proyecto), no el editor campo-a-campo. `/configuracion` sigue disponible.
+  function editar(id: string) { router.push(`/onboarding?projectId=${id}`); }
   async function generar(id: string) {
     const p = projects.find((x) => x.id === id); if (!p) return;
     setBusy(id);
@@ -36,7 +38,7 @@ export default function Consola() {
                 <span className="font-display text-lg font-bold">O</span>
               </div>
               <div>
-                <p className="font-display text-xl font-semibold text-white">OperaOS · Consola</p>
+                <p className="font-display text-xl font-semibold text-[var(--panel-text)]">OperaOS · Consola</p>
                 <p className="text-xs text-gray-400">Diseña y genera la app de gestión de cada cliente</p>
               </div>
             </div>
