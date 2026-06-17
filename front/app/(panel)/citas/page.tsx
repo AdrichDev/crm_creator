@@ -41,7 +41,7 @@ export default function Page() {
       <Table head={['Cliente', 'Servicio', 'Profesional', 'Fecha', 'Hora', 'Estado', '']}>
         {items.map((c) => (
           <tr key={c.id}>
-            <Td className="font-medium text-gray-900">{c.cliente}</Td>
+            <Td className="font-medium text-[var(--panel-text)]">{c.cliente}</Td>
             <Td>{c.servicio}</Td><Td>{c.empleado}</Td><Td>{c.fecha}</Td><Td>{c.hora}</Td>
             <Td><Badge tone={tone(c.estado)}>{c.estado}</Badge></Td>
             <Td><RowActions onEdit={() => { setEditing(c); setOpen(true); }} onDelete={() => { if (confirm('¿Eliminar?')) remove(c.id); }} /></Td>

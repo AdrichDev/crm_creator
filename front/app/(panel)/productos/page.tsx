@@ -47,7 +47,7 @@ export default function Page() {
       <Table head={['Producto', 'Categoría', 'Stock', 'Mínimo', 'Precio', 'Proveedor', '']}>
         {items.map((p) => (
           <tr key={p.id}>
-            <Td className="font-medium text-gray-900">{p.nombre}</Td>
+            <Td className="font-medium text-[var(--panel-text)]">{p.nombre}</Td>
             <Td><Badge>{p.categoria}</Badge></Td>
             <Td><span className={Number(p.stock) < Number(p.minimo) ? 'font-semibold text-red-600' : ''}>{p.stock}</span></Td>
             <Td>{p.minimo}</Td><Td>€{p.precio}</Td><Td>{p.proveedor}</Td>

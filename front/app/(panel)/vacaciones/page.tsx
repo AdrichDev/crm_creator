@@ -42,7 +42,7 @@ export default function Page() {
       <Table head={['Empleado', 'Tipo', 'Inicio', 'Fin', 'Días', 'Estado', gestiona ? '' : null].filter((h) => h !== null) as string[]}>
         {items.map((v) => (
           <tr key={v.id}>
-            <Td className="font-medium text-gray-900">{v.empleado}</Td>
+            <Td className="font-medium text-[var(--panel-text)]">{v.empleado}</Td>
             <Td>{v.tipo}</Td><Td>{v.inicio}</Td><Td>{v.fin}</Td><Td>{v.dias}</Td>
             <Td><Badge tone={tone(v.estado)}>{v.estado}</Badge></Td>
             {gestiona && (
