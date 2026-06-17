@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { TenantConfigProvider } from '@/lib/tenant-config-context';
 import { BrandingStyle } from '@/components/layout/branding-style';
+import { BrandingHead } from '@/components/layout/branding-head';
 import { CrmThemeProvider } from '@/components/layout/theme-provider';
 
 export const metadata: Metadata = {
@@ -26,6 +27,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="font-sans antialiased" suppressHydrationWarning>
         <TenantConfigProvider>
           <BrandingStyle />
+          <BrandingHead />
           <CrmThemeProvider />
           {children}
         </TenantConfigProvider>

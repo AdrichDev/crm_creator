@@ -36,3 +36,16 @@ const BY_VERTICAL: Partial<Record<VerticalId, Partial<Record<ModuleId, string>>>
 export function moduleEmoji(vertical: VerticalId, moduleId: ModuleId): string {
   return BY_VERTICAL[vertical]?.[moduleId] ?? DEFAULT_EMOJI[moduleId] ?? '•';
 }
+
+/**
+ * Emoji final del módulo: el override elegido por el negocio manda; si no hay,
+ * cae al emoji por sector / por defecto. `overrides` = config.moduleEmojis.
+ */
+export function resolveModuleEmoji(
+  vertical: VerticalId,
+  moduleId: ModuleId,
+  overrides?: Partial<Record<ModuleId, string>>,
+): string {
+  const o = overrides?.[moduleId];
+  return o && o.trim() ? o : moduleEmoji(vertical, moduleId);
+}

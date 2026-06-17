@@ -37,6 +37,12 @@ export interface TenantConfig {
   modules: Record<ModuleId, boolean>;
   /** Chips activos del dashboard del trabajador (patrón `modules`). */
   workerChips: Record<WorkerChipId, boolean>;
+  /**
+   * Emoji elegido por el negocio para cada módulo del menú. Sobrescribe el
+   * emoji por defecto/por sector (lib/config/icons.ts). Ej.: clínica dental →
+   * `clientes: '🦷'` en vez de la silla de ruedas por defecto del vertical.
+   */
+  moduleEmojis?: Partial<Record<ModuleId, string>>;
   terminology: Terminology;
   branding: {
     primary: string;

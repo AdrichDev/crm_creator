@@ -16,7 +16,7 @@ const TAB_LABEL: Record<Tab, string> = { estado: 'Estado', modulos: 'Módulos', 
 const BASE_TABS: Tab[] = ['estado', 'modulos', 'trabajador', 'marca', 'negocio'];
 
 export default function ConfiguracionPage() {
-  const { config, update, reset, toggleModule, toggleWorkerChip } = useTenantConfig();
+  const { config, update, reset, toggleModule, setModuleEmoji, toggleWorkerChip } = useTenantConfig();
   const { role } = useRole();
   const isAdmin = role === 'admin';
 
@@ -81,7 +81,8 @@ export default function ConfiguracionPage() {
           <p className="text-sm text-[var(--panel-muted)]">
             Activa o desactiva los módulos del panel. Los obligatorios no se pueden apagar.
           </p>
-          <ModuleGridPanel modules={config.modules} onToggle={toggleModule} terminology={config.terminology} />
+          <ModuleGridPanel modules={config.modules} onToggle={toggleModule} terminology={config.terminology}
+            vertical={config.business.vertical} emojis={config.moduleEmojis} onSetEmoji={setModuleEmoji} />
         </CardBody></Card>
       )}
 

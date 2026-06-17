@@ -3,9 +3,11 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { MODULES, CATEGORY_LABEL, type ModuleCategory } from '@/lib/config/modules';
 import { useProjects, useRole } from '@/lib/tenant-config-context';
-import { moduleEmoji } from '@/lib/config/icons';
+import { resolveModuleEmoji } from '@/lib/config/icons';
 import { cn } from '@/lib/utils';
 import { moduleAllowedForRole, DEMO_USERS, type Role } from '@/lib/config/roles';
+import { GENERATED_TENANT } from '@/lib/config/generated-tenant';
+import { logout } from '@/lib/auth/demo-auth';
 import { LogOut } from 'lucide-react';
 
 const PANEL_TITLE: Record<Role, string> = {
@@ -29,9 +31,12 @@ export function Sidebar() {
 
   const user = DEMO_USERS[role];
 
-  // "Salir": cuando exista landing/login conectado, irá allí. De momento
-  // cierra el proyecto y vuelve a la consola (dashboard general).
-  function salir() { closeProject(); router.push('/'); }
+  // "Salir": en un build generado (cliente final) cierra sesión y vuelve al
+  // login. En la consola fuente cierra el proyecto y vuelve al dashboard general.
+  function salir() {
+    if (GENERATED_TENANT) { logout(); router.replace('/login'); return; }
+    closeProject(); router.push('/');
+  }
 
   return (
     <aside className="opera-sidebar dark-scroll">
@@ -62,7 +67,7 @@ export function Sidebar() {
                 return (
                   <li key={m.id}>
                     <Link href={m.href} className={cn(isActive && 'active')}>
-                      <span className="w-5 text-center text-base leading-none">{moduleEmoji(config.business.vertical, m.id)}</span>
+                      <span className="w-5 text-center text-base leading-none">{resolveModuleEmoji(config.business.vertical, m.id, config.moduleEmojis)}</span>
                       <span className="truncate">{label}</span>
                     </Link>
                   </li>

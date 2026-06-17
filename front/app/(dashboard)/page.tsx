@@ -1,6 +1,8 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { GENERATED_TENANT } from '@/lib/config/generated-tenant';
+import { isAuthed } from '@/lib/auth/demo-auth';
 import { useProjects } from '@/lib/tenant-config-context';
 import { MODULES } from '@/lib/config/modules';
 import { VERTICAL_MAP } from '@/lib/config/verticals';
@@ -9,9 +11,18 @@ import { ThemeToggle } from '@/components/layout/theme-toggle';
 import { Plus, Download, Pencil, Trash2, FolderOpen, Loader2 } from 'lucide-react';
 
 export default function Consola() {
-  const { ready, projects, openProject, deleteProject, markGenerated } = useProjects();
+  const { ready, projects, config, openProject, deleteProject, markGenerated } = useProjects();
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
+
+  // Build autónomo (single-tenant): no hay consola, el front ES el CRM del tenant.
+  // Sin landing y sin sesión → login; si no → directo al panel. En el repo fuente
+  // GENERATED_TENANT es null → la consola se muestra normal.
+  useEffect(() => {
+    if (!GENERATED_TENANT || !ready) return;
+    const needsLogin = !config.branding.designSource && !isAuthed();
+    router.replace(needsLogin ? '/login' : '/panel');
+  }, [ready, config, router]);
 
   function nuevo() { router.push('/onboarding'); }
   function abrir(id: string) { openProject(id); router.push('/panel'); }
@@ -25,7 +36,7 @@ export default function Consola() {
     finally { setBusy(null); }
   }
 
-  if (!ready) return <div className="grid min-h-screen place-items-center bg-ink text-gray-400">Cargando…</div>;
+  if (!ready || GENERATED_TENANT) return <div className="grid min-h-screen place-items-center bg-ink text-gray-400">Cargando…</div>;
 
   return (
     <div className="crm-console">

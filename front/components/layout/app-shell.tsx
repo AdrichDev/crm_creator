@@ -4,6 +4,8 @@ import { useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { Sidebar } from './sidebar';
 import { useProjects } from '@/lib/tenant-config-context';
+import { GENERATED_TENANT } from '@/lib/config/generated-tenant';
+import { isAuthed } from '@/lib/auth/demo-auth';
 import { ArrowLeft, Download } from 'lucide-react';
 import { generateAndDownload } from '@/lib/generate/build';
 import { ROLES, type Role } from '@/lib/config/roles';
@@ -13,11 +15,20 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { config, ready, hasActive, closeProject, role, setRole } = useProjects();
   const router = useRouter();
 
-  useEffect(() => {
-    if (ready && !hasActive) router.replace('/');
-  }, [ready, hasActive, router]);
+  // Gate de login: solo en builds generados (cliente final) que aún NO tienen
+  // landing importada. Al añadir landing (config.branding.designSource) el gate
+  // desaparece y manda la landing. La consola fuente nunca se bloquea.
+  const needsLogin = !!GENERATED_TENANT && !config.branding.designSource;
 
-  if (!ready || !hasActive) return <div className="grid min-h-screen place-items-center bg-ink text-gray-400">Cargando…</div>;
+  useEffect(() => {
+    if (!ready) return;
+    if (!hasActive) { router.replace('/'); return; }
+    if (needsLogin && !isAuthed()) router.replace('/login');
+  }, [ready, hasActive, needsLogin, router]);
+
+  if (!ready || !hasActive || (needsLogin && !isAuthed())) {
+    return <div className="grid min-h-screen place-items-center bg-ink text-gray-400">Cargando…</div>;
+  }
 
   function volver() { closeProject(); router.push('/'); }
 

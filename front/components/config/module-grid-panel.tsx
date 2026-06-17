@@ -2,6 +2,8 @@
 import { MODULES, CATEGORY_LABEL, type ModuleCategory, type ModuleId } from '@/lib/config/modules';
 import { Icon } from '@/components/ui/icon';
 import { Card, CardBody, Toggle } from '@/components/ui/primitives';
+import { resolveModuleEmoji } from '@/lib/config/icons';
+import type { VerticalId } from '@/lib/config/verticals';
 import { cn } from '@/lib/utils';
 
 /**
@@ -9,8 +11,9 @@ import { cn } from '@/lib/utils';
  * de Configuración. Misma lógica que `ModuleToggleGrid` (onboarding) pero tematizado
  * claro/oscuro en vez del estilo claro del wizard.
  */
-export function ModuleGridPanel({ modules, onToggle, terminology = {} }:
-  { modules: Record<ModuleId, boolean>; onToggle: (id: ModuleId, on: boolean) => void; terminology?: Record<string, string> }) {
+export function ModuleGridPanel({ modules, onToggle, terminology = {}, vertical, emojis, onSetEmoji }:
+  { modules: Record<ModuleId, boolean>; onToggle: (id: ModuleId, on: boolean) => void; terminology?: Record<string, string>;
+    vertical?: VerticalId; emojis?: Partial<Record<ModuleId, string>>; onSetEmoji?: (id: ModuleId, emoji: string) => void }) {
   const cats = Array.from(new Set(MODULES.map((m) => m.category))) as ModuleCategory[];
   return (
     <div className="space-y-6">
@@ -36,6 +39,21 @@ export function ModuleGridPanel({ modules, onToggle, terminology = {} }:
                       <p className="mt-0.5 text-xs text-[var(--panel-muted)]">{m.description}</p>
                       {on && missing.length > 0 && (
                         <p className="mt-1 text-[11px] text-amber-400">Recomendado activar: {missing.join(', ')}</p>
+                      )}
+                      {on && onSetEmoji && vertical && (
+                        <label className="mt-2 flex items-center gap-2 text-[11px] text-[var(--panel-muted)]">
+                          Emoji del menú
+                          <input
+                            value={emojis?.[m.id] ?? ''}
+                            onChange={(e) => onSetEmoji(m.id, e.target.value)}
+                            placeholder={resolveModuleEmoji(vertical, m.id)}
+                            maxLength={4}
+                            className="w-12 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-center text-base"
+                            aria-label={`Emoji para ${m.defaultLabel}`}
+                          />
+                          <span className="opacity-60">→</span>
+                          <span className="text-base">{resolveModuleEmoji(vertical, m.id, emojis)}</span>
+                        </label>
                       )}
                     </div>
                     <Toggle checked={on} disabled={m.mandatory} onChange={(v) => onToggle(m.id, v)} />

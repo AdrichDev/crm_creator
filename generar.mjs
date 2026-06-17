@@ -35,9 +35,17 @@ const LOCAL = process.argv.includes('--local');
 // Schema de PostgreSQL: namespace en el DATABASE_URL. Casi siempre 'public' y no
 // tiene que ver con schema.prisma (que ya va en el zip). Constante, no se pregunta.
 const PG_SCHEMA = 'public';
-// Puertos por defecto para LOCAL (en Vercel/Cloudflare los gestiona la plataforma).
-const DEFAULT_BACK_PORT = '4000';
-const DEFAULT_FRONT_PORT = '3002';
+
+// Puerto único y ESTABLE por proyecto (derivado del slug). Evita que cada CRM
+// generado choque con la consola fuente (3002) o entre sí: distinto puerto =
+// distinto origin = localStorage aislado. Estable (no aleatorio por arranque)
+// para no perder el estado del tenant en cada reinicio del dev server.
+function hashStr(s) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) { h = Math.imul(h ^ s.charCodeAt(i), 16777619) >>> 0; }
+  return h;
+}
+function portFromSlug(slug, base, span = 900) { return String(base + (hashStr(slug) % span)); }
 
 // Módulos activables (dashboard y configuración van siempre).
 const MODULES = ['clientes', 'citas', 'servicios', 'empleados', 'fichaje', 'vacaciones', 'productos', 'ventas', 'facturas', 'estadisticas', 'marketing'];
@@ -54,6 +62,14 @@ const BACK_MOUNT = {
   clientes: '/customers', citas: '/bookings', servicios: '/services', empleados: '/employees',
   fichaje: '/fichajes', vacaciones: '/time-off', productos: '/products', ventas: '/sales',
   facturas: '/invoices', marketing: '/campaigns',
+};
+// Dependencias blandas (espejo de front/lib/config/modules.ts `recommends`): si un
+// módulo activo recomienda otro que NO está activo, se avisa (no se bloquea) porque
+// la página puede enlazar a la del módulo podado. `web` (sitio público en app/web)
+// no es módulo de panel del catálogo → no se poda por manifest, va siempre.
+const RECOMMENDS = {
+  citas: ['servicios'], fichaje: ['empleados'], vacaciones: ['empleados'],
+  ventas: ['productos'], facturas: ['clientes'], marketing: ['clientes'], estadisticas: ['clientes'],
 };
 
 function slugify(s) {
@@ -105,6 +121,9 @@ async function main() {
   section('1) Proyecto');
   const nombre = await ask('Nombre del negocio/cliente', manifest?.name ?? 'Mi Negocio');
   const slug = slugify(await ask('Identificador (slug) de la carpeta', slugify(nombre)));
+  // Puertos únicos y estables para este proyecto (front 3100-3999, back 4100-4999).
+  const derivedFrontPort = portFromSlug(slug, 3100);
+  const derivedBackPort = portFromSlug(slug, 4100);
 
   section('2) Módulos a incluir');
   let active;
@@ -123,8 +142,17 @@ async function main() {
   }
   const activeSet = new Set(active);
 
+  // Aviso de dependencias blandas no satisfechas (no bloquea).
+  for (const m of active) {
+    for (const dep of RECOMMENDS[m] ?? []) {
+      if (!activeSet.has(dep)) {
+        console.log(`\x1b[33m  ! "${m}" recomienda "${dep}", que NO está activo — puede haber enlaces rotos.\x1b[0m`);
+      }
+    }
+  }
+
   // ---- Infra: SOLO en modo LOCAL ----
-  let db = null, backPort = DEFAULT_BACK_PORT, frontPort = DEFAULT_FRONT_PORT, jwtSecret = '', connectApi = true;
+  let db = null, backPort = derivedBackPort, frontPort = derivedFrontPort, jwtSecret = '', connectApi = true;
   if (LOCAL) {
     section('3) Base de datos (PostgreSQL, local)');
     const dbName = await ask('Nombre de la base de datos', slug.replace(/-/g, '_'));
@@ -135,8 +163,8 @@ async function main() {
     db = { name: dbName, host: dbHost, port: dbPort, user: dbUser, pass: dbPass, schema: PG_SCHEMA };
 
     section('4) Backend y seguridad (local)');
-    backPort = await ask('Puerto del backend', DEFAULT_BACK_PORT);
-    frontPort = await ask('Puerto del front', DEFAULT_FRONT_PORT);
+    backPort = await ask('Puerto del backend', derivedBackPort);
+    frontPort = await ask('Puerto del front', derivedFrontPort);
     const jwt = await ask('JWT_SECRET (deja vacío para autogenerar)', '');
     jwtSecret = jwt || ('op_' + crypto.randomBytes(24).toString('hex'));
 
@@ -156,10 +184,43 @@ async function main() {
   copyDir(path.join(ROOT, 'back'), path.join(out, 'back'));
   copyDir(path.join(ROOT, 'front'), path.join(out, 'front'));
 
+  // Fijar el puerto del front en su package.json (los scripts traen `-p 3002`
+  // hardcodeado; sin esto la copia chocaría con la consola fuente en localStorage).
+  const fpkgPath = path.join(out, 'front', 'package.json');
+  if (fs.existsSync(fpkgPath)) {
+    const fpkg = JSON.parse(fs.readFileSync(fpkgPath, 'utf8'));
+    if (fpkg.scripts) {
+      if (fpkg.scripts.dev) fpkg.scripts.dev = fpkg.scripts.dev.replace(/-p\s+\d+/, `-p ${frontPort}`);
+      if (fpkg.scripts.start) fpkg.scripts.start = fpkg.scripts.start.replace(/-p\s+\d+/, `-p ${frontPort}`);
+    }
+    fs.writeFileSync(fpkgPath, JSON.stringify(fpkg, null, 2) + '\n');
+    console.log(`  - Puerto del front fijado a ${frontPort} (back ${backPort}).`);
+  }
+
+  // Hornear la config del tenant para arranque autónomo: el front generado arranca
+  // con su propio branding/terminología/módulos sin pasar por la consola/onboarding.
+  // Solo si el manifest la trae; sin manifest la copia arranca como consola.
+  if (manifest && manifest.business && manifest.modules && manifest.branding && manifest.terminology) {
+    const tenant = {
+      business: manifest.business,
+      modules: manifest.modules,
+      terminology: manifest.terminology,
+      branding: manifest.branding,
+      setupComplete: true,
+    };
+    const genPath = path.join(out, 'front', 'lib', 'config', 'generated-tenant.ts');
+    fs.writeFileSync(genPath,
+      `// Generado por generar.mjs — config del tenant (arranque autónomo).\n`
+      + `export const GENERATED_TENANT: Record<string, unknown> | null = ${JSON.stringify(tenant, null, 2)};\n`);
+    console.log('  - Config del tenant horneada en front/lib/config/generated-tenant.ts');
+  }
+
   // Podar páginas del front de módulos desactivados
   for (const m of MODULES) {
     if (!activeSet.has(m)) {
-      const dir = path.join(out, 'front', 'app', '(crm)', FRONT_ROUTE[m]);
+      const route = FRONT_ROUTE[m];
+      if (!route) continue; // sin carpeta mapeada: nada que podar (evita path.join undefined)
+      const dir = path.join(out, 'front', 'app', '(crm)', route);
       fs.rmSync(dir, { recursive: true, force: true });
     }
   }
@@ -179,13 +240,13 @@ async function main() {
   }
 
   if (LOCAL) writeLocalArtifacts({ out, nombre, slug, active, db, backPort, frontPort, jwtSecret, connectApi });
-  else writeDeployArtifacts({ out, nombre, slug, active });
+  else writeDeployArtifacts({ out, nombre, slug, active, backPort, frontPort });
 
   // Manifest del proyecto generado
   fs.writeFileSync(path.join(out, 'PROYECTO.json'), JSON.stringify({
     name: nombre, slug, mode: LOCAL ? 'local' : 'deploy', modules: active,
     db: db ? { name: db.name, host: db.host, port: db.port, user: db.user, schema: db.schema } : null,
-    backPort: LOCAL ? backPort : null, frontPort: LOCAL ? frontPort : null,
+    backPort, frontPort,
     connectApi: LOCAL ? connectApi : null, generatedAt: new Date().toISOString(),
   }, null, 2));
 
@@ -246,7 +307,7 @@ ${connectApi ? `El front ya apunta a la API (NEXT_PUBLIC_API_URL=http://localhos
 }
 
 // ── Modo DEPLOY: .env.example con placeholders + guía de despliegue ─────────
-function writeDeployArtifacts({ out, nombre, slug, active }) {
+function writeDeployArtifacts({ out, nombre, slug, active, backPort, frontPort }) {
   fs.writeFileSync(path.join(out, 'back', '.env.example'), `# === Backend de ${nombre} ===
 # NO comitees secretos. Define estas variables en el panel de tu host
 # (Vercel/Cloudflare/Railway/Render…) o inyéctalas en runtime desde tu SaaS.
@@ -259,7 +320,7 @@ JWT_SECRET=
 
 # Puerto: solo relevante en hosts con proceso largo. En Vercel/Cloudflare
 # (serverless/edge) lo gestiona la plataforma; puedes omitirlo.
-PORT=${DEFAULT_BACK_PORT}
+PORT=${backPort}
 
 # Origen permitido por CORS = dominio REAL del front (no localhost).
 CORS_ORIGIN=            # https://tu-front.com

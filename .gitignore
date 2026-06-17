@@ -42,3 +42,9 @@ next-env.d.ts
 # Backups de base de datos (datos sensibles)
 back/backups/
 front/test-results/
+
+# Output del generador (no fuente)
+generated/
+vitaldent/
+manifest.json
+front/lib/config/generated-tenant.ts

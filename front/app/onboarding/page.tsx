@@ -146,7 +146,13 @@ function OnboardingInner() {
         {step === 1 && (
           <>
             <p className="mb-3 text-sm text-gray-500">{activeCount} módulos activos. Activa o desactiva lo que necesites.{isEdit ? ' Al desactivar un apartado se oculta; sus datos se conservan.' : ''}</p>
-            <ModuleToggleGrid modules={draft.modules} onToggle={toggle} terminology={draft.terminology} />
+            <ModuleToggleGrid modules={draft.modules} onToggle={toggle} terminology={draft.terminology}
+              vertical={draft.business.vertical} emojis={draft.moduleEmojis}
+              onSetEmoji={(id, emoji) => setDraft((d) => {
+                const next = { ...(d.moduleEmojis ?? {}) };
+                if (emoji && emoji.trim()) next[id] = emoji.trim(); else delete next[id];
+                return { ...d, moduleEmojis: next };
+              })} />
           </>
         )}
 

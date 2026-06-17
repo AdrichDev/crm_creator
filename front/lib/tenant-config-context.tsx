@@ -6,8 +6,9 @@ import {
 import { MODULE_MAP, type ModuleId } from './config/modules';
 import type { WorkerChipId } from './config/worker-chips';
 import {
-  type TenantConfig, DEFAULT_CONFIG, configFromVertical,
+  type TenantConfig, DEFAULT_CONFIG, configFromVertical, deserialize,
 } from './config/tenant-config';
+import { GENERATED_TENANT } from './config/generated-tenant';
 import type { VerticalId } from './config/verticals';
 import type { Role } from './config/roles';
 import { provisionTenant, deprovisionTenant } from './data/provision';
@@ -44,6 +45,7 @@ interface Ctx {
   setConfig: (next: TenantConfig) => void;
   update: (patch: Partial<TenantConfig>) => void;
   toggleModule: (id: ModuleId, on: boolean) => void;
+  setModuleEmoji: (id: ModuleId, emoji: string) => void;
   toggleWorkerChip: (id: WorkerChipId, on: boolean) => void;
   applyVertical: (vertical: VerticalId, name?: string) => void;
   reset: () => void;
@@ -60,7 +62,25 @@ export function TenantConfigProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try {
       const p = localStorage.getItem(PROJECTS_KEY);
-      if (p) setProjects(JSON.parse(p) as Project[]);
+      if (p) {
+        setProjects(JSON.parse(p) as Project[]);
+      } else if (GENERATED_TENANT) {
+        // Build autónomo: sin proyectos en localStorage y con tenant horneado por
+        // generar.mjs → sembrar un único proyecto activo con su config (branding,
+        // terminología, módulos). deserialize normaliza modules/workerChips faltantes.
+        const cfg = deserialize(JSON.stringify(GENERATED_TENANT));
+        if (cfg) {
+          const seeded: Project = {
+            id: uid(),
+            config: { ...cfg, setupComplete: true },
+            createdAt: new Date().toISOString(),
+          };
+          setProjects([seeded]);
+          setActiveId(seeded.id);
+          localStorage.setItem(PROJECTS_KEY, JSON.stringify([seeded]));
+          localStorage.setItem(ACTIVE_KEY, seeded.id);
+        }
+      }
       const a = localStorage.getItem(ACTIVE_KEY);
       if (a) setActiveId(a);
       const r = localStorage.getItem(ROLE_KEY);
@@ -139,6 +159,13 @@ export function TenantConfigProvider({ children }: { children: ReactNode }) {
     if (MODULE_MAP[id]?.mandatory) return;
     mutateActive((c) => ({ ...c, modules: { ...c.modules, [id]: on } }));
   }, [mutateActive]);
+  const setModuleEmoji = useCallback((id: ModuleId, emoji: string) => {
+    mutateActive((c) => {
+      const next = { ...(c.moduleEmojis ?? {}) };
+      if (emoji && emoji.trim()) next[id] = emoji.trim(); else delete next[id];
+      return { ...c, moduleEmojis: next };
+    });
+  }, [mutateActive]);
   const toggleWorkerChip = useCallback((id: WorkerChipId, on: boolean) => {
     mutateActive((c) => ({ ...c, workerChips: { ...c.workerChips, [id]: on } }));
   }, [mutateActive]);
@@ -150,9 +177,9 @@ export function TenantConfigProvider({ children }: { children: ReactNode }) {
   const value = useMemo<Ctx>(() => ({
     ready, projects, activeId, hasActive: !!active, config, role, setRole,
     createProject, openProject, closeProject, deleteProject, markGenerated,
-    setConfig, update, toggleModule, toggleWorkerChip, applyVertical, reset,
+    setConfig, update, toggleModule, setModuleEmoji, toggleWorkerChip, applyVertical, reset,
   }), [ready, projects, activeId, active, config, role, setRole, createProject, openProject, closeProject,
-       deleteProject, markGenerated, setConfig, update, toggleModule, toggleWorkerChip, applyVertical, reset]);
+       deleteProject, markGenerated, setConfig, update, toggleModule, setModuleEmoji, toggleWorkerChip, applyVertical, reset]);
 
   return <C.Provider value={value}>{children}</C.Provider>;
 }
