@@ -1,7 +1,9 @@
 import { prisma } from './prisma.js';
-import { hashPassword } from './lib/auth.js';
+import { supabaseAdmin } from './lib/auth.js';
 
 // Siembra una empresa demo completa. Ejecutar: npm run seed
+// Note: User.id is now the Supabase auth.users UUID. The seed creates a Supabase
+// user first, then uses their UUID as the crm.User PK.
 async function main() {
   const business = await prisma.business.create({
     data: { name: 'Estudio Lúa', vertical: 'peluqueria', brandPrimary: '#1b431c', brandSecondary: '#8cc63f' },
@@ -12,7 +14,17 @@ async function main() {
   for (let wd = 1; wd <= 5; wd++) await prisma.openingHour.create({ data: { locationId: location.id, weekday: wd, openTime: '09:00', closeTime: '20:00' } });
   await prisma.openingHour.create({ data: { locationId: location.id, weekday: 6, openTime: '09:00', closeTime: '14:00' } });
 
-  const owner = await prisma.user.create({ data: { email: 'owner@estudiolua.com', passwordHash: await hashPassword('demo1234'), firstName: 'Adrián' } });
+  // Create Supabase auth.users entry and use the returned UUID as crm.User.id
+  const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+    email: 'owner@estudiolua.com',
+    password: 'demo1234Seed!',
+    email_confirm: true,
+  });
+  if (authError) throw new Error(`Supabase createUser failed: ${authError.message}`);
+
+  const owner = await prisma.user.create({
+    data: { id: authData.user.id, email: 'owner@estudiolua.com', firstName: 'Adrián' },
+  });
   await prisma.membership.create({ data: { userId: owner.id, businessId: business.id, role: 'OWNER' } });
 
   const sara = await prisma.employee.create({ data: { businessId: business.id, locationId: location.id, firstName: 'Sara', lastName: 'Molina', specialty: 'Color', color: '#8cc63f' } });
@@ -23,7 +35,7 @@ async function main() {
 
   const sillon = await prisma.resource.create({ data: { businessId: business.id, locationId: location.id, name: 'Sillón 1', type: 'CHAIR', capacity: 1, services: { connect: [{ id: corte.id }, { id: color.id }] } } });
 
-  const ana = await prisma.customer.create({ data: { businessId: business.id, firstName: 'Ana', lastName: 'Gómez', phone: '600555666', email: 'ana@mail.com', status: 'ACTIVE' } });
+  const ana = await prisma.customer.create({ data: { businessId: business.id, firstName: 'Ana', lastName: 'Gómez', phone: '600555666', email: 'ana@mail.com' } });
 
   await prisma.product.create({ data: { businessId: business.id, name: 'Cera modeladora', category: 'Peinado', stock: 24, stockMinimo: 10, price: 12.5, supplier: 'BeautyDist' } });
 
@@ -35,7 +47,8 @@ async function main() {
   const start = new Date(); start.setDate(start.getDate() + 1); start.setHours(10, 0, 0, 0);
   await prisma.booking.create({ data: { businessId: business.id, locationId: location.id, customerId: ana.id, serviceId: corte.id, employeeId: sara.id, startAt: start, endAt: new Date(start.getTime() + 30 * 60000), status: 'CONFIRMED', resources: { connect: [{ id: sillon.id }] } } });
 
-  console.log('Seed OK. Login demo: owner@estudiolua.com / demo1234');
+  console.log('Seed OK. Login demo: owner@estudiolua.com / demo1234Seed! (via Supabase Auth)');
+  void sillon;
 }
 
 main().then(() => prisma.$disconnect()).catch(async (e) => { console.error(e); await prisma.$disconnect(); process.exit(1); });

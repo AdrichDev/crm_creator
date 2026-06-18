@@ -1,5 +1,5 @@
 'use client';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { Sidebar } from './sidebar';
@@ -14,6 +14,8 @@ import { ThemeToggle } from './theme-toggle';
 export function AppShell({ children }: { children: ReactNode }) {
   const { config, ready, hasActive, closeProject, role, setRole } = useProjects();
   const router = useRouter();
+  // null = checking, true/false = resolved
+  const [authedState, setAuthedState] = useState<boolean | null>(null);
 
   // Gate de login: solo en builds generados (cliente final) que aún NO tienen
   // landing importada. Al añadir landing (config.branding.designSource) el gate
@@ -23,10 +25,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!ready) return;
     if (!hasActive) { router.replace('/'); return; }
-    if (needsLogin && !isAuthed()) router.replace('/login');
+    if (!needsLogin) { setAuthedState(true); return; }
+    isAuthed().then((authed) => {
+      setAuthedState(authed);
+      if (!authed) router.replace('/login');
+    });
   }, [ready, hasActive, needsLogin, router]);
 
-  if (!ready || !hasActive || (needsLogin && !isAuthed())) {
+  if (!ready || !hasActive || (needsLogin && authedState !== true)) {
     return <div className="grid min-h-screen place-items-center bg-ink text-gray-400">Cargando…</div>;
   }
 

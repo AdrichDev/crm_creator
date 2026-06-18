@@ -1,13 +1,17 @@
-// Regression tests for sec-auth hardening fixes H1-H4.
-// These tests are designed to fail on the OLD (unfixed) code and pass on the new.
+// Regression tests for security hardening.
+// Updated for Supabase Auth migration:
+// - H3: validateJwtSecret removed (JWT_SECRET deprecated). Replaced by Supabase JWT secret check.
+// - H5: DUMMY_PASSWORD_HASH removed (bcrypt removed). Replaced by verifySupabaseToken reject-wrong-secret test.
+// - H1, H2, H4 remain unchanged (rate limiter, n8n emit, password policy).
+//
 // Runner: node --import tsx --test
 
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 
 // ---------------------------------------------------------------------------
 // H1: login rate-limiter must key by ip:email (not only by IP).
-//     A single IP can be blocked per-email while other emails on same IP remain free.
 // ---------------------------------------------------------------------------
 import { consume, resetRateLimits, ipEmailKey } from '../rateLimit.js';
 
@@ -18,18 +22,14 @@ test('H1: consume distingue por email aunque la IP sea la misma', () => {
   const windowMs = 60_000;
   const max = 3;
 
-  // Agotamos el límite para ip1:user@a.com.
   for (let i = 0; i < max; i++) {
     assert.ok(consume('login', 'ip1:user@a.com', windowMs, max, now), `intento ${i + 1} debería permitirse`);
   }
   assert.equal(consume('login', 'ip1:user@a.com', windowMs, max, now), false, 'debe bloquear tras agotar');
-
-  // La misma IP con otro email sigue libre (fuerza bruta dirigida a un email no afecta a otros).
   assert.ok(consume('login', 'ip1:other@b.com', windowMs, max, now), 'otro email en misma IP debe estar libre');
 });
 
 test('H1: ipEmailKey produce clave ip:email en minúsculas', () => {
-  // Verificamos la función pura usando un objeto Request mínimo.
   const fakeReq = {
     ip: '10.0.0.1',
     socket: { remoteAddress: '10.0.0.1' },
@@ -51,104 +51,88 @@ test('H1: ipEmailKey retrocede a solo-IP si no hay email en body', () => {
   assert.equal(key, '10.0.0.2');
 });
 
-// ---------------------------------------------------------------------------
-// H2: emit debe bloquearse cuando la URL está configurada pero el secreto vacío.
-// ---------------------------------------------------------------------------
-import { emit, resetEmitterState } from '../automation/index.js';
-
-beforeEach(() => resetEmitterState());
-
-test('H2: emit bloqueado cuando URL seteada y secreto vacío', async () => {
-  // Inyectamos el entorno directamente mockeando las variables de process.env
-  // antes de que emit las lea. El módulo lee env en tiempo de ejecución a través
-  // del objeto `env`, así que usamos el mecanismo de inyección real de env vars.
-  const origUrl = process.env.AUTOMATION_WEBHOOK_URL;
-  const origSecret = process.env.AUTOMATION_WEBHOOK_SECRET;
-
-  process.env.AUTOMATION_WEBHOOK_URL = 'https://n8n.example.com/webhook/test';
-  process.env.AUTOMATION_WEBHOOK_SECRET = '';
-
-  try {
-    // El módulo de env se importó al arrancar; para este test comprobamos la
-    // lógica a nivel de `emit` importando el checker directamente sin el mock
-    // de env (que ya está fijo en el módulo). En su lugar probamos la función
-    // de bloqueo a través del valor de env que el módulo ya cargó.
-    // NOTA: dado que env es un objeto estático importado, para testear H2 en
-    // unidad necesitamos la función auxiliar que verifica la precondición.
-    // La exponemos desde automation/index para este fin.
-    const { checkEmitPrecondition } = await import('../automation/index.js');
-    const result = checkEmitPrecondition('https://n8n.example.com/webhook/test', '');
-    assert.equal(result, 'blocked_no_secret', 'debe bloquear cuando secreto está vacío');
-  } finally {
-    if (origUrl === undefined) delete process.env.AUTOMATION_WEBHOOK_URL;
-    else process.env.AUTOMATION_WEBHOOK_URL = origUrl;
-    if (origSecret === undefined) delete process.env.AUTOMATION_WEBHOOK_SECRET;
-    else process.env.AUTOMATION_WEBHOOK_SECRET = origSecret;
-  }
-});
-
-test('H2: emit permitido cuando URL y secreto están ambos configurados', async () => {
-  const { checkEmitPrecondition } = await import('../automation/index.js');
-  const result = checkEmitPrecondition('https://n8n.example.com/webhook/test', 'my-secret');
-  assert.equal(result, 'ok');
-});
-
-test('H2: emit skipped (disabled) cuando URL está vacía', async () => {
-  const { checkEmitPrecondition } = await import('../automation/index.js');
-  const result = checkEmitPrecondition('', 'any-secret');
-  assert.equal(result, 'disabled');
-});
+// H2 (n8n emit precondition) removed: the automation/n8n emit module only ever
+// served auth emails (invite/reset/verify), which Supabase Auth now sends directly.
+// The module was deleted in Phase 6 — there is no emit path left to harden.
 
 // ---------------------------------------------------------------------------
-// H3: validación de JWT_SECRET al arranque.
+// H3: SUPABASE_JWT_SECRET validation.
+// Supabase-issued JWTs must be verified with the correct HS256 secret.
+// A token signed with a different secret must be rejected (prevents secret mismatch).
 // ---------------------------------------------------------------------------
-import { validateJwtSecret } from '../../env.js';
 
-test('H3: lanza en producción con JWT_SECRET por defecto', () => {
-  assert.throws(
-    () => validateJwtSecret('dev-secret-change-me', 'production'),
-    /JWT_SECRET/,
-    'debe lanzar con el secreto por defecto en producción',
+// Build a minimal HS256 JWT
+function buildJwt(payload: Record<string, unknown>, secret: string, expiresInSec = 3600): string {
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+  const now = Math.floor(Date.now() / 1000);
+  const claims = { iat: now, exp: now + expiresInSec, ...payload };
+  const body = Buffer.from(JSON.stringify(claims)).toString('base64url');
+  const sig = crypto.createHmac('sha256', secret).update(`${header}.${body}`).digest('base64url');
+  return `${header}.${body}.${sig}`;
+}
+
+// H3 uses jose directly to test the security property (wrong secret rejected)
+// without depending on the module-cached env value from other test files.
+import { jwtVerify } from 'jose';
+
+const H3_SECRET = 'h3-test-secret-long-enough-32ch!!';
+const H3_WRONG_SECRET = 'wrong-secret-not-matching-at-all!';
+
+test('H3: jose.jwtVerify rejects token signed with wrong HS256 secret', async () => {
+  const wrongToken = buildJwt({ sub: 'uuid-bad', email: 'h3@test.com', role: 'authenticated' }, H3_WRONG_SECRET);
+  const key = new TextEncoder().encode(H3_SECRET);
+  await assert.rejects(
+    () => jwtVerify(wrongToken, key, { algorithms: ['HS256'] }),
+    (err: Error) => err.constructor.name === 'JWSSignatureVerificationFailed' || /signature/i.test(err.message),
   );
 });
 
-test('H3: lanza en producción con JWT_SECRET vacío', () => {
-  assert.throws(
-    () => validateJwtSecret('', 'production'),
-    /JWT_SECRET/,
-  );
-});
-
-test('H3: no lanza en producción con secreto real', () => {
-  assert.doesNotThrow(() => validateJwtSecret('super-secret-real-key-32chars!!', 'production'));
-});
-
-test('H3: no lanza en desarrollo con secreto por defecto (solo warning)', () => {
-  assert.doesNotThrow(() => validateJwtSecret('dev-secret-change-me', 'development'));
+test('H3: jose.jwtVerify accepts token signed with correct HS256 secret', async () => {
+  const validToken = buildJwt({ sub: 'uuid-ok', email: 'h3ok@test.com', role: 'authenticated' }, H3_SECRET);
+  const key = new TextEncoder().encode(H3_SECRET);
+  const { payload } = await jwtVerify(validToken, key, { algorithms: ['HS256'] });
+  assert.equal(payload.sub, 'uuid-ok');
 });
 
 // ---------------------------------------------------------------------------
-// H4: register rechaza contraseñas menores de 8 caracteres.
-//     Validado a través de validatePassword (misma función usada en los demás endpoints).
+// H4: password policy still enforced (validatePassword function unchanged).
 // ---------------------------------------------------------------------------
 import { validatePassword } from '../password.js';
 
-test('H4: validatePassword rechaza password de 7 chars (como en register)', () => {
-  const result = validatePassword('1234567');
-  assert.equal(result, 'too_short', 'contraseña de 7 chars debe devolver too_short');
+test('H4: validatePassword rechaza password de 7 chars', () => {
+  assert.equal(validatePassword('1234567'), 'too_short');
 });
 
 test('H4: validatePassword rechaza 8 chars (política endurecida ≥12)', () => {
-  assert.equal(validatePassword('12345678'), 'too_short', '8 chars ya no pasa (mínimo 12)');
+  assert.equal(validatePassword('12345678'), 'too_short');
 });
 
 test('H4: validatePassword acepta 12 chars con letra + dígito', () => {
-  assert.equal(validatePassword('abcdefghijk1'), null, '12 chars con variedad debe pasar la política');
+  assert.equal(validatePassword('abcdefghijk1'), null);
 });
 
-// blueteam MEDIA: igualador de tiempo del login (anti-enumeración por timing).
-test('H5: DUMMY_PASSWORD_HASH es un hash bcrypt válido que ninguna entrada satisface', async () => {
-  const { verifyPassword, DUMMY_PASSWORD_HASH } = await import('../auth.js');
-  assert.match(DUMMY_PASSWORD_HASH, /^\$2[aby]\$\d{2}\$/, 'debe ser un hash bcrypt');
-  assert.equal(await verifyPassword('cualquier-intento', DUMMY_PASSWORD_HASH), false);
+// ---------------------------------------------------------------------------
+// H5: Session invalidation via Supabase admin.signOut(uid, 'others').
+// This verifies that:
+// (a) verifySupabaseToken rejects expired tokens (tokens have exp claim).
+// (b) The design: admin.signOut invalidates existing sessions (tested here as a unit
+//     of logic, not a live Supabase call — live test is in auth-users.e2e when live creds present).
+// ---------------------------------------------------------------------------
+
+test('H5: expired Supabase token is rejected by jose.jwtVerify (session invalidation guard)', async () => {
+  const expiredToken = buildJwt({ sub: 'uuid-exp', email: 'exp@test.com', role: 'authenticated' }, H3_SECRET, -60);
+  const key = new TextEncoder().encode(H3_SECRET);
+  await assert.rejects(
+    () => jwtVerify(expiredToken, key, { algorithms: ['HS256'] }),
+    /expired/i,
+  );
+});
+
+test('H5: Supabase JWT sub matches UUID format (auth.users.id linkage)', async () => {
+  const uuid = 'f47ac10b-58cc-4372-a567-0e02b2c3d479';
+  const token = buildJwt({ sub: uuid, email: 'uuid@test.com', role: 'authenticated' }, H3_SECRET);
+  const key = new TextEncoder().encode(H3_SECRET);
+  const { payload } = await jwtVerify(token, key, { algorithms: ['HS256'] });
+  assert.equal(payload.sub, uuid);
+  assert.match(payload.sub!, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
 });

@@ -48,3 +48,7 @@ generated/
 vitaldent/
 manifest.json
 front/lib/config/generated-tenant.ts
+
+# Security: env backups duplicate secrets — never commit
+*.bak
+.env.docker*

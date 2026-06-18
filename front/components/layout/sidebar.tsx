@@ -33,8 +33,8 @@ export function Sidebar() {
 
   // "Salir": en un build generado (cliente final) cierra sesión y vuelve al
   // login. En la consola fuente cierra el proyecto y vuelve al dashboard general.
-  function salir() {
-    if (GENERATED_TENANT) { logout(); router.replace('/login'); return; }
+  async function salir() {
+    if (GENERATED_TENANT) { await logout(); router.replace('/login'); return; }
     closeProject(); router.push('/');
   }
 

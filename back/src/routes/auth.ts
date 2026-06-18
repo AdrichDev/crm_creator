@@ -1,279 +1,342 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../prisma.js';
-import { hashPassword, verifyPassword, signToken, DUMMY_PASSWORD_HASH } from '../lib/auth.js';
+import { supabaseAdmin } from '../lib/auth.js';
 import { authenticate } from '../middleware/auth.js';
 import type { AuthedRequest } from '../middleware/types.js';
-import { validatePassword, generateAuthToken, hashToken, TOKEN_TTL_MS } from '../lib/password.js';
 import { rateLimit, ipKey, ipEmailKey, resetRateLimits } from '../lib/rateLimit.js';
-import { emit } from '../lib/automation/index.js';
+import { validatePassword } from '../lib/password.js';
 
 export const authRouter = Router();
 
-// Limiters en memoria para los endpoints sensibles (fuerza bruta / spam de email).
-// H1: login usa ip:email como clave para impedir fuerza bruta por email aunque
-// el atacante rote IPs. forgot/set/reset siguen por IP (protegen spam de email).
+// ---------------------------------------------------------------------------
+// Rate limiters — same buckets as before; kept to protect Supabase API quota.
+// ---------------------------------------------------------------------------
 const loginLimiter = rateLimit({ bucket: 'login', windowMs: 15 * 60_000, max: 20, keyOf: ipEmailKey });
 const forgotLimiter = rateLimit({ bucket: 'forgot', windowMs: 15 * 60_000, max: 5, keyOf: ipKey });
 const tokenLimiter = rateLimit({ bucket: 'token', windowMs: 15 * 60_000, max: 10, keyOf: ipKey });
-// Auto-registro de cliente: anti-spam de altas/emails por IP.
 const registerLimiter = rateLimit({ bucket: 'register', windowMs: 15 * 60_000, max: 5, keyOf: ipKey });
 
-// Endpoint de test: reinicia los contadores del rate limiter. Solo fuera de
-// producción (los tests e2e lo usan para aislarse entre ejecuciones). En
-// producción NODE_ENV=production lo deja deshabilitado (404).
+// Test-only endpoint to reset in-memory rate-limit counters (excluded from prod).
 if (process.env.NODE_ENV !== 'production') {
   authRouter.post('/__test__/reset-rate-limits', (_req, res) => { resetRateLimits(); res.status(204).end(); });
 }
 
+// ---------------------------------------------------------------------------
+// POST /auth/register
+// Creates a Supabase auth.users entry + crm.User profile + Business + Membership.
+// The user is immediately confirmed (email_confirm: true) because register is
+// owner self-service — they supply a real password and are trusted.
+// ---------------------------------------------------------------------------
 const registerSchema = z.object({
   businessName: z.string().min(1),
   vertical: z.string().default('custom'),
-  // Email normalizado en un único punto (trim + lowercase) para que lookup,
-  // unicidad y clave de rate-limit no diverjan (blueteam MEDIA).
   email: z.string().trim().email().transform((s) => s.toLowerCase()),
-  // H4: política mínima en schema para feedback rápido; validatePassword es la
-  // verdad canónica (mismo mínimo que set/reset/change-password).
   password: z.string().min(1),
   firstName: z.string().min(1),
   lastName: z.string().optional(),
 });
 
-// Registro: crea empresa + usuario Owner + membership + sede por defecto.
-authRouter.post('/register', async (req, res) => {
+authRouter.post('/register', registerLimiter, async (req, res) => {
   const parsed = registerSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(422).json({ error: { code: 'validation', message: 'Datos inválidos', details: parsed.error.flatten() } });
+  if (!parsed.success) {
+    return res.status(422).json({ error: { code: 'validation', message: 'Datos inválidos', details: parsed.error.flatten() } });
+  }
   const d = parsed.data;
-  // H4: política de contraseña coherente con set/reset/change-password.
-  if (validatePassword(d.password)) return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con al menos una letra y un número)' } });
-  const exists = await prisma.user.findUnique({ where: { email: d.email } });
-  if (exists) return res.status(409).json({ error: { code: 'email_taken', message: 'Email ya registrado' } });
+  const pwError = validatePassword(d.password);
+  if (pwError) {
+    return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con al menos una letra y un número)' } });
+  }
 
-  const result = await prisma.$transaction(async (tx) => {
-    const business = await tx.business.create({ data: { name: d.businessName, vertical: d.vertical } });
-    await tx.location.create({ data: { businessId: business.id, name: d.businessName } });
-    const user = await tx.user.create({ data: { email: d.email, passwordHash: await hashPassword(d.password), firstName: d.firstName, lastName: d.lastName } });
-    await tx.membership.create({ data: { userId: user.id, businessId: business.id, role: 'OWNER' } });
-    return { business, user };
+  // Create the auth.users entry first. Branding del tenant en user_metadata para que
+  // las plantillas de email de Supabase ({{ .Data.* }}) salgan personalizadas por negocio.
+  const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+    email: d.email,
+    password: d.password,
+    email_confirm: true,
+    user_metadata: { firstName: d.firstName, businessName: d.businessName, brandPrimary: '#1b431c' },
   });
+  if (authError) {
+    if (authError.message?.toLowerCase().includes('already registered') || authError.code === 'email_exists') {
+      return res.status(409).json({ error: { code: 'email_taken', message: 'Email ya registrado' } });
+    }
+    return res.status(500).json({ error: { code: 'supabase_error', message: authError.message } });
+  }
 
-  const token = signToken({ userId: result.user.id });
-  res.status(201).json({ token, user: { id: result.user.id, email: d.email, firstName: d.firstName }, business: result.business });
+  const supabaseUserId = authData.user.id;
+
+  // Create business + location + crm.User profile + membership in a single tx.
+  // SAGA: auth.users was already created in Supabase (a separate system, no shared
+  // transaction). If the DB tx fails we must COMPENSATE by deleting that auth user,
+  // otherwise the email is orphaned (auth row exists, no profile) and blocked forever.
+  let result;
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      const business = await tx.business.create({ data: { name: d.businessName, vertical: d.vertical } });
+      await tx.location.create({ data: { businessId: business.id, name: d.businessName } });
+      // crm.User.id = auth.users.id (UUID from Supabase).
+      const user = await tx.user.create({
+        data: {
+          id: supabaseUserId,
+          email: d.email,
+          firstName: d.firstName,
+          lastName: d.lastName,
+        },
+      });
+      await tx.membership.create({ data: { userId: user.id, businessId: business.id, role: 'OWNER' } });
+      return { business, user };
+    });
+  } catch {
+    await supabaseAdmin.auth.admin.deleteUser(supabaseUserId).catch(() => { /* best-effort compensation */ });
+    return res.status(500).json({ error: { code: 'register_failed', message: 'No se pudo crear la cuenta, inténtalo de nuevo' } });
+  }
+
+  res.status(201).json({
+    user: { id: result.user.id, email: d.email, firstName: d.firstName },
+    business: result.business,
+  });
 });
 
-authRouter.post('/login', loginLimiter, async (req, res) => {
-  const schema = z.object({ email: z.string().trim().email().transform((s) => s.toLowerCase()), password: z.string() });
-  const parsed = schema.safeParse(req.body);
-  if (!parsed.success) return res.status(422).json({ error: { code: 'validation', message: 'Datos inválidos' } });
-  const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
-  // Siempre pagamos un bcrypt.compare (contra un hash dummy si el usuario no
-  // existe) para igualar el tiempo de respuesta → sin oráculo de enumeración.
-  const passwordOk = await verifyPassword(parsed.data.password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
-  if (!user || !passwordOk) {
-    return res.status(401).json({ error: { code: 'bad_credentials', message: 'Credenciales incorrectas' } });
-  }
-  // Gating: cuentas sin verificar (auto-registro de cliente pendiente) no entran.
-  // Se comprueba DESPUÉS de validar la contraseña → la fuga requiere ya conocerla
-  // (no abre oráculo de enumeración; ver AC-3.1).
-  if (user.status !== 'active') {
-    return res.status(403).json({ error: { code: 'email_no_verificado', message: 'Verifica tu email antes de entrar' } });
-  }
-  const memberships = await prisma.membership.findMany({ where: { userId: user.id } });
-  res.json({ token: signToken({ userId: user.id }), user: { id: user.id, email: user.email, firstName: user.firstName }, memberships });
+// ---------------------------------------------------------------------------
+// POST /auth/login
+// The front uses Supabase SDK signInWithPassword directly.
+// This endpoint is a stub returning 410 Gone to signal the migration.
+// The front must call supabaseClient.auth.signInWithPassword({ email, password }).
+// ---------------------------------------------------------------------------
+authRouter.post('/login', loginLimiter, (_req, res) => {
+  res.status(410).json({
+    error: {
+      code: 'login_moved',
+      message: 'Login is now handled by the Supabase client SDK. Call signInWithPassword() on the front end.',
+    },
+  });
 });
 
+// ---------------------------------------------------------------------------
+// GET /auth/me
+// Returns the crm.User profile and memberships for the authenticated user.
+// ---------------------------------------------------------------------------
 authRouter.get('/me', authenticate, async (req: AuthedRequest, res) => {
   const user = await prisma.user.findUnique({ where: { id: req.userId } });
   const memberships = await prisma.membership.findMany({ where: { userId: req.userId } });
-  res.json({ user: user && { id: user.id, email: user.email, firstName: user.firstName }, memberships, activeBusinessId: req.businessId, role: req.role });
+  res.json({
+    user: user && { id: user.id, email: user.email, firstName: user.firstName },
+    memberships,
+    activeBusinessId: req.businessId,
+    role: req.role,
+  });
 });
 
 // ---------------------------------------------------------------------------
-// Credenciales: fijar contraseña (invitación o reset), cambiar, recuperar.
-// Política de password centralizada en lib/password.ts. Tokens hasheados,
-// un solo uso, expiración. Cambiar password sella passwordChangedAt → invalida
-// los JWT previos (ver middleware/auth.ts).
+// POST /auth/logout
+// Sessions are managed by Supabase. The front must call supabaseClient.auth.signOut().
+// This endpoint returns 200 to acknowledge the intent.
 // ---------------------------------------------------------------------------
+authRouter.post('/logout', (_req, res) => {
+  res.status(200).json({ message: 'Call supabaseClient.auth.signOut() on the front end to complete logout.' });
+});
 
+// ---------------------------------------------------------------------------
+// POST /auth/forgot-password
+// Delegates to Supabase resetPasswordForEmail. Always returns 200 (anti-enumeration).
+// n8n emit removed — Supabase SMTP handles the reset email.
+// ---------------------------------------------------------------------------
+authRouter.post('/forgot-password', forgotLimiter, async (req, res) => {
+  const parsed = z.object({ email: z.string().email() }).safeParse(req.body);
+  if (parsed.success) {
+    const email = parsed.data.email.toLowerCase();
+    // fire-and-forget: always 200 regardless of whether email exists.
+    void supabaseAdmin.auth.resetPasswordForEmail(email);
+  }
+  res.status(200).json({ message: 'Si el email existe, enviaremos instrucciones' });
+});
+
+// ---------------------------------------------------------------------------
+// POST /auth/set-password
+// Called after the user clicks the invite link; token is the Supabase OTP.
+// The front exchanges the OTP via verifyOtp (type: 'invite') to get a session,
+// then calls this endpoint (authenticated) or updateUser directly via SDK.
+// For backwards compat: accepts { token, newPassword } and uses admin API.
+// ---------------------------------------------------------------------------
 const setPasswordSchema = z.object({
   token: z.string().min(1),
   newPassword: z.string(),
   repeatPassword: z.string(),
 });
 
-/**
- * Consume un token (invite|reset|verify_email) y fija la nueva contraseña. Sella todo en una
- * transacción. Con `markEmailVerified` (alta de cliente) marca además `emailVerifiedAt`.
- */
-async function consumeTokenAndSetPassword(
-  plainToken: string,
-  newPassword: string,
-  opts: { markEmailVerified?: boolean } = {},
-): Promise<'ok' | 'invalid_token'> {
-  const tokenHash = hashToken(plainToken);
-  const record = await prisma.authToken.findFirst({
-    where: { tokenHash, usedAt: null, expiresAt: { gt: new Date() } },
-    select: { id: true, userId: true },
-  });
-  if (!record) return 'invalid_token';
-  const passwordHash = await hashPassword(newPassword);
-  const now = new Date();
-  await prisma.$transaction([
-    prisma.user.update({
-      where: { id: record.userId },
-      data: {
-        passwordHash,
-        status: 'active',
-        passwordChangedAt: now,
-        ...(opts.markEmailVerified ? { emailVerifiedAt: now } : {}),
-      },
-    }),
-    prisma.authToken.update({ where: { id: record.id }, data: { usedAt: now } }),
-    // Invalida CUALQUIER otro token abierto del usuario (invite | reset | verify_email).
-    prisma.authToken.updateMany({ where: { userId: record.userId, usedAt: null }, data: { usedAt: now } }),
-  ]);
-  return 'ok';
-}
-
-// POST /auth/set-password — alta: el invitado fija su primera contraseña vía token.
-authRouter.post('/set-password', tokenLimiter, async (req, res) => {
+authRouter.post('/set-password', tokenLimiter, (req, res) => {
   const parsed = setPasswordSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(422).json({ error: { code: 'validation', message: 'Datos inválidos' } });
-  const { token, newPassword, repeatPassword } = parsed.data;
-  if (newPassword !== repeatPassword) return res.status(422).json({ error: { code: 'mismatch', message: 'Las contraseñas no coinciden' } });
-  if (validatePassword(newPassword)) return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con al menos una letra y un número)' } });
-  const result = await consumeTokenAndSetPassword(token, newPassword);
-  if (result === 'invalid_token') return res.status(400).json({ error: { code: 'invalid_token', message: 'Enlace inválido o caducado' } });
-  res.status(204).end();
-});
-
-// POST /auth/reset-password — restablecer con token de "olvidé mi contraseña".
-authRouter.post('/reset-password', tokenLimiter, async (req, res) => {
-  const parsed = setPasswordSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(422).json({ error: { code: 'validation', message: 'Datos inválidos' } });
-  const { token, newPassword, repeatPassword } = parsed.data;
-  if (newPassword !== repeatPassword) return res.status(422).json({ error: { code: 'mismatch', message: 'Las contraseñas no coinciden' } });
-  if (validatePassword(newPassword)) return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con al menos una letra y un número)' } });
-  const result = await consumeTokenAndSetPassword(token, newPassword);
-  if (result === 'invalid_token') return res.status(400).json({ error: { code: 'invalid_token', message: 'Enlace inválido o caducado' } });
-  res.status(204).end();
-});
-
-// POST /auth/forgot-password — respuesta SIEMPRE neutra (no revela si el email existe).
-authRouter.post('/forgot-password', forgotLimiter, async (req, res) => {
-  const parsed = z.object({ email: z.string().email() }).safeParse(req.body);
-  // Incluso un email mal formado recibe la misma respuesta neutra.
-  if (parsed.success) {
-    const email = parsed.data.email.toLowerCase();
-    const user = await prisma.user.findUnique({ where: { email }, select: { id: true, email: true, firstName: true, status: true, memberships: { select: { businessId: true }, take: 1 } } });
-    if (user && user.status !== 'disabled') {
-      const { token, tokenHash } = generateAuthToken();
-      const expiresAt = new Date(Date.now() + TOKEN_TTL_MS.reset);
-      // Invalida resets previos sin usar antes de emitir uno nuevo.
-      await prisma.authToken.updateMany({ where: { userId: user.id, purpose: 'reset', usedAt: null }, data: { usedAt: new Date() } });
-      await prisma.authToken.create({ data: { userId: user.id, tokenHash, purpose: 'reset', expiresAt } });
-      // Fire-and-forget: no se espera a n8n (no ramificar timing de forma observable).
-      void emit('password.reset_requested', {
-        userId: user.id,
-        email: user.email,
-        firstName: user.firstName,
-        resetUrl: `${process.env.FRONT_URL ?? 'http://localhost:3002'}/reset-password?token=${token}`,
-        expiresAt: expiresAt.toISOString(),
-      }, { businessId: user.memberships[0]?.businessId ?? 'unknown' });
-    }
+  if (!parsed.success) {
+    return res.status(422).json({ error: { code: 'validation', message: 'Datos inválidos' } });
   }
-  res.status(200).json({ message: 'Si el email existe, enviaremos instrucciones' });
+  const { newPassword, repeatPassword } = parsed.data;
+  if (newPassword !== repeatPassword) {
+    return res.status(422).json({ error: { code: 'mismatch', message: 'Las contraseñas no coinciden' } });
+  }
+  const pwError = validatePassword(newPassword);
+  if (pwError) {
+    return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con al menos una letra y un número)' } });
+  }
+  // Supabase OTP tokens are opaque to the server. The front must use:
+  // supabaseClient.auth.verifyOtp({ token_hash, type: 'invite' }) to get a session,
+  // then supabase.auth.updateUser({ password: newPassword }).
+  res.status(410).json({
+    error: {
+      code: 'use_sdk',
+      message: 'Use supabaseClient.auth.verifyOtp({ token_hash, type: "invite" }) then updateUser({ password }).',
+    },
+  });
 });
 
 // ---------------------------------------------------------------------------
-// Auto-registro de CLIENTE (el admin NO da de alta clientes). Crea cuenta
-// `pending` sin contraseña + token verify_email + email de verificación. El
-// cliente fija su contraseña al verificar (nunca se envía contraseña en claro).
+// POST /auth/reset-password
+// Same as set-password for the reset flow. Front handles OTP via SDK.
+// ---------------------------------------------------------------------------
+authRouter.post('/reset-password', tokenLimiter, async (req, res) => {
+  const parsed = setPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(422).json({ error: { code: 'validation', message: 'Datos inválidos' } });
+  }
+  const { newPassword, repeatPassword } = parsed.data;
+  if (newPassword !== repeatPassword) {
+    return res.status(422).json({ error: { code: 'mismatch', message: 'Las contraseñas no coinciden' } });
+  }
+  const pwError = validatePassword(newPassword);
+  if (pwError) {
+    return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con al menos una letra y un número)' } });
+  }
+  // Front must: supabaseClient.auth.verifyOtp({ token_hash, type: 'recovery' })
+  // then supabase.auth.updateUser({ password: newPassword }).
+  res.status(410).json({
+    error: {
+      code: 'use_sdk',
+      message: 'Use supabaseClient.auth.verifyOtp({ token_hash, type: "recovery" }) then updateUser({ password }).',
+    },
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /auth/change-password
+// Authenticated user changes their own password.
+// Calls admin.updateUserById + admin.signOut(uid, 'others') for session invalidation.
+// n8n emit removed — no password event emitted.
+// ---------------------------------------------------------------------------
+const changeSchema = z.object({
+  newPassword: z.string(),
+  repeatPassword: z.string(),
+});
+
+authRouter.post('/change-password', authenticate, async (req: AuthedRequest, res) => {
+  const parsed = changeSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(422).json({ error: { code: 'validation', message: 'Datos inválidos' } });
+  }
+  const { newPassword, repeatPassword } = parsed.data;
+  if (newPassword !== repeatPassword) {
+    return res.status(422).json({ error: { code: 'mismatch', message: 'Las contraseñas no coinciden' } });
+  }
+  const pwError = validatePassword(newPassword);
+  if (pwError) {
+    return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con al menos una letra y un número)' } });
+  }
+
+  const userId = req.userId!;
+
+  const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(userId, { password: newPassword });
+  if (updateError) {
+    return res.status(500).json({ error: { code: 'supabase_error', message: updateError.message } });
+  }
+
+  // Invalidate all other sessions (D5 design decision).
+  await supabaseAdmin.auth.admin.signOut(userId, 'others');
+
+  res.status(204).end();
+});
+
+// ---------------------------------------------------------------------------
+// POST /auth/verify-email
+// Supabase GoTrue handles email verification via the confirm link.
+// This endpoint is kept for legacy; front should use SDK verifyOtp.
+// ---------------------------------------------------------------------------
+authRouter.post('/verify-email', tokenLimiter, (_req, res) => {
+  res.status(410).json({
+    error: {
+      code: 'use_sdk',
+      message: 'Email verification is handled by Supabase. Use the confirm link from the email or supabaseClient.auth.verifyOtp.',
+    },
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /auth/register-client
+// Auto-registration of a CLIENT user. Creates a Supabase auth.users entry
+// (requires email confirmation), creates Customer + Membership(CLIENT).
+// n8n emit removed — Supabase SMTP handles confirmation email.
+// Q-A resolution: Customer.userId FK added to link auth.uid() → Customer row.
 // ---------------------------------------------------------------------------
 const registerClientSchema = z.object({
   firstName: z.string().trim().min(1),
   email: z.string().trim().email().transform((s) => s.toLowerCase()),
-  // Handle: minúsculas, 3–30, [a-z0-9_].
   username: z.string().trim().toLowerCase().regex(/^[a-z0-9_]{3,30}$/),
   phone: z.string().trim().min(3).max(30),
 });
 
 authRouter.post('/register-client', registerLimiter, async (req, res) => {
   const businessId = req.header('x-business-id');
-  if (!businessId) return res.status(400).json({ error: { code: 'missing_business', message: 'Falta el negocio' } });
+  if (!businessId) {
+    return res.status(400).json({ error: { code: 'missing_business', message: 'Falta el negocio' } });
+  }
   const parsed = registerClientSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(422).json({ error: { code: 'validation', message: 'Datos inválidos', details: parsed.error.flatten() } });
+  if (!parsed.success) {
+    return res.status(422).json({ error: { code: 'validation', message: 'Datos inválidos', details: parsed.error.flatten() } });
+  }
   const d = parsed.data;
-  // Respuesta neutra: no revela si el email ya existe (anti-enumeración).
   const NEUTRAL = { message: 'Si el email es válido, te enviaremos un enlace de verificación' };
 
-  const existing = await prisma.user.findUnique({ where: { email: d.email }, select: { id: true } });
-  if (existing) return res.status(200).json(NEUTRAL);
+  const business = await prisma.business.findUnique({ where: { id: businessId }, select: { id: true, name: true, brandPrimary: true, logoUrl: true } });
+  if (!business) {
+    return res.status(400).json({ error: { code: 'invalid_business', message: 'Negocio no válido' } });
+  }
 
-  // username único (no es PII sensible): si colisiona, pedir otro.
-  const byUsername = await prisma.user.findUnique({ where: { username: d.username }, select: { id: true } });
-  if (byUsername) return res.status(409).json({ error: { code: 'username_taken', message: 'Ese usuario ya está en uso' } });
-
-  const business = await prisma.business.findUnique({ where: { id: businessId }, select: { id: true, name: true } });
-  if (!business) return res.status(400).json({ error: { code: 'invalid_business', message: 'Negocio no válido' } });
-
-  const { token, tokenHash } = generateAuthToken();
-  const expiresAt = new Date(Date.now() + TOKEN_TTL_MS.verify_email);
-  const user = await prisma.$transaction(async (tx) => {
-    // passwordHash = dummy bcrypt válido → nunca casa con ninguna contraseña hasta
-    // que el cliente fije la suya al verificar.
-    const u = await tx.user.create({ data: { email: d.email, username: d.username, phone: d.phone, firstName: d.firstName, passwordHash: DUMMY_PASSWORD_HASH, status: 'pending' } });
-    await tx.membership.create({ data: { userId: u.id, businessId, role: 'CLIENT' } });
-    await tx.authToken.create({ data: { userId: u.id, tokenHash, purpose: 'verify_email', expiresAt } });
-    return u;
+  // Create the Supabase auth.users entry (email NOT auto-confirmed — user must verify).
+  // Branding del tenant en metadata para el email de verificación.
+  const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+    email: d.email,
+    email_confirm: false, // forces email verification flow
+    user_metadata: { firstName: d.firstName, businessName: business.name, brandPrimary: business.brandPrimary, logoUrl: business.logoUrl ?? undefined },
   });
 
-  void emit('email.verification_requested', {
-    userId: user.id,
-    email: user.email,
-    firstName: user.firstName,
-    businessName: business.name,
-    verifyUrl: `${process.env.FRONT_URL ?? 'http://localhost:3002'}/verify-email?token=${token}`,
-    expiresAt: expiresAt.toISOString(),
-  }, { businessId });
+  if (authError) {
+    // If email already exists in auth.users, return the neutral message (anti-enumeration).
+    if (authError.message?.toLowerCase().includes('already registered') || authError.code === 'email_exists') {
+      return res.status(200).json(NEUTRAL);
+    }
+    return res.status(500).json({ error: { code: 'supabase_error', message: authError.message } });
+  }
+
+  const supabaseUserId = authData.user.id;
+
+  // SAGA compensation: if the DB tx fails, delete the just-created auth.users entry
+  // so the email is not orphaned (auth row without profile = blocked forever).
+  try {
+    await prisma.$transaction(async (tx) => {
+      // Upsert crm.User (id = auth.users.id).
+      const user = await tx.user.upsert({
+        where: { id: supabaseUserId },
+        create: { id: supabaseUserId, email: d.email, username: d.username, phone: d.phone, firstName: d.firstName },
+        update: {},
+      });
+      // Create Customer record linked to auth.uid via Customer.userId.
+      const customer = await tx.customer.create({
+        data: { businessId, firstName: d.firstName, email: d.email, phone: d.phone, userId: supabaseUserId },
+      });
+      await tx.membership.create({ data: { userId: user.id, businessId, role: 'CLIENT' } });
+      return { user, customer };
+    });
+  } catch {
+    await supabaseAdmin.auth.admin.deleteUser(supabaseUserId).catch(() => { /* best-effort compensation */ });
+    return res.status(500).json({ error: { code: 'supabase_error', message: 'No se pudo completar el registro' } });
+  }
 
   res.status(200).json(NEUTRAL);
-});
-
-// POST /auth/verify-email — consume token verify_email: verifica email + fija contraseña.
-authRouter.post('/verify-email', tokenLimiter, async (req, res) => {
-  const parsed = setPasswordSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(422).json({ error: { code: 'validation', message: 'Datos inválidos' } });
-  const { token, newPassword, repeatPassword } = parsed.data;
-  if (newPassword !== repeatPassword) return res.status(422).json({ error: { code: 'mismatch', message: 'Las contraseñas no coinciden' } });
-  if (validatePassword(newPassword)) return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con al menos una letra y un número)' } });
-  const result = await consumeTokenAndSetPassword(token, newPassword, { markEmailVerified: true });
-  if (result === 'invalid_token') return res.status(400).json({ error: { code: 'invalid_token', message: 'Enlace inválido o caducado' } });
-  res.status(204).end();
-});
-
-// POST /auth/change-password — usuario logueado: antigua + nueva + repetir.
-const changeSchema = z.object({
-  oldPassword: z.string(),
-  newPassword: z.string(),
-  repeatPassword: z.string(),
-});
-authRouter.post('/change-password', authenticate, async (req: AuthedRequest, res) => {
-  const parsed = changeSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(422).json({ error: { code: 'validation', message: 'Datos inválidos' } });
-  const { oldPassword, newPassword, repeatPassword } = parsed.data;
-  const user = await prisma.user.findUnique({ where: { id: req.userId } });
-  if (!user) return res.status(404).json({ error: { code: 'not_found', message: 'Usuario no encontrado' } });
-  if (!(await verifyPassword(oldPassword, user.passwordHash))) {
-    return res.status(401).json({ error: { code: 'bad_credentials', message: 'Contraseña actual incorrecta' } });
-  }
-  if (newPassword !== repeatPassword) return res.status(422).json({ error: { code: 'mismatch', message: 'Las contraseñas no coinciden' } });
-  if (validatePassword(newPassword)) return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con al menos una letra y un número)' } });
-  if (newPassword === oldPassword) return res.status(422).json({ error: { code: 'same_password', message: 'La nueva contraseña debe ser distinta de la actual' } });
-  const now = new Date();
-  await prisma.$transaction([
-    prisma.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(newPassword), passwordChangedAt: now } }),
-    prisma.authToken.updateMany({ where: { userId: user.id, usedAt: null }, data: { usedAt: now } }),
-  ]);
-  res.status(204).end();
 });

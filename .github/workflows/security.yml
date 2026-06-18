@@ -1,0 +1,25 @@
+name: security
+on:
+  push:
+  pull_request:
+
+jobs:
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Falla el build si hay secretos en el código o en el historial git.
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+
+  # Gate opcional de postura RLS (requiere el secret DATABASE_URL con la conexión
+  # session-pooler de Supabase). Comentado hasta que el secret esté configurado.
+  # rls-posture:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - run: psql "${{ secrets.DATABASE_URL }}" -v ON_ERROR_STOP=1 -f db/check-security.sql

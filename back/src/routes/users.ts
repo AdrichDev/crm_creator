@@ -4,51 +4,48 @@ import type { MemberRole } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { requireRole } from '../middleware/rbac.js';
 import type { AuthedRequest } from '../middleware/types.js';
-import { generateAuthToken, TOKEN_TTL_MS } from '../lib/password.js';
-import { emit } from '../lib/automation/index.js';
+import { supabaseAdmin } from '../lib/auth.js';
 
 export const usersRouter = Router();
 
-// Se monta tras `authenticate` global (req.userId/businessId/role ya resueltos).
-// Todo /users exige rol admin del negocio activo (OWNER o ADMIN).
+// Mounted after `authenticate` global (req.userId/businessId/role already resolved).
+// All /users endpoints require OWNER or ADMIN role on the active business.
 usersRouter.use(requireRole('OWNER', 'ADMIN'));
 
-// Selección explícita: NUNCA se devuelve passwordHash.
-const USER_PUBLIC = { id: true, email: true, firstName: true, lastName: true, status: true, createdAt: true } as const;
+// Explicit field selection — NEVER include passwordHash (removed from schema).
+const USER_PUBLIC = { id: true, email: true, firstName: true, lastName: true, createdAt: true } as const;
 
 const ADMIN_ROLES: MemberRole[] = ['OWNER', 'ADMIN'];
 
-// Roles asignables desde la UI (no se permite crear/asignar OWNER por aquí).
 const assignableRole = z.enum(['ADMIN', 'EMPLOYEE']);
 
-interface UserRow { id: string; email: string; firstName: string; lastName: string | null; status: string; createdAt: Date; }
+interface UserRow { id: string; email: string; firstName: string; lastName: string | null; createdAt: Date; }
 
-/** Crea token de invitación/reset para un usuario y emite el evento n8n. Fallo suave. */
+/**
+ * Sends a Supabase invite email via inviteUserByEmail.
+ * If the user already exists in auth.users, Supabase may return an error or resend.
+ * Returns { sent: boolean, alreadyExists: boolean }.
+ */
 async function sendInvite(
-  user: { id: string; email: string; firstName: string },
+  email: string,
   businessId: string,
-  businessName: string | undefined,
-): Promise<boolean> {
-  const { token, tokenHash } = generateAuthToken();
-  const expiresAt = new Date(Date.now() + TOKEN_TTL_MS.invite);
-  // Invalida invitaciones previas sin usar antes de crear la nueva (un enlace vivo a la vez).
-  await prisma.authToken.updateMany({
-    where: { userId: user.id, purpose: 'invite', usedAt: null },
-    data: { usedAt: new Date() },
+  role: string,
+  firstName?: string,
+): Promise<{ sent: boolean; alreadyExists: boolean }> {
+  // Branding del tenant en metadata -> email de invitación personalizado por negocio
+  // (plantilla Supabase usa {{ .Data.businessName }} / {{ .Data.brandPrimary }}).
+  const biz = await prisma.business.findUnique({ where: { id: businessId }, select: { name: true, brandPrimary: true, logoUrl: true } });
+  const { error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+    data: { businessId, role, firstName, businessName: biz?.name, brandPrimary: biz?.brandPrimary, logoUrl: biz?.logoUrl ?? undefined },
   });
-  await prisma.authToken.create({ data: { userId: user.id, tokenHash, purpose: 'invite', expiresAt } });
-  const result = await emit('user.invited', {
-    userId: user.id,
-    email: user.email,
-    firstName: user.firstName,
-    businessName,
-    inviteUrl: `${process.env.FRONT_URL ?? 'http://localhost:3002'}/set-password?token=${token}`,
-    expiresAt: expiresAt.toISOString(),
-  }, { businessId });
-  return result.status === 'sent' || result.status === 'skipped';
+  if (!error) return { sent: true, alreadyExists: false };
+  // Supabase returns a 422 / "User already registered" when email exists.
+  const msg = error.message?.toLowerCase() ?? '';
+  const alreadyExists = msg.includes('already registered') || msg.includes('already been invited') || error.code === 'email_exists';
+  return { sent: false, alreadyExists };
 }
 
-// GET /users — lista usuarios con membership en el negocio activo. Sin passwordHash.
+// GET /users — list users with membership in the active business.
 usersRouter.get('/', async (req: AuthedRequest, res: Response) => {
   const memberships = await prisma.membership.findMany({
     where: { businessId: req.businessId },
@@ -58,88 +55,114 @@ usersRouter.get('/', async (req: AuthedRequest, res: Response) => {
   res.json(memberships.map((m) => ({ ...(m.user as UserRow), role: m.role })));
 });
 
-// POST /users — crea (o enlaza) un usuario en el negocio activo + invitación.
+// POST /users — invite a user to the active business via Supabase inviteUserByEmail.
 const createSchema = z.object({
   email: z.string().email(),
   firstName: z.string().min(1),
   lastName: z.string().optional(),
   role: assignableRole,
 });
+
 usersRouter.post('/', async (req: AuthedRequest, res: Response) => {
   const parsed = createSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(422).json({ error: { code: 'validation', message: 'Datos inválidos', details: parsed.error.flatten() } });
+  if (!parsed.success) {
+    return res.status(422).json({ error: { code: 'validation', message: 'Datos inválidos', details: parsed.error.flatten() } });
+  }
   const d = parsed.data;
   const businessId = req.businessId!;
   const email = d.email.toLowerCase();
 
-  const business = await prisma.business.findUnique({ where: { id: businessId }, select: { name: true } });
-  const existing = await prisma.user.findUnique({
-    where: { email },
-    select: { id: true, email: true, firstName: true, memberships: { select: { businessId: true } } },
+  // Check if this email is already a member of THIS business.
+  const existingMembership = await prisma.membership.findFirst({
+    where: { businessId, user: { email } },
+    select: { id: true },
   });
-
-  // Caso A: el email ya pertenece a ESTE negocio → 409 (no se filtra nada cross-tenant).
-  if (existing && existing.memberships.some((m) => m.businessId === businessId)) {
+  if (existingMembership) {
     return res.status(409).json({ error: { code: 'email_taken', message: 'Ese email ya es miembro de este negocio' } });
   }
 
-  // Caso B: el email existe en OTRO negocio → se enlaza la cuenta global creando un
-  // Membership para este negocio. NUNCA se tocan/leen sus credenciales ni se reenvía
-  // invitación (su cuenta ya está activa en otro tenant).
-  if (existing) {
-    await prisma.membership.create({ data: { userId: existing.id, businessId, role: d.role } });
-    return res.status(201).json({ id: existing.id, email: existing.email, firstName: existing.firstName, role: d.role, status: 'active', linked: true, emailSent: false });
+  // Case A: user already exists in crm.User (has a UUID from auth.users).
+  const existingUser = await prisma.user.findUnique({ where: { email }, select: { id: true, email: true, firstName: true } });
+  if (existingUser) {
+    // Link the account by creating a Membership — no re-invite needed.
+    await prisma.membership.create({ data: { userId: existingUser.id, businessId, role: d.role } });
+    return res.status(201).json({
+      id: existingUser.id, email: existingUser.email, firstName: existingUser.firstName,
+      role: d.role, linked: true, emailSent: false,
+    });
   }
 
-  // Caso C: usuario nuevo. Se crea con passwordHash placeholder no usable (nunca se
-  // genera password en claro): el usuario FIJA su contraseña vía el enlace de invitación.
-  const created = await prisma.$transaction(async (tx) => {
-    const user = await tx.user.create({
-      data: { email, firstName: d.firstName, lastName: d.lastName, passwordHash: '!', status: 'invited' },
-      select: { id: true, email: true, firstName: true, lastName: true, status: true, createdAt: true },
-    });
-    await tx.membership.create({ data: { userId: user.id, businessId, role: d.role } });
-    return user;
-  });
+  // Case B: new user — send Supabase invite.
+  const { sent, alreadyExists } = await sendInvite(email, businessId, d.role, d.firstName);
 
-  const emailSent = await sendInvite(created, businessId, business?.name);
-  res.status(201).json({ ...created, role: d.role, emailSent });
+  if (alreadyExists) {
+    // Q-B resolution: existing Supabase user not yet in crm.User — upsert crm.User + Membership.
+    // We can't get the UUID from inviteUserByEmail on error; look them up via listUsers.
+    const { data: listData } = await supabaseAdmin.auth.admin.listUsers();
+    const found = listData?.users?.find((u) => u.email?.toLowerCase() === email);
+    if (found) {
+      await prisma.user.upsert({
+        where: { id: found.id },
+        create: { id: found.id, email, firstName: d.firstName, lastName: d.lastName },
+        update: {},
+      });
+      await prisma.membership.upsert({
+        where: { userId_businessId: { userId: found.id, businessId } },
+        create: { userId: found.id, businessId, role: d.role },
+        update: { role: d.role },
+      });
+      return res.status(201).json({
+        id: found.id, email, firstName: d.firstName, role: d.role, linked: true, emailSent: false,
+      });
+    }
+    // Could not resolve — surface 409.
+    return res.status(409).json({ error: { code: 'user_exists', message: 'El usuario ya existe en Supabase. El email ya fue invitado.' } });
+  }
+
+  // Invite sent — crm.User will be created when the user accepts the invite
+  // and first authenticates (their UUID from auth.users will be populated then).
+  // We create a placeholder crm.User row when the invite is accepted on the front.
+  res.status(201).json({ email, firstName: d.firstName, role: d.role, emailSent: sent });
 });
 
-/** Resuelve el membership de :id en el negocio activo o responde 404. */
+/** Resolves the membership for :id in the active business, or responds 404. */
 async function loadMember(req: AuthedRequest, res: Response) {
   const membership = await prisma.membership.findFirst({
     where: { userId: req.params.id, businessId: req.businessId },
     select: { id: true, role: true, user: { select: { id: true, email: true, firstName: true } } },
   });
-  if (!membership) { res.status(404).json({ error: { code: 'not_found', message: 'Usuario no encontrado en este negocio' } }); return null; }
+  if (!membership) {
+    res.status(404).json({ error: { code: 'not_found', message: 'Usuario no encontrado en este negocio' } });
+    return null;
+  }
   return membership;
 }
 
-// PATCH /users/:id — cambia rol y/o estado dentro del negocio activo.
+// PATCH /users/:id — change role within the active business.
 const patchSchema = z.object({
   role: assignableRole.optional(),
-  status: z.enum(['active', 'disabled', 'invited']).optional(),
 });
+
 usersRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
   const parsed = patchSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(422).json({ error: { code: 'validation', message: 'Datos inválidos', details: parsed.error.flatten() } });
+  if (!parsed.success) {
+    return res.status(422).json({ error: { code: 'validation', message: 'Datos inválidos', details: parsed.error.flatten() } });
+  }
   const member = await loadMember(req, res);
   if (!member) return;
+  if (member.role === 'OWNER') {
+    return res.status(403).json({ error: { code: 'owner_protected', message: 'No se puede editar al propietario' } });
+  }
 
-  // No se edita a un OWNER desde aquí (es el dueño del negocio).
-  if (member.role === 'OWNER') return res.status(403).json({ error: { code: 'owner_protected', message: 'No se puede editar al propietario' } });
-
-  const { role, status } = parsed.data;
-
-  // Guarda anti lock-out: si esta edición degrada al último admin/owner → 409.
+  const { role } = parsed.data;
   if (role && role !== 'ADMIN' && ADMIN_ROLES.includes(member.role)) {
     const admins = await prisma.membership.count({ where: { businessId: req.businessId, role: { in: ADMIN_ROLES } } });
-    if (admins <= 1) return res.status(409).json({ error: { code: 'last_admin', message: 'No puedes dejar el negocio sin administradores' } });
+    if (admins <= 1) {
+      return res.status(409).json({ error: { code: 'last_admin', message: 'No puedes dejar el negocio sin administradores' } });
+    }
   }
 
   if (role) await prisma.membership.update({ where: { id: member.id }, data: { role } });
-  if (status) await prisma.user.update({ where: { id: member.user.id }, data: { status } });
 
   const updated = await prisma.membership.findFirst({
     where: { id: member.id },
@@ -148,33 +171,37 @@ usersRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
   res.json({ ...(updated!.user as UserRow), role: updated!.role });
 });
 
-// DELETE /users/:id — quita el membership del negocio activo (y el User si era el último).
+// DELETE /users/:id — removes the membership from the active business.
 usersRouter.delete('/:id', async (req: AuthedRequest, res: Response) => {
   const member = await loadMember(req, res);
   if (!member) return;
-  if (member.role === 'OWNER') return res.status(403).json({ error: { code: 'owner_protected', message: 'No se puede eliminar al propietario' } });
-  if (member.user.id === req.userId) return res.status(403).json({ error: { code: 'self_delete', message: 'No puedes eliminarte a ti mismo' } });
+  if (member.role === 'OWNER') {
+    return res.status(403).json({ error: { code: 'owner_protected', message: 'No se puede eliminar al propietario' } });
+  }
+  if (member.user.id === req.userId) {
+    return res.status(403).json({ error: { code: 'self_delete', message: 'No puedes eliminarte a ti mismo' } });
+  }
 
-  // No dejar el negocio sin administradores.
   if (ADMIN_ROLES.includes(member.role)) {
     const admins = await prisma.membership.count({ where: { businessId: req.businessId, role: { in: ADMIN_ROLES } } });
-    if (admins <= 1) return res.status(409).json({ error: { code: 'last_admin', message: 'No puedes dejar el negocio sin administradores' } });
+    if (admins <= 1) {
+      return res.status(409).json({ error: { code: 'last_admin', message: 'No puedes dejar el negocio sin administradores' } });
+    }
   }
 
   const otherMemberships = await prisma.membership.count({ where: { userId: member.user.id, businessId: { not: req.businessId } } });
   await prisma.membership.delete({ where: { id: member.id } });
-  // Si no le quedan otros negocios, se borra la cuenta global (cascade limpia tokens).
-  if (otherMemberships === 0) await prisma.user.delete({ where: { id: member.user.id } });
+  if (otherMemberships === 0) {
+    // Also remove from Supabase auth.users if there are no other memberships.
+    await supabaseAdmin.auth.admin.deleteUser(member.user.id);
+  }
   res.status(204).end();
 });
 
-// POST /users/:id/resend-invite — reenvía la invitación (solo si sigue 'invited').
+// POST /users/:id/resend-invite — resends the Supabase invite to an uninvited user.
 usersRouter.post('/:id/resend-invite', async (req: AuthedRequest, res: Response) => {
   const member = await loadMember(req, res);
   if (!member) return;
-  const user = await prisma.user.findUnique({ where: { id: member.user.id }, select: { id: true, email: true, firstName: true, status: true } });
-  if (!user || user.status !== 'invited') return res.status(409).json({ error: { code: 'not_invitable', message: 'El usuario ya tiene cuenta activa' } });
-  const business = await prisma.business.findUnique({ where: { id: req.businessId }, select: { name: true } });
-  const emailSent = await sendInvite(user, req.businessId!, business?.name);
-  res.json({ emailSent });
+  const { sent, alreadyExists: _ } = await sendInvite(member.user.email, req.businessId!, member.role, member.user.firstName);
+  res.json({ emailSent: sent });
 });

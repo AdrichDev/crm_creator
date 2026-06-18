@@ -20,8 +20,10 @@ export default function Consola() {
   // GENERATED_TENANT es null → la consola se muestra normal.
   useEffect(() => {
     if (!GENERATED_TENANT || !ready) return;
-    const needsLogin = !config.branding.designSource && !isAuthed();
-    router.replace(needsLogin ? '/login' : '/panel');
+    if (config.branding.designSource) { router.replace('/panel'); return; }
+    isAuthed().then((authed) => {
+      router.replace(authed ? '/panel' : '/login');
+    });
   }, [ready, config, router]);
 
   function nuevo() { router.push('/onboarding'); }

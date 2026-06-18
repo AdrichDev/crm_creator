@@ -1,8 +1,11 @@
 'use client';
-import { Suspense, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+// Email verification for client self-registration.
+// Supabase sends a confirmation link. After clicking, the auth client
+// processes the token (SIGNED_IN / EMAIL_CONFIRMED event).
+// No password required here — email confirmation only.
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { verifyEmail, passwordPolicyError } from '@/lib/api/account';
+import { getAuthClient } from '@/lib/supabase/auth-client';
 import { AuthShell } from '@/components/auth/auth-shell';
 
 export default function VerifyEmailPage() {
@@ -14,29 +17,54 @@ export default function VerifyEmailPage() {
 }
 
 function VerifyEmailInner() {
-  const token = useSearchParams().get('token') ?? '';
-  const [pwd, setPwd] = useState('');
-  const [repeat, setRepeat] = useState('');
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    if (!token) { setError('Enlace inválido: falta el token.'); return; }
-    if (pwd !== repeat) { setError('Las contraseñas no coinciden.'); return; }
-    const policy = passwordPolicyError(pwd);
-    if (policy) { setError(policy); return; }
-    setSaving(true);
-    try { await verifyEmail(token, pwd, repeat); setDone(true); }
-    catch (err) { setError(err instanceof Error ? err.message : 'No se pudo verificar el email'); }
-    finally { setSaving(false); }
+  // Supabase processes the email-confirmation token from the URL hash automatically.
+  // SIGNED_IN event fires once the email is confirmed.
+  useEffect(() => {
+    const supabase = getAuthClient();
+    if (!supabase) { setError('Supabase no configurado'); setLoading(false); return; }
+
+    // If already signed in (hash already consumed)
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) { setDone(true); setLoading(false); }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+        setDone(true);
+        setLoading(false);
+      } else if (event === 'SIGNED_OUT') {
+        setLoading(false);
+        setError('El enlace de verificación es inválido o ha expirado.');
+      }
+    });
+
+    // Timeout fallback: if no event fires, the link may be invalid
+    const timeout = setTimeout(() => {
+      setLoading(false);
+      setError('El enlace de verificación es inválido o ha expirado.');
+    }, 8000);
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(timeout);
+    };
+  }, []);
+
+  if (loading) {
+    return (
+      <AuthShell title="Verificar email">
+        <p className="text-sm text-[var(--panel-muted)]">Verificando tu email…</p>
+      </AuthShell>
+    );
   }
 
   if (done) {
     return (
-      <AuthShell title="✅ Email verificado">
+      <AuthShell title="Email verificado">
         <p className="text-sm text-[var(--panel-muted)]">Tu cuenta está activa. Ya puedes iniciar sesión.</p>
         <Link href="/login" className="btn btn-primary mt-4 inline-block">Ir a iniciar sesión</Link>
       </AuthShell>
@@ -44,19 +72,9 @@ function VerifyEmailInner() {
   }
 
   return (
-    <AuthShell title="Verifica tu email" subtitle="Elige tu contraseña para activar tu cuenta.">
-      <form onSubmit={submit} className="space-y-3">
-        <div>
-          <label className="opera-label">Contraseña</label>
-          <input className="opera-control" type="password" autoComplete="new-password" value={pwd} onChange={(e) => setPwd(e.target.value)} />
-        </div>
-        <div>
-          <label className="opera-label">Repetir contraseña</label>
-          <input className="opera-control" type="password" autoComplete="new-password" value={repeat} onChange={(e) => setRepeat(e.target.value)} />
-        </div>
-        {error && <p className="text-sm text-red-400">{error}</p>}
-        <button type="submit" className="btn btn-primary w-full" disabled={saving}>{saving ? 'Verificando…' : 'Verificar y crear contraseña'}</button>
-      </form>
+    <AuthShell title="Error de verificación">
+      <p className="text-sm text-red-400">{error ?? 'No se pudo verificar el email.'}</p>
+      <Link href="/login" className="btn btn-outline mt-4 inline-block">Volver a inicio</Link>
     </AuthShell>
   );
 }

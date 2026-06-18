@@ -1,9 +1,12 @@
 'use client';
-import { Suspense, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+// Set password for invited users. Supabase sends an invite link with
+// access_token in the URL hash. With detectSessionInUrl:true the auth client
+// automatically signs the user in on page load; we just call updateUser({password}).
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { setPassword, passwordPolicyError } from '@/lib/api/account';
+import { getAuthClient } from '@/lib/supabase/auth-client';
 import { AuthShell } from '@/components/auth/auth-shell';
+import { passwordPolicyError } from '@/lib/api/account';
 
 export default function SetPasswordPage() {
   return (
@@ -14,31 +17,62 @@ export default function SetPasswordPage() {
 }
 
 function SetPasswordInner() {
-  const token = useSearchParams().get('token') ?? '';
   const [pwd, setPwd] = useState('');
   const [repeat, setRepeat] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [ready, setReady] = useState(false);
+
+  // Supabase processes the invite token from the URL hash automatically when
+  // detectSessionInUrl:true. We wait for the SIGNED_IN event to confirm it worked.
+  useEffect(() => {
+    const supabase = getAuthClient();
+    if (!supabase) { setError('Supabase no configurado'); return; }
+    // Check if already signed in (hash already processed)
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) { setReady(true); return; }
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN' || event === 'USER_UPDATED') setReady(true);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!token) { setError('Enlace inválido: falta el token.'); return; }
     if (pwd !== repeat) { setError('Las contraseñas no coinciden.'); return; }
     const policy = passwordPolicyError(pwd);
     if (policy) { setError(policy); return; }
     setSaving(true);
-    try { await setPassword(token, pwd, repeat); setDone(true); }
-    catch (err) { setError(err instanceof Error ? err.message : 'No se pudo fijar la contraseña'); }
-    finally { setSaving(false); }
+    try {
+      const supabase = getAuthClient();
+      if (!supabase) throw new Error('Supabase no configurado');
+      const { error: updateError } = await supabase.auth.updateUser({ password: pwd });
+      if (updateError) throw new Error(updateError.message);
+      setDone(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo fijar la contraseña');
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (done) {
     return (
       <AuthShell title="Contraseña creada">
         <p className="text-sm text-[var(--panel-muted)]">Ya puedes iniciar sesión con tu nueva contraseña.</p>
-        <Link href="/" className="btn btn-primary mt-4 inline-block">Ir a iniciar sesión</Link>
+        <Link href="/login" className="btn btn-primary mt-4 inline-block">Ir a iniciar sesión</Link>
+      </AuthShell>
+    );
+  }
+
+  if (!ready) {
+    return (
+      <AuthShell title="Fijar contraseña">
+        <p className="text-sm text-[var(--panel-muted)]">Verificando enlace de invitación…</p>
+        {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
       </AuthShell>
     );
   }

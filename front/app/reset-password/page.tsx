@@ -1,9 +1,13 @@
 'use client';
-import { Suspense, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+// Reset password from a Supabase password-recovery email link.
+// Supabase sends a link with access_token in hash + type=recovery.
+// With detectSessionInUrl:true the auth client fires PASSWORD_RECOVERY event
+// automatically. We listen for it, then call updateUser({password}).
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { resetPassword, passwordPolicyError } from '@/lib/api/account';
+import { getAuthClient } from '@/lib/supabase/auth-client';
 import { AuthShell } from '@/components/auth/auth-shell';
+import { passwordPolicyError } from '@/lib/api/account';
 
 export default function ResetPasswordPage() {
   return (
@@ -14,31 +18,62 @@ export default function ResetPasswordPage() {
 }
 
 function ResetPasswordInner() {
-  const token = useSearchParams().get('token') ?? '';
   const [pwd, setPwd] = useState('');
   const [repeat, setRepeat] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [ready, setReady] = useState(false);
+
+  // Supabase processes the recovery token from the URL hash automatically.
+  // PASSWORD_RECOVERY event fires once the session is established from the link.
+  useEffect(() => {
+    const supabase = getAuthClient();
+    if (!supabase) { setError('Supabase no configurado'); return; }
+    // If session already exists (hash already consumed), allow immediately.
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) setReady(true);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') setReady(true);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!token) { setError('Enlace inválido: falta el token.'); return; }
     if (pwd !== repeat) { setError('Las contraseñas no coinciden.'); return; }
     const policy = passwordPolicyError(pwd);
     if (policy) { setError(policy); return; }
     setSaving(true);
-    try { await resetPassword(token, pwd, repeat); setDone(true); }
-    catch (err) { setError(err instanceof Error ? err.message : 'No se pudo restablecer la contraseña'); }
-    finally { setSaving(false); }
+    try {
+      const supabase = getAuthClient();
+      if (!supabase) throw new Error('Supabase no configurado');
+      const { error: updateError } = await supabase.auth.updateUser({ password: pwd });
+      if (updateError) throw new Error(updateError.message);
+      setDone(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo restablecer la contraseña');
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (done) {
     return (
       <AuthShell title="Contraseña restablecida">
         <p className="text-sm text-[var(--panel-muted)]">Ya puedes iniciar sesión con tu nueva contraseña.</p>
-        <Link href="/" className="btn btn-primary mt-4 inline-block">Ir a iniciar sesión</Link>
+        <Link href="/login" className="btn btn-primary mt-4 inline-block">Ir a iniciar sesión</Link>
+      </AuthShell>
+    );
+  }
+
+  if (!ready) {
+    return (
+      <AuthShell title="Restablecer contraseña">
+        <p className="text-sm text-[var(--panel-muted)]">Verificando enlace de recuperación…</p>
+        {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
       </AuthShell>
     );
   }

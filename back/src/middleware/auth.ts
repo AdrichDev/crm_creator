@@ -1,38 +1,48 @@
 import type { Response, NextFunction } from 'express';
 import { prisma } from '../prisma.js';
-import { verifyToken } from '../lib/auth.js';
+import { verifySupabaseToken } from '../lib/auth.js';
 import type { AuthedRequest } from './types.js';
 
-// Verifica JWT, resuelve el tenant activo (cabecera x-business-id o el primero)
-// y adjunta userId, businessId y role a la request.
+// Verifies the Supabase access token (HS256, Bearer), resolves the active tenant
+// via x-business-id header (validated against the user's Memberships), and attaches
+// userId / businessId / role to the request.
+// Session revocation on password change is handled by Supabase (admin.signOut).
+// The passwordChangedAt / iat check from the old custom JWT flow is removed.
 export async function authenticate(req: AuthedRequest, res: Response, next: NextFunction) {
-  try {
-    const header = req.headers.authorization;
-    if (!header?.startsWith('Bearer ')) return res.status(401).json({ error: { code: 'no_token', message: 'Falta token' } });
-    const { userId, iat } = verifyToken(header.slice(7));
+  const header = req.headers.authorization;
+  if (!header?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: { code: 'no_token', message: 'Falta token' } });
+  }
 
-    // Invalidación de sesión: si el usuario cambió/reseteó su contraseña después de
-    // que se emitiera este JWT, el token deja de ser válido (cuenta posiblemente robada).
-    const account = await prisma.user.findUnique({ where: { id: userId }, select: { passwordChangedAt: true, status: true } });
-    if (!account) return res.status(401).json({ error: { code: 'invalid_token', message: 'Token inválido' } });
-    if (account.status === 'disabled') return res.status(403).json({ error: { code: 'account_disabled', message: 'Cuenta desactivada' } });
-    // `iat` viene en segundos (truncado). Se compara a granularidad de segundo:
-    // un token con `iat` ANTERIOR al segundo del cambio se rechaza; el token recién
-    // emitido tras el cambio (mismo segundo o posterior) se mantiene. Así un login
-    // inmediatamente después de set/reset/change sigue siendo válido.
-    if (account.passwordChangedAt && iat < Math.floor(account.passwordChangedAt.getTime() / 1000)) {
-      return res.status(401).json({ error: { code: 'session_expired', message: 'Sesión caducada, inicia sesión de nuevo' } });
+  // (a) Token verification failures are CLIENT errors → 401. Scoped to its own try
+  // so a DB fault below is NOT misreported as an invalid token.
+  let sub: string;
+  try {
+    ({ sub } = await verifySupabaseToken(header.slice(7)));
+  } catch {
+    return res.status(401).json({ error: { code: 'invalid_token', message: 'Token inválido' } });
+  }
+
+  // (b) Membership resolution. A DB failure here is a SERVER error → 500 (the token
+  // was valid; we just couldn't serve the request).
+  try {
+    const memberships = await prisma.membership.findMany({ where: { userId: sub } });
+    if (memberships.length === 0) {
+      return res.status(403).json({ error: { code: 'no_membership', message: 'Sin acceso a ninguna empresa' } });
     }
 
-    const memberships = await prisma.membership.findMany({ where: { userId } });
-    if (memberships.length === 0) return res.status(403).json({ error: { code: 'no_membership', message: 'Sin acceso a ninguna empresa' } });
     const wanted = req.headers['x-business-id'] as string | undefined;
-    const membership = memberships.find((m: { businessId: string }) => m.businessId === wanted) ?? memberships[0];
-    req.userId = userId;
+    const membership = memberships.find((m) => m.businessId === wanted) ?? memberships[0];
+    if (wanted && membership.businessId !== wanted) {
+      return res.status(403).json({ error: { code: 'wrong_business', message: 'No tienes acceso a ese negocio' } });
+    }
+
+    req.userId = sub;
     req.businessId = membership.businessId;
     req.role = membership.role;
     next();
-  } catch {
-    return res.status(401).json({ error: { code: 'invalid_token', message: 'Token inválido' } });
+  } catch (e) {
+    console.error('[auth] error resolviendo membership:', e);
+    return res.status(500).json({ error: { code: 'server_error', message: 'Error interno' } });
   }
 }

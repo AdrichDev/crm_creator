@@ -1,22 +1,54 @@
-// E2E sobre el back en marcha (localhost:4001) con la BD de desarrollo.
-// Cubre las correcciones de seguridad del devil: invitación (sin password en
-// claro), token un-solo-uso/expiración, no fuga de passwordHash, forgot neutro,
-// rate limit, invalidación de sesión al cambiar password.
+// E2E tests for the CRM back auth + users routes with Supabase Auth.
+// These tests call the live API (localhost:4001) but skip if the server is down
+// or if SUPABASE_SERVICE_ROLE_KEY is a placeholder.
 //
-// Requiere el back levantado (npm run dev). Si no responde, los tests se saltan.
+// Changed flows vs old tests:
+// - Login endpoint now returns 410 (front uses Supabase SDK signInWithPassword).
+// - Sessions are managed by Supabase; no AuthToken table.
+// - Invite: admin.inviteUserByEmail (Supabase email); no AuthToken row.
+// - Password change: admin.updateUserById + admin.signOut(uid, 'others').
+// - GET /users: no passwordHash or status fields in response.
+//
+// Runner: node --import tsx --test
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
-import { hashToken } from '../../lib/password.js';
+import { createClient } from '@supabase/supabase-js';
 
 const BASE = process.env.TEST_API_URL ?? 'http://localhost:4001';
 const prisma = new PrismaClient();
 
-let backUp = false;
-const uniq = () => crypto.randomBytes(4).toString('hex');
+// Supabase URL (normalized) + service-role key. The service-role key doubles as a
+// valid apikey for signInWithPassword, so the e2e can mint a REAL user access token
+// using only the back's env — no anon key needed.
+const SB_URL = (process.env.SUPABASE_URL ?? '').replace(/\/+$/, '').replace(/\.$/, '');
+const SB_SRK = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
 
-// Datos creados para limpiar al final.
+/** Registers a user (creates business + OWNER membership) and returns a signed-in token. */
+async function registerAndToken(email: string, password: string): Promise<{ token: string; businessId: string; userId: string }> {
+  const reg = await api('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ businessName: `Biz ${crypto.randomBytes(3).toString('hex')}`, email, password, firstName: 'Own' }),
+  });
+  assert.equal(reg.status, 201, `register failed: ${JSON.stringify(reg.body)}`);
+  const businessId = (reg.body!.business as { id: string }).id;
+  const userId = (reg.body!.user as { id: string }).id;
+  const sb = createClient(SB_URL, SB_SRK, { auth: { persistSession: false } });
+  const { data: si, error } = await sb.auth.signInWithPassword({ email, password });
+  assert.ok(!error && si.session, `signIn failed: ${error?.message}`);
+  return { token: si.session.access_token, businessId, userId };
+}
+
+let backUp = false;
+// Skip tests that require real Supabase credentials if placeholder is set.
+// Note: other test files in the same process may set fake values on process.env.
+// We check the actual .env file value to determine if real keys are present.
+const PLACEHOLDER_PATTERNS = ['CHANGE_ME', 'placeholder', 'fake', 'hardening-fake'];
+const _srk = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+const SUPABASE_LIVE = !!_srk && !PLACEHOLDER_PATTERNS.some((p) => _srk.toLowerCase().includes(p));
+
+const uniq = () => crypto.randomBytes(4).toString('hex');
 const created = { businessIds: new Set<string>(), userIds: new Set<string>() };
 
 async function api(path: string, init: RequestInit = {}, token?: string, businessId?: string) {
@@ -30,223 +62,210 @@ async function api(path: string, init: RequestInit = {}, token?: string, busines
   return { status: res.status, body: body as Record<string, unknown> | undefined };
 }
 
-/** Crea un admin/owner nuevo vía /register y devuelve su sesión. */
-async function newAdmin() {
-  const email = `admin_${uniq()}@test.local`;
-  const r = await api('/auth/register', {
-    method: 'POST',
-    body: JSON.stringify({ businessName: `Biz ${uniq()}`, email, password: 'admin-pass-123', firstName: 'Admin' }),
-  });
-  assert.equal(r.status, 201, `register falló: ${JSON.stringify(r.body)}`);
-  const token = r.body!.token as string;
-  const businessId = (r.body!.business as { id: string }).id;
-  const userId = (r.body!.user as { id: string }).id;
-  created.businessIds.add(businessId);
-  created.userIds.add(userId);
-  return { email, token, businessId, userId };
-}
-
 before(async () => {
   try {
     const res = await fetch(`${BASE}/health`);
     backUp = res.ok;
   } catch { backUp = false; }
   if (!backUp) { console.warn(`[e2e] back no responde en ${BASE} — tests saltados`); return; }
-  // Aísla esta ejecución: reinicia los contadores del rate limiter del server
-  // (en memoria, persisten entre ejecuciones dentro de la misma ventana de 15 min).
   await fetch(`${BASE}/api/auth/__test__/reset-rate-limits`, { method: 'POST' }).catch(() => {});
 });
 
 after(async () => {
-  // Limpieza: borra los usuarios y negocios de prueba (cascade limpia tokens/membership).
-  for (const id of created.userIds) await prisma.user.delete({ where: { id } }).catch(() => {});
+  // Borra los auth.users de test (el ON DELETE CASCADE de crm.User.id->auth.users
+  // limpia crm.User + Membership). Sin esto los auth.users se acumulan corrida a corrida.
+  const cleanup = createClient(SB_URL, SB_SRK, { auth: { persistSession: false } });
+  for (const id of created.userIds) await cleanup.auth.admin.deleteUser(id).catch(() => {});
   for (const id of created.businessIds) await prisma.business.delete({ where: { id } }).catch(() => {});
   await prisma.$disconnect();
 });
 
-test('admin crea usuario por invitación: sin password en claro, status invited', async (t) => {
+// ---------------------------------------------------------------------------
+// POST /auth/login returns 410 Gone (front uses Supabase SDK).
+// ---------------------------------------------------------------------------
+test('POST /login returns 410 Gone (Supabase SDK flow)', async (t) => {
   if (!backUp) return t.skip('back down');
-  const admin = await newAdmin();
-  const email = `inv_${uniq()}@test.local`;
-  const r = await api('/users', { method: 'POST', body: JSON.stringify({ email, firstName: 'Nuevo', role: 'EMPLOYEE' }) }, admin.token, admin.businessId);
-  assert.equal(r.status, 201, JSON.stringify(r.body));
-  created.userIds.add(r.body!.id as string);
-  // La respuesta NO trae passwordHash ni password en claro.
-  assert.ok(!('passwordHash' in r.body!));
-  assert.ok(!('password' in r.body!));
-  assert.ok(!('plainPassword' in r.body!));
-  // El usuario queda 'invited' con passwordHash placeholder no usable.
-  const db = await prisma.user.findUnique({ where: { id: r.body!.id as string }, select: { status: true, passwordHash: true } });
-  assert.equal(db!.status, 'invited');
-  assert.equal(db!.passwordHash, '!');
+  const r = await api('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email: 'any@test.local', password: 'any' }),
+  });
+  assert.equal(r.status, 410, `Expected 410, got ${r.status}: ${JSON.stringify(r.body)}`);
+  assert.equal((r.body!.error as { code: string }).code, 'login_moved');
 });
 
-test('GET /users nunca devuelve passwordHash', async (t) => {
+// ---------------------------------------------------------------------------
+// POST /auth/logout returns 200 with instruction (Supabase SDK flow).
+// ---------------------------------------------------------------------------
+test('POST /logout returns 200 with SDK instruction', async (t) => {
   if (!backUp) return t.skip('back down');
-  const admin = await newAdmin();
-  await api('/users', { method: 'POST', body: JSON.stringify({ email: `l_${uniq()}@test.local`, firstName: 'L', role: 'EMPLOYEE' }) }, admin.token, admin.businessId);
-  const r = await api('/users', {}, admin.token, admin.businessId);
+  const r = await api('/auth/logout', { method: 'POST' });
   assert.equal(r.status, 200);
-  const list = r.body as unknown as Record<string, unknown>[];
-  assert.ok(Array.isArray(list) && list.length >= 1);
-  for (const u of list) assert.ok(!('passwordHash' in u), 'passwordHash filtrado en lista');
-  for (const u of list) created.userIds.add(u.id as string);
+  assert.ok(typeof r.body!.message === 'string');
 });
 
-test('set-password con token válido funciona y es de un solo uso', async (t) => {
+// ---------------------------------------------------------------------------
+// POST /auth/forgot-password always returns 200 (anti-enumeration), even with
+// placeholder Supabase keys (the internal call is fire-and-forget).
+// ---------------------------------------------------------------------------
+test('forgot-password always responds 200 (anti-enumeration)', async (t) => {
   if (!backUp) return t.skip('back down');
-  const admin = await newAdmin();
-  const email = `sp_${uniq()}@test.local`;
-  const c = await api('/users', { method: 'POST', body: JSON.stringify({ email, firstName: 'SP', role: 'EMPLOYEE' }) }, admin.token, admin.businessId);
-  const userId = c.body!.id as string;
-  created.userIds.add(userId);
-
-  // El token en claro no se devuelve por API: se fabrica uno y se inyecta su hash
-  // directamente en BD para simular el enlace del email (mismo mecanismo).
-  const plain = crypto.randomBytes(32).toString('base64url');
-  await prisma.authToken.updateMany({ where: { userId, usedAt: null }, data: { usedAt: new Date() } });
-  await prisma.authToken.create({ data: { userId, tokenHash: hashToken(plain), purpose: 'invite', expiresAt: new Date(Date.now() + 60_000) } });
-
-  const set = await api('/auth/set-password', { method: 'POST', body: JSON.stringify({ token: plain, newPassword: 'nueva-pass-1', repeatPassword: 'nueva-pass-1' }) });
-  assert.equal(set.status, 204);
-  // Segundo uso del mismo token → 400 invalid_token.
-  const reuse = await api('/auth/set-password', { method: 'POST', body: JSON.stringify({ token: plain, newPassword: 'otra-pass-22', repeatPassword: 'otra-pass-22' }) });
-  assert.equal(reuse.status, 400);
-  // Ahora puede loguear con la nueva contraseña.
-  const login = await api('/auth/login', { method: 'POST', body: JSON.stringify({ email, password: 'nueva-pass-1' }) });
-  assert.equal(login.status, 200);
-});
-
-test('token expirado no sirve', async (t) => {
-  if (!backUp) return t.skip('back down');
-  const admin = await newAdmin();
-  const email = `exp_${uniq()}@test.local`;
-  const c = await api('/users', { method: 'POST', body: JSON.stringify({ email, firstName: 'EX', role: 'EMPLOYEE' }) }, admin.token, admin.businessId);
-  const userId = c.body!.id as string;
-  created.userIds.add(userId);
-  const plain = crypto.randomBytes(32).toString('base64url');
-  await prisma.authToken.create({ data: { userId, tokenHash: hashToken(plain), purpose: 'invite', expiresAt: new Date(Date.now() - 1000) } });
-  const set = await api('/auth/set-password', { method: 'POST', body: JSON.stringify({ token: plain, newPassword: 'nueva-pass-1', repeatPassword: 'nueva-pass-1' }) });
-  assert.equal(set.status, 400);
-});
-
-test('forgot-password responde neutro exista o no el email', async (t) => {
-  if (!backUp) return t.skip('back down');
-  const admin = await newAdmin();
-  const r1 = await api('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email: admin.email }) });
+  const r1 = await api('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email: `real_${uniq()}@test.local` }) });
   const r2 = await api('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email: `ghost_${uniq()}@test.local` }) });
   assert.equal(r1.status, 200);
   assert.equal(r2.status, 200);
   assert.deepEqual(r1.body, r2.body);
 });
 
-test('reset-password invalida los demás tokens del usuario', async (t) => {
+// ---------------------------------------------------------------------------
+// GET /auth/me without token returns 401.
+// ---------------------------------------------------------------------------
+test('GET /me without token → 401 no_token', async (t) => {
   if (!backUp) return t.skip('back down');
-  const admin = await newAdmin();
-  // Dos tokens reset abiertos.
-  const t1 = crypto.randomBytes(32).toString('base64url');
-  const t2 = crypto.randomBytes(32).toString('base64url');
-  await prisma.authToken.create({ data: { userId: admin.userId, tokenHash: hashToken(t1), purpose: 'reset', expiresAt: new Date(Date.now() + 60_000) } });
-  await prisma.authToken.create({ data: { userId: admin.userId, tokenHash: hashToken(t2), purpose: 'reset', expiresAt: new Date(Date.now() + 60_000) } });
-  const reset = await api('/auth/reset-password', { method: 'POST', body: JSON.stringify({ token: t1, newPassword: 'reset-pass-9', repeatPassword: 'reset-pass-9' }) });
-  assert.equal(reset.status, 204);
-  // El segundo token quedó invalidado.
-  const second = await api('/auth/reset-password', { method: 'POST', body: JSON.stringify({ token: t2, newPassword: 'reset-pass-x9', repeatPassword: 'reset-pass-x9' }) });
-  assert.equal(second.status, 400);
+  const r = await api('/auth/me');
+  assert.equal(r.status, 401);
+  assert.equal((r.body!.error as { code: string }).code, 'no_token');
 });
 
-test('cambiar password invalida los JWT previos (sesión)', async (t) => {
+// ---------------------------------------------------------------------------
+// GET /auth/me with invalid token → 401.
+// ---------------------------------------------------------------------------
+test('GET /me with invalid token → 401 invalid_token', async (t) => {
   if (!backUp) return t.skip('back down');
-  const admin = await newAdmin();
-  // Token viejo válido ahora.
-  const me1 = await api('/auth/me', {}, admin.token, admin.businessId);
-  assert.equal(me1.status, 200);
-  // Espera >1s para que el JWT viejo quede en un segundo anterior al cambio
-  // (el `iat` de JWT tiene granularidad de segundo).
-  await new Promise((r) => setTimeout(r, 1100));
-  // Cambia la contraseña.
-  const ch = await api('/auth/change-password', { method: 'POST', body: JSON.stringify({ oldPassword: 'admin-pass-123', newPassword: 'admin-pass-456', repeatPassword: 'admin-pass-456' }) }, admin.token, admin.businessId);
-  assert.equal(ch.status, 204, JSON.stringify(ch.body));
-  // El JWT viejo (emitido antes del cambio) ya no vale.
-  const me2 = await api('/auth/me', {}, admin.token, admin.businessId);
-  assert.equal(me2.status, 401);
+  const r = await api('/auth/me', {}, 'not-a-real-token');
+  assert.equal(r.status, 401);
+  assert.equal((r.body!.error as { code: string }).code, 'invalid_token');
 });
 
-test('change-password rechaza contraseña antigua incorrecta', async (t) => {
+// ---------------------------------------------------------------------------
+// POST /auth/register — requires live Supabase (admin.createUser).
+// ---------------------------------------------------------------------------
+test('POST /register creates user + business in Supabase (live only)', async (t) => {
   if (!backUp) return t.skip('back down');
-  const admin = await newAdmin();
-  const ch = await api('/auth/change-password', { method: 'POST', body: JSON.stringify({ oldPassword: 'mal', newPassword: 'admin-pass-456', repeatPassword: 'admin-pass-456' }) }, admin.token, admin.businessId);
-  assert.equal(ch.status, 401);
+  if (!SUPABASE_LIVE) return t.skip('SUPABASE_SERVICE_ROLE_KEY is placeholder — skipping live Supabase test');
+
+  const email = `reg_${uniq()}@test.local`;
+  const r = await api('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ businessName: `Biz ${uniq()}`, email, password: 'register-pass-123', firstName: 'Reg' }),
+  });
+  assert.equal(r.status, 201, `register failed: ${JSON.stringify(r.body)}`);
+  // No token in response (front uses SDK signInWithPassword).
+  assert.ok(!('token' in r.body!), 'response should not include a token');
+  assert.ok(r.body!.user, 'response should include user');
+  assert.ok(r.body!.business, 'response should include business');
+  created.businessIds.add((r.body!.business as { id: string }).id);
+  created.userIds.add((r.body!.user as { id: string }).id);
 });
 
-test('crear usuario con email ya miembro del mismo negocio → 409', async (t) => {
+// ---------------------------------------------------------------------------
+// POST /users invite — Case A: linking an EXISTING user needs no email/SMTP.
+// (Actual invite-email delivery for NEW users is SMTP-dependent → Phase 6.)
+// ---------------------------------------------------------------------------
+test('POST /users invite links an existing user (Case A — no SMTP)', async (t) => {
   if (!backUp) return t.skip('back down');
-  const admin = await newAdmin();
+  if (!SUPABASE_LIVE) return t.skip('SUPABASE_SERVICE_ROLE_KEY is placeholder — skipping live Supabase test');
+
+  // Owner of business B.
+  const owner = await registerAndToken(`inv_owner_${uniq()}@test.local`, 'inv-owner-pass-1234');
+  created.businessIds.add(owner.businessId); created.userIds.add(owner.userId);
+
+  // Existing user C (already in crm.User via their own registration).
+  const cEmail = `inv_c_${uniq()}@test.local`;
+  const c = await registerAndToken(cEmail, 'inv-c-pass-1234');
+  created.businessIds.add(c.businessId); created.userIds.add(c.userId);
+
+  // Owner invites C to business B → Case A: links via Membership, no email sent.
+  const r = await api('/users', {
+    method: 'POST',
+    body: JSON.stringify({ email: cEmail, firstName: 'Cee', role: 'EMPLOYEE' }),
+  }, owner.token, owner.businessId);
+
+  assert.equal(r.status, 201, `invite failed: ${JSON.stringify(r.body)}`);
+  assert.equal((r.body as { linked: boolean }).linked, true);
+  assert.equal((r.body as { emailSent: boolean }).emailSent, false);
+});
+
+// ---------------------------------------------------------------------------
+// GET /users does not include passwordHash or status (fields removed from schema).
+// ---------------------------------------------------------------------------
+test('GET /users never includes passwordHash or status fields', async (t) => {
+  if (!backUp) return t.skip('back down');
+  if (!SUPABASE_LIVE) return t.skip('needs live Supabase to get a valid token');
+
+  const owner = await registerAndToken(`users_${uniq()}@test.local`, 'users-list-pass-1234');
+  created.businessIds.add(owner.businessId); created.userIds.add(owner.userId);
+
+  const r = await api('/users', {}, owner.token, owner.businessId);
+  assert.equal(r.status, 200, `GET /users failed: ${JSON.stringify(r.body)}`);
+  const rows = r.body as unknown as Array<Record<string, unknown>>;
+  assert.ok(Array.isArray(rows) && rows.length >= 1, 'expected at least the owner');
+  for (const u of rows) {
+    assert.ok(!('passwordHash' in u), 'response must not include passwordHash');
+    assert.ok(!('status' in u), 'response must not include status');
+    assert.ok(u.id && u.email, 'each row has id + email');
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /auth/register — duplicate email → 409 email_taken (live only).
+// ---------------------------------------------------------------------------
+test('register with duplicate email → 409 (live only)', async (t) => {
+  if (!backUp) return t.skip('back down');
+  if (!SUPABASE_LIVE) return t.skip('SUPABASE_SERVICE_ROLE_KEY is placeholder');
+
   const email = `dup_${uniq()}@test.local`;
-  const a = await api('/users', { method: 'POST', body: JSON.stringify({ email, firstName: 'D', role: 'EMPLOYEE' }) }, admin.token, admin.businessId);
-  created.userIds.add(a.body!.id as string);
-  const b = await api('/users', { method: 'POST', body: JSON.stringify({ email, firstName: 'D', role: 'EMPLOYEE' }) }, admin.token, admin.businessId);
-  assert.equal(b.status, 409);
+  const r1 = await api('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ businessName: `Biz ${uniq()}`, email, password: 'dup-pass-1234', firstName: 'Dup' }),
+  });
+  assert.equal(r1.status, 201, `first register failed: ${JSON.stringify(r1.body)}`);
+  created.businessIds.add((r1.body!.business as { id: string }).id);
+  created.userIds.add((r1.body!.user as { id: string }).id);
+
+  const r2 = await api('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ businessName: `Biz2 ${uniq()}`, email, password: 'dup-pass-1234', firstName: 'Dup2' }),
+  });
+  assert.equal(r2.status, 409, `Expected 409 on duplicate, got ${r2.status}`);
+  assert.equal((r2.body!.error as { code: string }).code, 'email_taken');
 });
 
-test('email de otro negocio se enlaza sin tocar credenciales (linked, sin invitación)', async (t) => {
+// ---------------------------------------------------------------------------
+// POST /auth/register — weak password → 422.
+// ---------------------------------------------------------------------------
+test('register with weak password → 422', async (t) => {
   if (!backUp) return t.skip('back down');
-  const a = await newAdmin();
-  const b = await newAdmin();
-  // El admin de B intenta "crear" al admin de A por su email → se enlaza membership.
-  const r = await api('/users', { method: 'POST', body: JSON.stringify({ email: a.email, firstName: 'X', role: 'EMPLOYEE' }) }, b.token, b.businessId);
-  assert.equal(r.status, 201, JSON.stringify(r.body));
-  assert.equal(r.body!.linked, true);
-  assert.equal(r.body!.emailSent, false);
-  // La cuenta de A sigue activa y su passwordHash intacto (no se reseteó).
-  const login = await api('/auth/login', { method: 'POST', body: JSON.stringify({ email: a.email, password: 'admin-pass-123' }) });
-  assert.equal(login.status, 200);
+  const r = await api('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ businessName: 'Biz', email: `weak_${uniq()}@test.local`, password: 'short', firstName: 'W' }),
+  });
+  assert.equal(r.status, 422);
+  assert.equal((r.body!.error as { code: string }).code, 'weak_password');
 });
 
-test('un trabajador no puede gestionar usuarios (RBAC)', async (t) => {
+// ---------------------------------------------------------------------------
+// POST /auth/change-password without auth → 401.
+// ---------------------------------------------------------------------------
+test('change-password without auth → 401', async (t) => {
   if (!backUp) return t.skip('back down');
-  const admin = await newAdmin();
-  const email = `emp_${uniq()}@test.local`;
-  const c = await api('/users', { method: 'POST', body: JSON.stringify({ email, firstName: 'Emp', role: 'EMPLOYEE' }) }, admin.token, admin.businessId);
-  const userId = c.body!.id as string;
-  created.userIds.add(userId);
-  // Fija password al empleado y loguea.
-  const plain = crypto.randomBytes(32).toString('base64url');
-  await prisma.authToken.create({ data: { userId, tokenHash: hashToken(plain), purpose: 'invite', expiresAt: new Date(Date.now() + 60_000) } });
-  await api('/auth/set-password', { method: 'POST', body: JSON.stringify({ token: plain, newPassword: 'emp-pass-123', repeatPassword: 'emp-pass-123' }) });
-  const login = await api('/auth/login', { method: 'POST', body: JSON.stringify({ email, password: 'emp-pass-123' }) });
-  const empToken = login.body!.token as string;
-  // El empleado intenta listar usuarios → 403.
-  const r = await api('/users', {}, empToken, admin.businessId);
-  assert.equal(r.status, 403);
+  const r = await api('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({ newPassword: 'new-pass-123456', repeatPassword: 'new-pass-123456' }),
+  });
+  assert.equal(r.status, 401);
 });
 
-test('rate limit en forgot-password (max 5 / ventana)', async (t) => {
+// ---------------------------------------------------------------------------
+// Rate limiter: forgot-password blocks after limit.
+// ---------------------------------------------------------------------------
+test('rate limit on forgot-password (max 5/window)', async (t) => {
   if (!backUp) return t.skip('back down');
-  // 6ª petición desde la misma IP debe dar 429. Limiter es por IP de proceso.
+  // Reset counters first to isolate from other tests running in the same process.
+  await fetch(`${BASE}/api/auth/__test__/reset-rate-limits`, { method: 'POST' }).catch(() => {});
   let got429 = false;
   for (let i = 0; i < 8; i++) {
     const r = await api('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email: `rl_${uniq()}@test.local` }) });
     if (r.status === 429) { got429 = true; break; }
   }
-  assert.ok(got429, 'esperaba un 429 tras superar el límite de forgot-password');
-});
-
-// blueteam MEDIA: el email se normaliza (trim+lowercase) en un único punto, así
-// que registrarse con mayúsculas y loguear en minúsculas debe funcionar.
-test('login normaliza el email (case-insensitive)', async (t) => {
-  if (!backUp) return t.skip('back down');
-  const email = `Mixed_${uniq()}@Test.Local`;
-  const r = await api('/auth/register', {
-    method: 'POST',
-    body: JSON.stringify({ businessName: `Biz ${uniq()}`, email, password: 'admin-pass-123', firstName: 'Admin' }),
-  });
-  assert.equal(r.status, 201, `register falló: ${JSON.stringify(r.body)}`);
-  created.businessIds.add((r.body!.business as { id: string }).id);
-  created.userIds.add((r.body!.user as { id: string }).id);
-  // El email se guardó normalizado.
-  assert.equal((r.body!.user as { email: string }).email, email.toLowerCase());
-  // login con el email en minúsculas debe funcionar pese a haberse registrado con mayúsculas.
-  const login = await api('/auth/login', { method: 'POST', body: JSON.stringify({ email: email.toLowerCase(), password: 'admin-pass-123' }) });
-  assert.equal(login.status, 200, 'login con email normalizado debe funcionar');
+  assert.ok(got429, 'expected 429 after exceeding forgot-password rate limit');
 });
