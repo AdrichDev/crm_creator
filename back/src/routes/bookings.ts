@@ -23,6 +23,7 @@ bookingsRouter.get('/', async (req: AuthedRequest, res: Response) => {
   const rows = await prisma.booking.findMany({
     where: {
       businessId: req.businessId,
+      eliminadoEn: null,
       ...(status ? { status: status as BookingStatus } : {}),
       ...(employeeId ? { employeeId } : {}),
       ...(from || to ? { startAt: { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) } } : {}),

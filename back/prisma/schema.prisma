@@ -172,6 +172,7 @@ model Location {
   resources    Resource[]
   bookings     Booking[]
   @@index([businessId])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("sucursal")
 }
 
@@ -273,6 +274,7 @@ model Employee {
   fichajes   Fichaje[]
   @@index([businessId])
   @@index([locationId])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("empleado")
 }
 
@@ -318,6 +320,7 @@ model Customer {
   @@index([businessId])
   @@index([businessId, telefono])
   @@index([businessId, email])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("cliente")
 }
 
@@ -329,6 +332,7 @@ model Tag {
   color      String   @default("#9ca3af") @map("color")
   customers  Customer[] @relation("CustomerTags")
   @@index([businessId])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("etiqueta")
 }
 
@@ -360,6 +364,7 @@ model Service {
   bookings    Booking[]
   packages    Package[]  @relation("PackageServices")
   @@index([businessId])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("servicio")
 }
 
@@ -384,6 +389,7 @@ model Resource {
   bookings    Booking[]  @relation("BookingResources")
   @@index([businessId])
   @@index([locationId, tipo])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("recurso")
 }
 
@@ -417,6 +423,7 @@ model Booking {
   @@index([employeeId, startAt])
   @@index([customerId])
   @@index([status])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("reserva")
 }
 
@@ -450,6 +457,7 @@ model TimeOffRequest {
   decididoEn  DateTime? @map("decidido_en")
   createdAt   DateTime @default(now()) @map("creado_en")
   @@index([employeeId, inicio])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("solicitud_ausencia")
 }
 
@@ -483,6 +491,7 @@ model Package {
   services     Service[] @relation("PackageServices")
   instances    CustomerPackage[]
   @@index([businessId])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("paquete")
 }
 
@@ -530,6 +539,7 @@ model Product {
   createdAt   DateTime @default(now()) @map("creado_en")
   updatedAt   DateTime @updatedAt @map("actualizado_en")
   @@index([businessId])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("producto")
 }
 
@@ -546,6 +556,7 @@ model Sale {
   createdAt   DateTime @default(now()) @map("creado_en")
   lines       SaleLine[]
   @@index([businessId])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("venta")
 }
 
@@ -576,6 +587,7 @@ model Invoice {
   documentos Json?    @map("documentos")
   createdAt  DateTime @default(now()) @map("creado_en")
   @@index([businessId])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("factura")
 }
 
@@ -591,6 +603,7 @@ model Campaign {
   createdAt  DateTime @default(now()) @map("creado_en")
   updatedAt  DateTime @updatedAt @map("actualizado_en")
   @@index([businessId])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("campana")
 }
 
@@ -607,6 +620,7 @@ model Fichaje {
   horas       Decimal? @map("horas")
   createdAt   DateTime @default(now()) @map("creado_en")
   @@index([businessId])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("fichaje")
 }
 

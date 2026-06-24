@@ -66,8 +66,9 @@ dropdown que NADIE pidió, y metí un mock sintético de Estudio Lúa. El usuari
 - [ ] 5.3 Archivar change + scope summary (al cerrar todo P.7).
 
 ## OTROS pendientes (requieren OK / son lotes)
-- [ ] O.1 Extender SOFT DELETE a tablas de datos (Customer/Service/Product/Employee/Booking/…):
-  añadir `eliminado_en` (migración aditiva) + crud soft + filtro en listas. LOTE de migraciones.
+- [x] O.1 HECHO: SOFT DELETE en 14 tablas (eliminado_en additive ALTER aplicado a Supabase) +
+  crud.ts soft (filtro eliminadoEn:null en list/get/patch + DELETE→update fecha) + custom routers
+  (customers/employees/bookings/timeoff) filtran y borran soft. e2e soft-delete.spec.ts verde (crear→borrar→no aparece).
 - [ ] O.2 e2e del ALTA de proyecto vía onboarding 4-pasos (pick tenant → crear → /panel).
 - [ ] O.3 Form de alta de citas/ventas: selectores por id + datetime (hoy mock por nombre).
 - [ ] O.4 Archivar `crm-migracion-supabase` (mergear delta a specs / cerrar).

@@ -32,7 +32,7 @@ export function crudRouter(model: string, opts: CrudOptions): Router {
 
   router.get('/', async (req: AuthedRequest, res: Response) => {
     const rows = await delegate.findMany({
-      where: { businessId: req.businessId },
+      where: { businessId: req.businessId, eliminadoEn: null },
       include: opts.include,
       orderBy: opts.orderBy ?? { createdAt: 'desc' },
     });
@@ -40,7 +40,7 @@ export function crudRouter(model: string, opts: CrudOptions): Router {
   });
 
   router.get('/:id', async (req: AuthedRequest, res: Response) => {
-    const row = await delegate.findFirst({ where: { id: req.params.id, businessId: req.businessId }, include: opts.include });
+    const row = await delegate.findFirst({ where: { id: req.params.id, businessId: req.businessId, eliminadoEn: null }, include: opts.include });
     if (!row) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
     res.json(row);
   });
@@ -52,17 +52,19 @@ export function crudRouter(model: string, opts: CrudOptions): Router {
   });
 
   router.patch('/:id', async (req: AuthedRequest, res: Response) => {
-    const existing = await delegate.findFirst({ where: { id: req.params.id, businessId: req.businessId } });
+    const existing = await delegate.findFirst({ where: { id: req.params.id, businessId: req.businessId, eliminadoEn: null } });
     if (!existing) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
     const data = pick(req.body ?? {}, opts.fields);
     const row = await delegate.update({ where: { id: req.params.id }, data });
     res.json(row);
   });
 
+  // SOFT DELETE: marca eliminadoEn (hard delete en producción). Todos los modelos
+  // crud tienen la columna eliminado_en.
   router.delete('/:id', async (req: AuthedRequest, res: Response) => {
-    const existing = await delegate.findFirst({ where: { id: req.params.id, businessId: req.businessId } });
+    const existing = await delegate.findFirst({ where: { id: req.params.id, businessId: req.businessId, eliminadoEn: null } });
     if (!existing) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
-    await delegate.delete({ where: { id: req.params.id } });
+    await delegate.update({ where: { id: req.params.id }, data: { eliminadoEn: new Date() } });
     res.status(204).end();
   });
 

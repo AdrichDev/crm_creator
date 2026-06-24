@@ -13,7 +13,7 @@ const nombreEmpleado = (e: { nombre: string; apellido?: string | null } | null |
 
 // GET / → solicitudes en el shape castellano del front (empleado/tipo/inicio/fin/dias/estado).
 timeOffRouter.get('/', async (req: AuthedRequest, res: Response) => {
-  const rows = await prisma.timeOffRequest.findMany({ where: { businessId: req.businessId }, include: { employee: true }, orderBy: { inicio: 'desc' } });
+  const rows = await prisma.timeOffRequest.findMany({ where: { businessId: req.businessId, eliminadoEn: null }, include: { employee: true }, orderBy: { inicio: 'desc' } });
   res.json(rows.map((r) => ({
     id: r.id,
     empleado: nombreEmpleado(r.employee),

@@ -38,7 +38,7 @@ function buildData(body: Record<string, unknown>): Record<string, unknown> {
 
 customersRouter.get('/', async (req: AuthedRequest, res: Response) => {
   const businessId = req.businessId;
-  const customers = await prisma.customer.findMany({ where: { businessId }, orderBy: { createdAt: 'desc' } });
+  const customers = await prisma.customer.findMany({ where: { businessId, eliminadoEn: null }, orderBy: { createdAt: 'desc' } });
   const ids = customers.map((c) => c.id);
 
   const [bookingsAgg, salesAgg] = await Promise.all([
@@ -89,7 +89,7 @@ customersRouter.post('/', async (req: AuthedRequest, res: Response) => {
 });
 
 customersRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
-  const existing = await prisma.customer.findFirst({ where: { id: req.params.id, businessId: req.businessId } });
+  const existing = await prisma.customer.findFirst({ where: { id: req.params.id, businessId: req.businessId, eliminadoEn: null } });
   if (!existing) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
   const row = await prisma.customer.update({
     where: { id: req.params.id },
@@ -99,8 +99,8 @@ customersRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
 });
 
 customersRouter.delete('/:id', async (req: AuthedRequest, res: Response) => {
-  const existing = await prisma.customer.findFirst({ where: { id: req.params.id, businessId: req.businessId } });
+  const existing = await prisma.customer.findFirst({ where: { id: req.params.id, businessId: req.businessId, eliminadoEn: null } });
   if (!existing) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
-  await prisma.customer.delete({ where: { id: req.params.id } });
+  await prisma.customer.update({ where: { id: req.params.id }, data: { eliminadoEn: new Date() } });
   res.status(204).end();
 });
