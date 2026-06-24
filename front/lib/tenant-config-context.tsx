@@ -9,9 +9,18 @@ import {
   type TenantConfig, DEFAULT_CONFIG, configFromVertical, deserialize,
 } from './config/tenant-config';
 import { GENERATED_TENANT } from './config/generated-tenant';
-import type { VerticalId } from './config/verticals';
+import { VERTICAL_MAP, type VerticalId } from './config/verticals';
 import type { Role } from './config/roles';
-import { provisionTenant, deprovisionTenant } from './data/provision';
+import { isApiEnabled, apiFetch } from './api/client';
+import { isAuthed, onAuthStateChange, BUSINESS_KEY } from './auth/session';
+
+// Proyecto tal como lo sirve el back (/api/projects).
+interface ApiProject {
+  id: string;
+  createdAt: string;
+  config: unknown;
+  business?: { name: string; vertical: string; brandPrimary: string; brandSecondary: string; logoUrl: string | null };
+}
 
 // Un "proyecto" = un producto generado para un cliente (su configuración).
 export interface Project {
@@ -36,7 +45,7 @@ interface Ctx {
   role: Role;
   setRole: (r: Role) => void;
   // gestión de proyectos
-  createProject: (config: TenantConfig) => string;
+  createProject: (config: TenantConfig) => Promise<string>;
   openProject: (id: string) => void;
   closeProject: () => void;
   deleteProject: (id: string) => void;
@@ -53,13 +62,62 @@ interface Ctx {
 
 const C = createContext<Ctx | null>(null);
 
+// Reconstruye un Project del front desde la respuesta del back. Usa la config
+// guardada (BusinessSetting) si existe; si no, arma una por defecto desde el
+// vertical + branding de Business (proyectos sin onboarding previo).
+function projectFromApi(p: ApiProject): Project {
+  let cfg = (p.config && (p.config as TenantConfig).business)
+    ? deserialize(JSON.stringify(p.config))
+    : null;
+  if (!cfg) {
+    const v: VerticalId = (p.business && VERTICAL_MAP[p.business.vertical as VerticalId])
+      ? (p.business.vertical as VerticalId) : 'custom';
+    cfg = configFromVertical(v, p.business?.name ?? 'Proyecto');
+    if (p.business?.brandPrimary) cfg.branding.primary = p.business.brandPrimary;
+    if (p.business?.brandSecondary) cfg.branding.secondary = p.business.brandSecondary;
+    if (p.business?.logoUrl) cfg.branding.logoImage = p.business.logoUrl;
+  }
+  cfg.setupComplete = true;
+  return { id: p.id, config: cfg, createdAt: p.createdAt };
+}
+
 export function TenantConfigProvider({ children }: { children: ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [role, setRoleState] = useState<Role>('admin');
   const [ready, setReady] = useState(false);
+  const apiMode = isApiEnabled();
 
+  // Modo CRM (Supabase): los proyectos = Business del usuario, desde /api/projects.
+  // La consola de tarjetas los pinta igual; cero localStorage de proyectos/mock.
   useEffect(() => {
+    if (!apiMode) return;
+    let alive = true;
+    async function loadProjects() {
+      if (!(await isAuthed())) { if (alive) setReady(true); return; }
+      try {
+        const rows = await apiFetch<ApiProject[]>('/projects');
+        if (!alive) return;
+        setProjects(rows.map(projectFromApi));
+        const a = localStorage.getItem(ACTIVE_KEY);
+        if (a) setActiveId(a);
+        const r = localStorage.getItem(ROLE_KEY);
+        if (r === 'admin' || r === 'trabajador' || r === 'cliente') setRoleState(r);
+      } catch { /* deja la lista como esté */ }
+      if (alive) setReady(true);
+    }
+    void loadProjects();
+    // Recargar al iniciar sesión (login en otra ruta) o refrescar token.
+    const unsub = onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') void loadProjects();
+      else if (event === 'SIGNED_OUT' && alive) { setProjects([]); setActiveId(null); }
+    });
+    return () => { alive = false; unsub(); };
+  }, [apiMode]);
+
+  // Modo generador (sin API): proyectos en localStorage / tenant horneado.
+  useEffect(() => {
+    if (apiMode) return;
     try {
       const p = localStorage.getItem(PROJECTS_KEY);
       if (p) {
@@ -118,32 +176,47 @@ export function TenantConfigProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const createProject = useCallback((cfg: TenantConfig) => {
+  const createProject = useCallback(async (cfg: TenantConfig): Promise<string> => {
+    const config = { ...cfg, setupComplete: true };
+    if (apiMode) {
+      // Crea Business+BusinessSetting+Membership en Supabase. El back valida que el
+      // tenant (cfg.business.clienteId) existe; lanza si falta → el llamador lo gestiona.
+      const created = await apiFetch<ApiProject>('/projects', {
+        method: 'POST',
+        body: JSON.stringify({ tenantId: cfg.business.clienteId, config }),
+      });
+      const proj: Project = { id: created.id, config, createdAt: created.createdAt };
+      setProjects((prev) => [proj, ...prev]);
+      return created.id;
+    }
     const id = uid();
-    const proj: Project = { id, config: { ...cfg, setupComplete: true }, createdAt: new Date().toISOString() };
+    const proj: Project = { id, config, createdAt: new Date().toISOString() };
     setProjects((prev) => {
       const next = [proj, ...prev];
       try { localStorage.setItem(PROJECTS_KEY, JSON.stringify(next)); } catch { /* noop */ }
       return next;
     });
-    // Provisiona el schema del proyecto en Postgres (no bloquea la creación local).
-    void provisionTenant(id, proj.config);
     return id;
-  }, []);
+  }, [apiMode]);
 
-  const openProject = useCallback((id: string) => persistActive(id), [persistActive]);
+  const openProject = useCallback((id: string) => {
+    persistActive(id);
+    // En modo CRM, el proyecto ES el negocio: fija el tenant activo para el scoping
+    // de datos (x-business-id) de todas las llamadas al back.
+    if (apiMode) { try { localStorage.setItem(BUSINESS_KEY, id); } catch { /* noop */ } }
+  }, [persistActive, apiMode]);
   const closeProject = useCallback(() => persistActive(null), [persistActive]);
 
   const deleteProject = useCallback((id: string) => {
-    void deprovisionTenant(id); // elimina su schema en Postgres
+    if (apiMode) void apiFetch(`/projects/${id}`, { method: 'DELETE' }).catch(() => { /* soft delete best-effort */ });
     setProjects((prev) => {
       const next = prev.filter((p) => p.id !== id);
-      try { localStorage.setItem(PROJECTS_KEY, JSON.stringify(next)); } catch { /* noop */ }
+      if (!apiMode) { try { localStorage.setItem(PROJECTS_KEY, JSON.stringify(next)); } catch { /* noop */ } }
       return next;
     });
     setActiveId((aid) => (aid === id ? null : aid));
     try { if (localStorage.getItem(ACTIVE_KEY) === id) localStorage.removeItem(ACTIVE_KEY); } catch { /* noop */ }
-  }, []);
+  }, [apiMode]);
 
   const markGenerated = useCallback((id: string) => {
     setProjects((prev) => {
@@ -153,7 +226,13 @@ export function TenantConfigProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const setConfig = useCallback((next: TenantConfig) => mutateActive(() => next), [mutateActive]);
+  const setConfig = useCallback((next: TenantConfig) => {
+    mutateActive(() => next);
+    // En modo CRM persiste la config del proyecto (Business+BusinessSetting).
+    if (apiMode && activeId) {
+      void apiFetch(`/projects/${activeId}`, { method: 'PATCH', body: JSON.stringify({ config: next }) }).catch(() => { /* best-effort */ });
+    }
+  }, [mutateActive, apiMode, activeId]);
   const update = useCallback((patch: Partial<TenantConfig>) => mutateActive((c) => ({ ...c, ...patch })), [mutateActive]);
   const toggleModule = useCallback((id: ModuleId, on: boolean) => {
     if (MODULE_MAP[id]?.mandatory) return;

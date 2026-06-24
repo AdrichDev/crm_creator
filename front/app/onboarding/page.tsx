@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useProjects } from '@/lib/tenant-config-context';
 import type { ClientLite } from '@/lib/clients/picker';
 import { ClientCombobox } from '@/components/config/client-combobox';
+import { apiFetch, isApiEnabled } from '@/lib/api/client';
 import { configFromVertical } from '@/lib/config/tenant-config';
 import { draftForEdit } from '@/lib/onboarding/edit-mode';
 import type { VerticalId } from '@/lib/config/verticals';
@@ -39,14 +40,16 @@ function OnboardingInner() {
   const [draft, setDraft] = useState(() =>
     editing ? draftForEdit(editing.config) : configFromVertical('peluqueria', ''));
 
-  // Clientes reales (de agents-agency) para vincular el proyecto.
+  // Tenants reales de agents-agency (aa.tenant) para vincular el proyecto.
+  // Se leen del back creador_CRM (/tenants, raw cross-schema sobre la Supabase
+  // compartida) — sin proxy HTTP a AA. Requiere sesión Supabase.
   const [clients, setClients] = useState<ClientLite[]>([]);
   const [clientsError, setClientsError] = useState('');
   useEffect(() => {
-    fetch('/api/clients')
-      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+    if (!isApiEnabled()) return; // modo demo sin back: sin tenants
+    apiFetch<ClientLite[]>('/tenants')
       .then((data) => setClients(Array.isArray(data) ? data : []))
-      .catch(() => setClientsError('No se pudieron cargar los clientes (¿backend de agents-agency arrancado?).'));
+      .catch(() => setClientsError('No se pudieron cargar los clientes (inicia sesión y verifica el backend).'));
   }, []);
 
   function pickClient(c: ClientLite) {
@@ -81,23 +84,31 @@ function OnboardingInner() {
   function db(patch: Partial<NonNullable<typeof draft.database>>) {
     setDraft({ ...draft, database: { ...draft.database, ...patch } });
   }
-  function finish() {
+  async function finish() {
     const name = draft.business.name.trim() || VERTICAL_MAP[draft.business.vertical].label;
     const cfg = { ...draft, business: { ...draft.business, name },
       branding: { ...draft.branding, logoText: draft.branding.logoText || name.slice(0, 2).toUpperCase() },
       setupComplete: true };
     if (isEdit && editing) {
       // UC-1: persistir SOBRE el proyecto existente, sin crear uno nuevo.
-      // setConfig reemplaza la config del proyecto activo en localStorage; quitar un
-      // módulo solo lo OCULTA (su flag a false), no borra datos del proyecto.
       openProject(editing.id);
       setConfig(cfg);
       router.push('/');
       return;
     }
-    const id = createProject(cfg);
-    openProject(id);
-    router.replace('/panel');
+    // En modo CRM hay que vincular un cliente (tenant) existente de agents-agency.
+    if (isApiEnabled() && !cfg.business.clienteId) {
+      alert('Selecciona un cliente (tenant) en el paso "Tipo de negocio". No se puede crear un proyecto sin cliente.');
+      setStep(0);
+      return;
+    }
+    try {
+      const id = await createProject(cfg);
+      openProject(id);
+      router.replace('/panel');
+    } catch {
+      alert('No se pudo crear el proyecto. Verifica que el cliente (tenant) existe y que has iniciado sesión.');
+    }
   }
 
   const activeCount = Object.values(draft.modules).filter(Boolean).length;

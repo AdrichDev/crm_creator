@@ -30,7 +30,7 @@ export async function POST(req: Request) {
         effort: body.effort,
         prompt: body.prompt,
       }),
-    }, req.headers.get('cookie') ?? undefined);
+    });
 
     const data = await res.json().catch(() => ({}));
     // 402 = cliente sin cupo (lo decide agents-agency). Se propaga tal cual.

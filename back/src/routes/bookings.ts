@@ -6,6 +6,18 @@ import { BookingStatus } from '@prisma/client';
 
 export const bookingsRouter = Router();
 
+// Estado de reserva (enum) → etiqueta castellana que muestra el front.
+const ESTADO_LABEL: Record<string, string> = {
+  PENDING: 'Pendiente', CONFIRMED: 'Confirmada', CANCELLED: 'Cancelada',
+  COMPLETED: 'Completada', NO_SHOW: 'Cancelada',
+};
+const nombreCompleto = (c: { nombre: string; apellido?: string | null } | null | undefined) =>
+  c ? [c.nombre, c.apellido].filter(Boolean).join(' ') : '';
+const nombreEmpleado = (e: { firstName: string; lastName?: string | null } | null | undefined) =>
+  e ? [e.firstName, e.lastName].filter(Boolean).join(' ') : '';
+
+// GET / → citas en el shape castellano que consume el front (cliente/servicio/
+// empleado/fecha/hora/estado). Punto único: lo usan citas, panel, estadísticas.
 bookingsRouter.get('/', async (req: AuthedRequest, res: Response) => {
   const { from, to, status, employeeId } = req.query as Record<string, string | undefined>;
   const rows = await prisma.booking.findMany({
@@ -15,10 +27,22 @@ bookingsRouter.get('/', async (req: AuthedRequest, res: Response) => {
       ...(employeeId ? { employeeId } : {}),
       ...(from || to ? { startAt: { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) } } : {}),
     },
-    include: { customer: true, service: true, employee: true, resources: true },
+    include: { customer: true, service: true, employee: true },
     orderBy: { startAt: 'asc' },
   });
-  res.json(rows);
+  res.json(rows.map((b) => ({
+    id: b.id,
+    cliente: nombreCompleto(b.customer),
+    servicio: b.service?.nombre ?? '',
+    empleado: nombreEmpleado(b.employee),
+    fecha: b.startAt.toISOString().slice(0, 10),
+    hora: b.startAt.toISOString().slice(11, 16),
+    estado: ESTADO_LABEL[b.status] ?? 'Pendiente',
+    customerId: b.customerId,
+    serviceId: b.serviceId,
+    employeeId: b.employeeId,
+    locationId: b.locationId,
+  })));
 });
 
 bookingsRouter.get('/:id', async (req: AuthedRequest, res: Response) => {

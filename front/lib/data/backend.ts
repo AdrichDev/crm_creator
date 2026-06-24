@@ -108,10 +108,13 @@ const CLIENT_DENY = new Set(['clientes', 'empleados', 'ventas', 'fichaje', 'vaca
 
 const apiBackend: DataBackend = {
   remote: true,
-  async list(key, seed) {
+  // NUNCA cae al mock (`seed`): los datos son SIEMPRE de Supabase vía back. Vacío
+  // o error → lista vacía, así no aparecen filas fantasma del mock.
+  async list(key, _seed) {
+    const empty = [] as typeof _seed;
     // El cliente solo ve SUS datos (/me/*) y el catálogo (servicios/productos vía flujo normal).
     if (activeRole() === 'cliente') {
-      if (CLIENT_DENY.has(key)) return [] as typeof seed;
+      if (CLIENT_DENY.has(key)) return empty;
       if (key === 'citas') {
         try {
           const rows = await getMyBookings();
@@ -123,13 +126,13 @@ const apiBackend: DataBackend = {
             fecha: (b.startAt ?? '').slice(0, 10),
             hora: (b.startAt ?? '').slice(11, 16),
             estado: mapBookingStatus(b.status),
-          })) as unknown as typeof seed;
-        } catch { return [] as typeof seed; }
+          })) as unknown as typeof _seed;
+        } catch { return empty; }
       }
       // servicios/productos (catálogo) y resto → flujo normal de abajo.
     }
-    const path = API_PATH[key]; if (!path) return seed;
-    try { return (await apiFetch<typeof seed>(path)) ?? seed; } catch { return seed; }
+    const path = API_PATH[key]; if (!path) return empty;
+    try { return (await apiFetch<typeof _seed>(path)) ?? empty; } catch { return empty; }
   },
   async create(key, item) {
     if (activeRole() === 'cliente') return; // el cliente no escribe datos de gestión.
