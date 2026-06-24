@@ -80,31 +80,46 @@ projectsRouter.post('/', async (req: AuthedRequest, res: Response) => {
   if (!(await tenantExists(tenantId))) {
     return res.status(422).json({ error: { code: 'tenant_not_found', message: 'El cliente (tenant) no existe en agents-agency' } });
   }
+  // 1-1 tenant↔Business. El tenant_id es @unique: una fila soft-deleted aún lo ocupa.
   const dup = await prisma.business.findUnique({ where: { tenantId } });
   if (dup && dup.eliminadoEn === null) {
     return res.status(409).json({ error: { code: 'tenant_taken', message: 'Ese cliente ya tiene un proyecto' } });
   }
 
-  const business = await prisma.$transaction(async (tx) => {
-    const b = await tx.business.create({
-      data: {
-        tenantId,
-        name: config.business?.name ?? 'Nuevo proyecto',
-        vertical: config.business?.vertical ?? 'custom',
-        ...(config.branding?.primary ? { brandPrimary: config.branding.primary } : {}),
-        ...(config.branding?.secondary ? { brandSecondary: config.branding.secondary } : {}),
-        ...(config.branding?.logoImage ? { logoUrl: config.branding.logoImage } : {}),
-      },
-    });
-    await tx.location.create({ data: { businessId: b.id, name: config.business?.name ?? 'Sede' } });
-    await tx.businessSetting.create({
-      data: { businessId: b.id, category: CONFIG_CATEGORY, data: config as Prisma.InputJsonValue },
-    });
-    await tx.membership.create({ data: { userId: req.userId!, businessId: b.id, role: 'OWNER' } });
-    return b;
-  });
+  const mirror = {
+    name: config.business?.name ?? 'Nuevo proyecto',
+    vertical: config.business?.vertical ?? 'custom',
+    ...(config.branding?.primary ? { brandPrimary: config.branding.primary } : {}),
+    ...(config.branding?.secondary ? { brandSecondary: config.branding.secondary } : {}),
+    ...(config.branding?.logoImage ? { logoUrl: config.branding.logoImage } : {}),
+  };
 
-  res.status(201).json({ id: business.id, config, createdAt: business.createdAt.toISOString() });
+  try {
+    const business = await prisma.$transaction(async (tx) => {
+      // Tenant con proyecto soft-deleted → REVIVIR (no se puede recrear por el unique).
+      if (dup) {
+        const b = await tx.business.update({ where: { id: dup.id }, data: { ...mirror, eliminadoEn: null } });
+        const setting = await tx.businessSetting.findFirst({ where: { businessId: b.id, category: CONFIG_CATEGORY } });
+        if (setting) await tx.businessSetting.update({ where: { id: setting.id }, data: { data: config as Prisma.InputJsonValue } });
+        else await tx.businessSetting.create({ data: { businessId: b.id, category: CONFIG_CATEGORY, data: config as Prisma.InputJsonValue } });
+        const member = await tx.membership.findFirst({ where: { userId: req.userId, businessId: b.id } });
+        if (!member) await tx.membership.create({ data: { userId: req.userId!, businessId: b.id, role: 'OWNER' } });
+        return b;
+      }
+      const b = await tx.business.create({ data: { tenantId, ...mirror } });
+      await tx.location.create({ data: { businessId: b.id, name: config.business?.name ?? 'Sede' } });
+      await tx.businessSetting.create({ data: { businessId: b.id, category: CONFIG_CATEGORY, data: config as Prisma.InputJsonValue } });
+      await tx.membership.create({ data: { userId: req.userId!, businessId: b.id, role: 'OWNER' } });
+      return b;
+    });
+    res.status(201).json({ id: business.id, config, createdAt: business.createdAt.toISOString() });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+      return res.status(409).json({ error: { code: 'tenant_taken', message: 'Ese cliente ya tiene un proyecto' } });
+    }
+    console.error('[projects] create error:', e);
+    return res.status(500).json({ error: { code: 'server_error', message: 'No se pudo crear el proyecto' } });
+  }
 });
 
 // PATCH /:id → actualiza config (modo edición). Espeja a columnas + BusinessSetting.

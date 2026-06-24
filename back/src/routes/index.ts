@@ -13,6 +13,7 @@ import { usersRouter } from './users.js';
 import { customersRouter } from './customers.js';
 import { tenantsRouter } from './tenants.js';
 import { projectsRouter } from './projects.js';
+import { employeesRouter } from './employees.js';
 
 export const api = Router();
 
@@ -36,7 +37,7 @@ api.use('/products', staffOrClient, crudRouter('product', { fields: ['nombre', '
 // Cierra el hallazgo CRÍTICO F1/F2 de sec-review.md (crud/dashboard/bookings/packages sin guard).
 api.use(staffOnly);
 
-api.use('/employees', crudRouter('employee', { fields: ['locationId', 'firstName', 'lastName', 'email', 'phone', 'specialty', 'color', 'status', 'hireDate', 'vacationTotal', 'vacationUsed', 'commission'] }));
+api.use('/employees', employeesRouter); // castellano + nombre combinado + rol
 api.use('/customers', customersRouter); // castellano + agregados (visitas/gastoTotal/segmento)
 api.use('/resources', crudRouter('resource', { fields: ['locationId', 'name', 'type', 'capacity', 'status', 'locationNote', 'description', 'metadata'] }));
 api.use('/sales', crudRouter('sale', { fields: ['customerId', 'customerName', 'date', 'paymentMethod', 'total'], include: { lines: true } }));

@@ -50,9 +50,9 @@ dropdown que NADIE pidió, y metí un mock sintético de Estudio Lúa. El usuari
 - [x] P.3 HECHO: `GET /api/projects` (Membership, eliminadoEn null, +espejo Business). `tenant-config-context` apiMode carga desde /api/projects (recarga en SIGNED_IN). Consola de TARJETAS intacta. Login → `/` (dashboard). e2e: lista Estudio Lúa + JorjotasBarber. 
 - [x] P.4 HECHO: config del panel desde Business+BusinessSetting (projectFromApi: usa config guardada o fallback configFromVertical). openProject fija `saas.business.id` (x-business-id) → datos scoped. e2e abrir→panel→clientes reales→volver verde.
 - [x] P.5 HECHO (parcial): columna `eliminado_en` en Business + `DELETE /api/projects/:id` soft (set fecha) + GET filtra null. Falta extender soft-delete a otras tablas con borrado de usuario.
-- [ ] P.6 Migración: proyectos/tenants de localStorage → Supabase (script una vez). PENDIENTE.
-- [ ] P.7 Castellanizar Business/Membership/Location/Package/etc (salvo tenant/tenant_id e infra). PENDIENTE.
-- [x] P.8 HECHO: columna `Employee.rol` (additive ALTER aplicado a Supabase). Falta cablearla en ruta/front de empleados.
+- [x] P.6 HECHO: migración client-side una vez (tenant-config-context migrateLocalProjects): POSTea los proyectos de localStorage a /api/projects (tenant válido requerido), conserva backup (saas.projects.backup.v1) + flag (saas.projects.migrated.v1). Tenants ya estaban en aa.tenant. FIX de paso: POST /projects revive proyecto soft-deleted (tenant unique) + try/catch P2002 (antes crasheaba el back). e2e migracion-localstorage.spec.ts verde (autolimpiable).
+- [~] P.7 EN CURSO. Castellanizados (modelo+ruta+seed, verde): Customer, Service, Product, Campaign, Fichaje, Booking(router), **Employee** (employeesRouter, nombre combinado + rol cableado; e2e Sara Molina). PENDIENTE: Business, Membership, Location, Sale/SaleLine, Resource, Tag, Package, CustomerPackage, Holiday, OpeningHour + modelos a cablear (EmployeeSchedule, Document, Notification, BusinessSetting, BookingStatusHistory, PackageSession).
+- [x] P.8 HECHO: columna `Employee.rol` aplicada + cableada (employeesRouter + seed Estilista/Barbero + página ya la pinta).
 
 ## Fase 5 — AA + cierre
 - [ ] 5.1 Proxies AA: quitar onboarding-AA o documentar Bearer real (decisión).

@@ -31,6 +31,8 @@ export interface Project {
 }
 
 const PROJECTS_KEY = 'saas.projects.v1';
+const PROJECTS_BACKUP_KEY = 'saas.projects.backup.v1'; // copia tras migrar a Supabase
+const MIGRATED_KEY = 'saas.projects.migrated.v1';       // flag: migración localStorage→Supabase hecha
 const ACTIVE_KEY = 'saas.active-project.v1';
 const ROLE_KEY = 'saas.role.v1';
 const uid = () => 'p_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -93,9 +95,29 @@ export function TenantConfigProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!apiMode) return;
     let alive = true;
+    // P.6 — migra una vez los proyectos del generador en localStorage a Supabase
+    // (se conservan en local como backup). Cada proyecto necesita un tenant válido
+    // (config.business.clienteId existente en aa.tenant); si no, se omite.
+    async function migrateLocalProjects() {
+      if (localStorage.getItem(MIGRATED_KEY)) return;
+      let locals: Project[] = [];
+      try { locals = JSON.parse(localStorage.getItem(PROJECTS_KEY) ?? '[]') as Project[]; } catch { locals = []; }
+      for (const p of locals) {
+        const tenantId = p.config?.business?.clienteId;
+        if (!tenantId) continue; // sin cliente → no se puede crear proyecto
+        try {
+          await apiFetch('/projects', { method: 'POST', body: JSON.stringify({ tenantId, config: p.config }) });
+        } catch { /* 409 ya existe / 422 tenant inválido → omitir */ }
+      }
+      try {
+        if (localStorage.getItem(PROJECTS_KEY)) localStorage.setItem(PROJECTS_BACKUP_KEY, localStorage.getItem(PROJECTS_KEY)!);
+        localStorage.setItem(MIGRATED_KEY, new Date().toISOString());
+      } catch { /* noop */ }
+    }
     async function loadProjects() {
       if (!(await isAuthed())) { if (alive) setReady(true); return; }
       try {
+        await migrateLocalProjects();
         const rows = await apiFetch<ApiProject[]>('/projects');
         if (!alive) return;
         setProjects(rows.map(projectFromApi));
