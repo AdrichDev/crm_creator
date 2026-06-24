@@ -1,9 +1,6 @@
 'use client';
-import { getSupabase, getActiveTenantId, isSupabaseEnabled } from '@/lib/supabase/client';
 import { apiFetch, isApiEnabled } from '@/lib/api/client';
 import { getMyBookings, mapBookingStatus } from '@/lib/api/me';
-
-import { TABLE_MAP, toDbRow, fromDbRow } from '@/lib/supabase/tables';
 
 export type WithId = { id: number | string };
 
@@ -45,40 +42,6 @@ const localBackend: DataBackend = {
   },
   async remove(key, id) {
     write(key, read(key, [] as { id: typeof id }[]).filter((it) => it.id !== id));
-  },
-};
-
-// ---------------------------------------------------------------------------
-// Backend SUPABASE (se activa solo cuando hay credenciales en .env).
-// ---------------------------------------------------------------------------
-const supabaseBackend: DataBackend = {
-  remote: true,
-  async list(key, seed) {
-    const sb = getSupabase(); const table = TABLE_MAP[key];
-    if (!sb || !table) return seed;
-    const tenant = getActiveTenantId();
-    let q = sb.from(table).select('*').order('created_at', { ascending: false });
-    if (tenant) q = q.eq('tenant_id', tenant);
-    const { data, error } = await q;
-    if (error || !data) return seed;
-    return data.map((r) => fromDbRow(key, r as Record<string, unknown>)) as typeof seed;
-  },
-  async create(key, item) {
-    const sb = getSupabase(); const table = TABLE_MAP[key];
-    if (!sb || !table) return;
-    const row = toDbRow(key, item as Record<string, unknown>);
-    row.tenant_id = getActiveTenantId();
-    await sb.from(table).insert(row);
-  },
-  async update(key, id, patch) {
-    const sb = getSupabase(); const table = TABLE_MAP[key];
-    if (!sb || !table) return;
-    await sb.from(table).update(toDbRow(key, patch as Record<string, unknown>)).eq('id', id);
-  },
-  async remove(key, id) {
-    const sb = getSupabase(); const table = TABLE_MAP[key];
-    if (!sb || !table) return;
-    await sb.from(table).delete().eq('id', id);
   },
 };
 
@@ -152,9 +115,10 @@ const apiBackend: DataBackend = {
   },
 };
 
-/** Selecciona el backend activo según la configuración de entorno. */
+/** Selecciona el backend activo. FUENTE ÚNICA: con NEXT_PUBLIC_API_URL → REST (Supabase
+ * vía back). Sin él (repo generador en demo) → localStorage mock. Se eliminó el acceso
+ * directo a Supabase del front (saltaba el back/REST y usaba tablas/mapeos antiguos). */
 export function getBackend(): DataBackend {
   if (isApiEnabled()) return apiBackend;
-  if (isSupabaseEnabled()) return supabaseBackend;
   return localBackend;
 }

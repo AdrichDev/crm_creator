@@ -32,3 +32,18 @@ export const env = {
   // SUPABASE_JWT_SECRET eliminado: los tokens se verifican vía JWKS (ES256), no con
   // un secreto HS256 compartido. Ya no se lee ningún secreto para verificar.
 };
+
+/**
+ * Fail-closed real: aborta el arranque si falta config crítica de Supabase (o quedan
+ * placeholders). Llamar en server.ts antes de listen. Evita arrancar "verde" con auth/DB
+ * rotos. No se ejecuta en tests (no importan server.ts).
+ */
+export function assertConfig(): void {
+  const missing: string[] = [];
+  if (!env.databaseUrl) missing.push('DATABASE_URL');
+  if (!env.supabaseUrl || env.supabaseUrl.includes('placeholder')) missing.push('SUPABASE_URL');
+  if (!env.supabaseServiceRoleKey || env.supabaseServiceRoleKey.includes('placeholder')) missing.push('SUPABASE_SERVICE_ROLE_KEY');
+  if (missing.length) {
+    throw new Error(`[config] Supabase incompleto (fail-closed): falta/placeholder ${missing.join(', ')}. Configura back/.env antes de arrancar.`);
+  }
+}

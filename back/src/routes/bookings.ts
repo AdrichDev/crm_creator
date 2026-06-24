@@ -3,6 +3,7 @@ import { prisma } from '../prisma.js';
 import { checkAvailability, daySlots } from '../lib/availability.js';
 import type { AuthedRequest } from '../middleware/types.js';
 import { BookingStatus } from '@prisma/client';
+import { assertFks, CrossTenantError } from '../lib/tenant.js';
 
 export const bookingsRouter = Router();
 
@@ -70,6 +71,20 @@ bookingsRouter.post('/check-availability', async (req: AuthedRequest, res: Respo
 bookingsRouter.post('/', async (req: AuthedRequest, res: Response) => {
   const { locationId, serviceId, customerId, employeeId, resourceIds = [], start, channel = 'MANUAL', notes } = req.body ?? {};
   if (!locationId || !serviceId || !start) return res.status(422).json({ error: { code: 'validation', message: 'locationId, serviceId y start requeridos' } });
+
+  // Gate tenancy: ningún FK puede apuntar a otro negocio.
+  try {
+    await assertFks(req.businessId, [
+      { model: 'location', id: locationId, field: 'locationId' },
+      { model: 'service', id: serviceId, field: 'serviceId' },
+      { model: 'customer', id: customerId, field: 'customerId' },
+      { model: 'employee', id: employeeId, field: 'employeeId' },
+      ...(resourceIds as string[]).map((id) => ({ model: 'resource' as const, id, field: 'resourceIds' })),
+    ]);
+  } catch (e) {
+    if (e instanceof CrossTenantError) return res.status(422).json({ error: { code: 'cross_tenant', message: e.message } });
+    throw e;
+  }
 
   const result = await prisma.$transaction(async () => {
     const avail = await checkAvailability({ businessId: req.businessId!, locationId, serviceId, employeeId, resourceIds, start });

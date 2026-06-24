@@ -10,10 +10,18 @@ export const meRouter = Router();
 // Si no hay Customer asociado, las listas salen vacías (cliente recién registrado
 // sin ficha de cliente en el negocio).
 async function myCustomerId(req: AuthedRequest): Promise<string | null> {
+  // Robusto: por Customer.userId (FK directa a auth.users, fijada en el auto-registro).
+  // Inmune a emails duplicados/cambiados/nulos.
+  const byUser = await prisma.customer.findFirst({
+    where: { businessId: req.businessId, userId: req.userId, eliminadoEn: null },
+    select: { id: true },
+  });
+  if (byUser) return byUser.id;
+  // Fallback SOLO migratorio: clientes antiguos creados sin userId.
   const user = await prisma.user.findUnique({ where: { id: req.userId }, select: { email: true } });
   if (!user?.email) return null;
   const customer = await prisma.customer.findFirst({
-    where: { businessId: req.businessId, email: user.email },
+    where: { businessId: req.businessId, email: user.email, eliminadoEn: null },
     select: { id: true },
   });
   return customer?.id ?? null;

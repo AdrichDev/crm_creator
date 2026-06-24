@@ -39,11 +39,11 @@ api.use(staffOnly);
 
 api.use('/employees', employeesRouter); // castellano + nombre combinado + rol
 api.use('/customers', customersRouter); // castellano + agregados (visitas/gastoTotal/segmento)
-api.use('/resources', crudRouter('resource', { fields: ['locationId', 'nombre', 'tipo', 'capacidad', 'estado', 'notaUbicacion', 'descripcion', 'metadatos'] }));
-api.use('/sales', crudRouter('sale', { fields: ['customerId', 'cliente', 'fecha', 'metodo', 'total'], include: { lines: true } }));
+api.use('/resources', crudRouter('resource', { fields: ['locationId', 'nombre', 'tipo', 'capacidad', 'estado', 'notaUbicacion', 'descripcion', 'metadatos'], fkFields: { locationId: 'location' } }));
+api.use('/sales', crudRouter('sale', { fields: ['customerId', 'cliente', 'fecha', 'metodo', 'total'], include: { lines: true }, fkFields: { customerId: 'customer' } }));
 api.use('/invoices', crudRouter('invoice', { fields: ['numero', 'cliente', 'servicio', 'fecha', 'total', 'estado', 'documentos'] }));
 api.use('/campaigns', crudRouter('campaign', { fields: ['nombre', 'canal', 'estado', 'enviados', 'aperturas'] }));
-api.use('/fichajes', crudRouter('fichaje', { fields: ['employeeId', 'empleado', 'fecha', 'entrada', 'salida', 'horas'] }));
+api.use('/fichajes', crudRouter('fichaje', { fields: ['employeeId', 'empleado', 'fecha', 'entrada', 'salida', 'horas'], fkFields: { employeeId: 'employee' } }));
 api.use('/tags', crudRouter('tag', { fields: ['nombre', 'color'] }));
 
 // Custom

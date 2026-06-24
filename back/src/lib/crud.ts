@@ -1,6 +1,7 @@
 import { Router, type Response } from 'express';
 import { prisma } from '../prisma.js';
 import type { AuthedRequest } from '../middleware/types.js';
+import { assertBelongsToBusiness, CrossTenantError, type TenantModel } from './tenant.js';
 
 type Delegate = {
   findMany: (args: unknown) => Promise<unknown[]>;
@@ -17,12 +18,23 @@ interface CrudOptions {
   include?: Record<string, boolean>;
   /** Orden por defecto. */
   orderBy?: Record<string, 'asc' | 'desc'>;
+  /** FKs del body a validar contra el negocio activo (campo → modelo destino). */
+  fkFields?: Record<string, TenantModel>;
 }
 
 function pick(body: Record<string, unknown>, fields: string[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const f of fields) if (body[f] !== undefined) out[f] = body[f];
   return out;
+}
+
+// Valida cada FK presente en el body contra el negocio activo. Lanza CrossTenantError.
+async function validateFks(body: Record<string, unknown>, businessId: string | undefined, fkFields?: Record<string, TenantModel>): Promise<void> {
+  if (!fkFields) return;
+  for (const [field, model] of Object.entries(fkFields)) {
+    const id = body[field];
+    if (typeof id === 'string') await assertBelongsToBusiness(model, id, businessId, field);
+  }
 }
 
 // Router CRUD multi-tenant: todo se filtra/crea con el businessId del token.
@@ -46,6 +58,12 @@ export function crudRouter(model: string, opts: CrudOptions): Router {
   });
 
   router.post('/', async (req: AuthedRequest, res: Response) => {
+    try {
+      await validateFks(req.body ?? {}, req.businessId, opts.fkFields);
+    } catch (e) {
+      if (e instanceof CrossTenantError) return res.status(422).json({ error: { code: 'cross_tenant', message: e.message } });
+      throw e;
+    }
     const data = pick(req.body ?? {}, opts.fields);
     const row = await delegate.create({ data: { ...data, businessId: req.businessId } });
     res.status(201).json(row);
@@ -54,6 +72,12 @@ export function crudRouter(model: string, opts: CrudOptions): Router {
   router.patch('/:id', async (req: AuthedRequest, res: Response) => {
     const existing = await delegate.findFirst({ where: { id: req.params.id, businessId: req.businessId, eliminadoEn: null } });
     if (!existing) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
+    try {
+      await validateFks(req.body ?? {}, req.businessId, opts.fkFields);
+    } catch (e) {
+      if (e instanceof CrossTenantError) return res.status(422).json({ error: { code: 'cross_tenant', message: e.message } });
+      throw e;
+    }
     const data = pick(req.body ?? {}, opts.fields);
     const row = await delegate.update({ where: { id: req.params.id }, data });
     res.json(row);
