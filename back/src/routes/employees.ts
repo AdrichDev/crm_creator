@@ -1,0 +1,60 @@
+import { Router, type Response } from 'express';
+import { Prisma } from '@prisma/client';
+import { prisma } from '../prisma.js';
+import type { AuthedRequest } from '../middleware/types.js';
+
+// Empleados (crm.empleado) en castellano. La página usa nombre COMBINADO
+// (nombre+apellido); aquí se combina al leer y se parte al escribir.
+export const employeesRouter = Router();
+
+function splitNombre(full: string): { nombre: string; apellido: string | null } {
+  const t = full.trim().split(/\s+/).filter(Boolean);
+  return { nombre: t[0] ?? '', apellido: t.length > 1 ? t.slice(1).join(' ') : null };
+}
+
+const INPUT = ['rol', 'especialidad', 'email', 'estado', 'color', 'telefono'] as const;
+function buildData(body: Record<string, unknown>): Record<string, unknown> {
+  const data: Record<string, unknown> = {};
+  for (const f of INPUT) if (body[f] !== undefined) data[f] = body[f];
+  if (typeof body.nombre === 'string') {
+    const { nombre, apellido } = splitNombre(body.nombre);
+    data.nombre = nombre;
+    data.apellido = apellido;
+  }
+  return data;
+}
+
+employeesRouter.get('/', async (req: AuthedRequest, res: Response) => {
+  const rows = await prisma.employee.findMany({ where: { businessId: req.businessId }, orderBy: { createdAt: 'desc' } });
+  res.json(rows.map((e) => ({
+    id: e.id,
+    nombre: [e.nombre, e.apellido].filter(Boolean).join(' '),
+    rol: e.rol ?? '',
+    especialidad: e.especialidad ?? '',
+    email: e.email ?? '',
+    telefono: e.telefono ?? '',
+    estado: e.estado,
+    color: e.color,
+  })));
+});
+
+employeesRouter.post('/', async (req: AuthedRequest, res: Response) => {
+  const data = buildData(req.body ?? {});
+  if (!data.nombre) return res.status(422).json({ error: { code: 'invalid', message: 'Falta nombre' } });
+  const row = await prisma.employee.create({ data: { ...data, businessId: req.businessId } as unknown as Prisma.EmployeeUncheckedCreateInput });
+  res.status(201).json(row);
+});
+
+employeesRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
+  const existing = await prisma.employee.findFirst({ where: { id: req.params.id, businessId: req.businessId } });
+  if (!existing) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
+  const row = await prisma.employee.update({ where: { id: req.params.id }, data: buildData(req.body ?? {}) as Prisma.EmployeeUncheckedUpdateInput });
+  res.json(row);
+});
+
+employeesRouter.delete('/:id', async (req: AuthedRequest, res: Response) => {
+  const existing = await prisma.employee.findFirst({ where: { id: req.params.id, businessId: req.businessId } });
+  if (!existing) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
+  await prisma.employee.delete({ where: { id: req.params.id } });
+  res.status(204).end();
+});

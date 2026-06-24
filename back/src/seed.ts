@@ -27,8 +27,8 @@ async function main() {
   });
   await prisma.membership.create({ data: { userId: owner.id, businessId: business.id, role: 'OWNER' } });
 
-  const sara = await prisma.employee.create({ data: { businessId: business.id, locationId: location.id, firstName: 'Sara', lastName: 'Molina', specialty: 'Color', color: '#8cc63f' } });
-  const jorge = await prisma.employee.create({ data: { businessId: business.id, locationId: location.id, firstName: 'Jorge', lastName: 'Ortega', specialty: 'Barba', color: '#f25c2a' } });
+  const sara = await prisma.employee.create({ data: { businessId: business.id, locationId: location.id, nombre: 'Sara', apellido: 'Molina', especialidad: 'Color', rol: 'Estilista', color: '#8cc63f' } });
+  const jorge = await prisma.employee.create({ data: { businessId: business.id, locationId: location.id, nombre: 'Jorge', apellido: 'Ortega', especialidad: 'Barba', rol: 'Barbero', color: '#f25c2a' } });
 
   const corte = await prisma.service.create({ data: { businessId: business.id, nombre: 'Corte de pelo', duracion: 30, precio: 15, requiereProfesional: true, employees: { connect: [{ id: sara.id }, { id: jorge.id }] } } });
   const color = await prisma.service.create({ data: { businessId: business.id, nombre: 'Color completo', duracion: 90, precio: 55, requiereRecurso: true, tipoRecurso: 'CHAIR', employees: { connect: [{ id: sara.id }] } } });

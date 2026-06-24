@@ -13,8 +13,8 @@ const ESTADO_LABEL: Record<string, string> = {
 };
 const nombreCompleto = (c: { nombre: string; apellido?: string | null } | null | undefined) =>
   c ? [c.nombre, c.apellido].filter(Boolean).join(' ') : '';
-const nombreEmpleado = (e: { firstName: string; lastName?: string | null } | null | undefined) =>
-  e ? [e.firstName, e.lastName].filter(Boolean).join(' ') : '';
+const nombreEmpleado = (e: { nombre: string; apellido?: string | null } | null | undefined) =>
+  e ? [e.nombre, e.apellido].filter(Boolean).join(' ') : '';
 
 // GET / → citas en el shape castellano que consume el front (cliente/servicio/
 // empleado/fecha/hora/estado). Punto único: lo usan citas, panel, estadísticas.
