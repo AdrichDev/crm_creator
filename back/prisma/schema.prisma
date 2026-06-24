@@ -1,9 +1,13 @@
 // OperaOS — Business OS para negocios locales. Multi-tenant (businessId en todo).
-// NOMENCLATURA DB (2026-06): tablas y columnas físicas en castellano snake_case vía
-// @@map/@map. Los NOMBRES de modelo y de campo en Prisma se mantienen en inglés para
-// no romper el API de Prisma Client (src/ y tests usan prisma.business, .firstName, …).
-// @@map/@map afectan SOLO al SQL físico, no al cliente JS. Enums: VALUES intactos
-// (RLS depende de role<>'CLIENT').
+// NOMENCLATURA (2026-06): columnas físicas en castellano snake_case vía @@map/@map.
+// Los CAMPOS Prisma se están castellanizando (P.7): hechos los modelos de negocio
+// (Customer, Service, Product, Employee, Booking, Sale, Campaign, Fichaje, Business,
+// Location, Resource, Tag, Package, CustomerPackage, TimeOffRequest, Holiday,
+// OpeningHour, BookingStatusHistory, PackageSession). PENDIENTE (infra): Membership.role,
+// User.firstName/lastName, y modelos a cablear (EmployeeSchedule, Document, Notification,
+// BusinessSetting). NOMBRES de MODELO en inglés (prisma.business, .customer…) — no se tocan.
+// Excepciones que se quedan: tenant/tenant_id, id, FKs *Id, createdAt/updatedAt, logoUrl,
+// vertical, plan. Enums: VALUES intactos (RLS depende de role<>'CLIENT').
 generator client {
   provider = "prisma-client-js"
 }

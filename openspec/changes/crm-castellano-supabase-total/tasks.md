@@ -56,7 +56,18 @@ dropdown que NADIE pidió, y metí un mock sintético de Estudio Lúa. El usuari
   PENDIENTE P.7 (solo INFRA/plumbing, invisible al usuario — bajo valor): Membership.role (alto churn rbac), User (firstName/lastName, auth), y modelos a CABLEAR no solo renombrar: EmployeeSchedule, Document, Notification, BusinessSetting(category/data). Todo lo USER-FACING (9 módulos datos + Business + proyectos) está castellano.
 - [x] P.8 HECHO: columna `Employee.rol` aplicada + cableada (employeesRouter + seed Estilista/Barbero + página ya la pinta).
 
-## Fase 5 — AA + cierre
-- [ ] 5.1 Proxies AA: quitar onboarding-AA o documentar Bearer real (decisión).
-- [ ] 5.2 Tests back + front verde, tsc limpio, e2e verde.
-- [ ] 5.3 mem_save + scope summary + archivar.
+## Fase 5 / OTROS — cierre
+- [~] 5.1 Proxies AA: DECISIÓN documentada. `/api/ai/generate` (Next→AA, branding IA del onboarding)
+  está roto (AA exige JWT Supabase real, no token estático). Es feature SOLO del generador, no del
+  CRM runtime. NO se borra (el usuario pidió no borrar). Fix real (token Supabase válido o metering
+  directo cross-schema) = tarea aparte, pendiente. `lib/server/aa.ts` se mantiene.
+- [x] 5.2 Tests verde: back 0 fail (33 pass + 20 live-skip por pooler), front 89, e2e 6/6, tsc back+front limpio.
+- [ ] 5.3 Archivar change + scope summary (al cerrar todo P.7).
+
+## OTROS pendientes (requieren OK / son lotes)
+- [ ] O.1 Extender SOFT DELETE a tablas de datos (Customer/Service/Product/Employee/Booking/…):
+  añadir `eliminado_en` (migración aditiva) + crud soft + filtro en listas. LOTE de migraciones.
+- [ ] O.2 e2e del ALTA de proyecto vía onboarding 4-pasos (pick tenant → crear → /panel).
+- [ ] O.3 Form de alta de citas/ventas: selectores por id + datetime (hoy mock por nombre).
+- [ ] O.4 Archivar `crm-migracion-supabase` (mergear delta a specs / cerrar).
+- [ ] O.5 Otros changes (fuera de este): crm-n8n-automations, crm-onboarding-edit-landing-ia, crm-sectorial-ia.
