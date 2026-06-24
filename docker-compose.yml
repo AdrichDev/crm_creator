@@ -1,18 +1,9 @@
 name: 3a_estudio
 
 services:
-  db-crm:
-    image: pgvector/pgvector:pg16
-    container_name: crm-negocios-db
-    restart: unless-stopped
-    ports:
-      - "5434:5432" # Usa el puerto 5433 en tu PC para no chocar con el puerto 5432 de tus agentes
-    environment:
-      - POSTGRES_USER=crm_admin
-      - POSTGRES_PASSWORD=crm_password_seguro
-      - POSTGRES_DB=crm_production
-    volumes:
-      - crm_negocios_data:/var/lib/postgresql/data
+  # NOTA: el Postgres local `db-crm` (pgvector, :5434) se RETIRÓ en la migración a
+  # Supabase. Tenancy ahora es row-level en el schema `crm` de Supabase; el back usa
+  # DATABASE_URL al pooler de Supabase. No hay schema-per-tenant ni pool docker.
 
   # Automatizaciones (perfil opcional): docker compose --profile n8n up -d
   # n8n consume los eventos de dominio que emite el back (best-effort). El CRM
@@ -44,5 +35,4 @@ services:
       - crm_n8n_data:/home/node/.n8n
 
 volumes:
-  crm_negocios_data:
   crm_n8n_data:

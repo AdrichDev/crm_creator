@@ -6,8 +6,9 @@ test('la consola de proyectos carga', async ({ page }) => {
   await expect(page.getByText(/Consola|proyectos/i).first()).toBeVisible();
 });
 
-test('el onboarding muestra el selector de cliente vinculado', async ({ page }) => {
+test('el onboarding 4-pasos carga (configurar negocio por tarjetas)', async ({ page }) => {
   await page.goto('/onboarding');
-  await expect(page.getByText('Cliente vinculado')).toBeVisible();
-  await expect(page.getByPlaceholder('Filtrar clientes por nombre…')).toBeVisible();
+  await expect(page.getByText('Configura el negocio')).toBeVisible();
+  // Paso 0: selector de sector (tarjetas) presente.
+  await expect(page.getByRole('heading', { name: /Configura el negocio/i })).toBeVisible();
 });

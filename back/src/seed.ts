@@ -30,14 +30,14 @@ async function main() {
   const sara = await prisma.employee.create({ data: { businessId: business.id, locationId: location.id, firstName: 'Sara', lastName: 'Molina', specialty: 'Color', color: '#8cc63f' } });
   const jorge = await prisma.employee.create({ data: { businessId: business.id, locationId: location.id, firstName: 'Jorge', lastName: 'Ortega', specialty: 'Barba', color: '#f25c2a' } });
 
-  const corte = await prisma.service.create({ data: { businessId: business.id, name: 'Corte de pelo', durationMin: 30, price: 15, requiresProfessional: true, employees: { connect: [{ id: sara.id }, { id: jorge.id }] } } });
-  const color = await prisma.service.create({ data: { businessId: business.id, name: 'Color completo', durationMin: 90, price: 55, requiresResource: true, resourceType: 'CHAIR', employees: { connect: [{ id: sara.id }] } } });
+  const corte = await prisma.service.create({ data: { businessId: business.id, nombre: 'Corte de pelo', duracion: 30, precio: 15, requiereProfesional: true, employees: { connect: [{ id: sara.id }, { id: jorge.id }] } } });
+  const color = await prisma.service.create({ data: { businessId: business.id, nombre: 'Color completo', duracion: 90, precio: 55, requiereRecurso: true, tipoRecurso: 'CHAIR', employees: { connect: [{ id: sara.id }] } } });
 
   const sillon = await prisma.resource.create({ data: { businessId: business.id, locationId: location.id, name: 'Sillón 1', type: 'CHAIR', capacity: 1, services: { connect: [{ id: corte.id }, { id: color.id }] } } });
 
-  const ana = await prisma.customer.create({ data: { businessId: business.id, firstName: 'Ana', lastName: 'Gómez', phone: '600555666', email: 'ana@mail.com' } });
+  const ana = await prisma.customer.create({ data: { businessId: business.id, nombre: 'Ana', apellido: 'Gómez', telefono: '600555666', email: 'ana@mail.com' } });
 
-  await prisma.product.create({ data: { businessId: business.id, name: 'Cera modeladora', category: 'Peinado', stock: 24, stockMinimo: 10, price: 12.5, supplier: 'BeautyDist' } });
+  await prisma.product.create({ data: { businessId: business.id, nombre: 'Cera modeladora', categoria: 'Peinado', stock: 24, minimo: 10, precio: 12.5, proveedor: 'BeautyDist' } });
 
   // Bono de 5 sesiones de corte para Ana
   const bono = await prisma.package.create({ data: { businessId: business.id, name: 'Bono 5 cortes', sessionsTotal: 5, validityDays: 180, price: 60, services: { connect: [{ id: corte.id }] } } });

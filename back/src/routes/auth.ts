@@ -119,11 +119,23 @@ authRouter.post('/login', loginLimiter, (_req, res) => {
 authRouter.get('/me', authenticate, async (req: AuthedRequest, res) => {
   const user = await prisma.user.findUnique({ where: { id: req.userId } });
   const memberships = await prisma.membership.findMany({ where: { userId: req.userId } });
+  // Config del negocio activo (la fuente de verdad del front: nombre, vertical,
+  // branding). El front la usa para construir su TenantConfig — sin mocks locales.
+  const business = req.businessId
+    ? await prisma.business.findUnique({
+        where: { id: req.businessId },
+        select: {
+          id: true, name: true, vertical: true,
+          brandPrimary: true, brandSecondary: true, logoUrl: true,
+        },
+      })
+    : null;
   res.json({
     user: user && { id: user.id, email: user.email, firstName: user.firstName },
     memberships,
     activeBusinessId: req.businessId,
     role: req.role,
+    business,
   });
 });
 
@@ -328,7 +340,7 @@ authRouter.post('/register-client', registerLimiter, async (req, res) => {
       });
       // Create Customer record linked to auth.uid via Customer.userId.
       const customer = await tx.customer.create({
-        data: { businessId, firstName: d.firstName, email: d.email, phone: d.phone, userId: supabaseUserId },
+        data: { businessId, nombre: d.firstName, email: d.email, telefono: d.phone, userId: supabaseUserId },
       });
       await tx.membership.create({ data: { userId: user.id, businessId, role: 'CLIENT' } });
       return { user, customer };

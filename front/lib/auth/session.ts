@@ -25,6 +25,7 @@ export interface SessionUser {
   email: string;
 }
 
+
 /**
  * Login via Supabase Auth signInWithPassword.
  * Role and active business are resolved from the AUTHORITATIVE source — the

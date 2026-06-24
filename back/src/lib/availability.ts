@@ -24,12 +24,12 @@ function dateOnly(d: Date): Date { return new Date(Date.UTC(d.getFullYear(), d.g
 export async function checkAvailability(p: AvailabilityParams): Promise<AvailabilityResult> {
   const service = await prisma.service.findFirst({ where: { id: p.serviceId, businessId: p.businessId } });
   if (!service) return { ok: false, reason: 'service_not_found' };
-  if (!service.active) return { ok: false, reason: 'service_inactive' };
+  if (!service.activo) return { ok: false, reason: 'service_inactive' };
 
   const startAt = new Date(p.start);
-  const endAt = new Date(startAt.getTime() + service.durationMin * 60000);
-  const winStart = new Date(startAt.getTime() - service.bufferBefore * 60000);
-  const winEnd = new Date(endAt.getTime() + service.bufferAfter * 60000);
+  const endAt = new Date(startAt.getTime() + service.duracion * 60000);
+  const winStart = new Date(startAt.getTime() - service.margenAntes * 60000);
+  const winEnd = new Date(endAt.getTime() + service.margenDespues * 60000);
 
   // Horario de apertura
   const hours = await prisma.openingHour.findMany({ where: { locationId: p.locationId, weekday: startAt.getDay() } });
@@ -43,7 +43,7 @@ export async function checkAvailability(p: AvailabilityParams): Promise<Availabi
   // Empleado: solape + ausencias aprobadas
   if (p.employeeId) {
     const svcEmp = await prisma.service.findFirst({ where: { id: p.serviceId, employees: { some: { id: p.employeeId } } } });
-    if (service.requiresProfessional && !svcEmp) return { ok: false, reason: 'employee_not_compatible' };
+    if (service.requiereProfesional && !svcEmp) return { ok: false, reason: 'employee_not_compatible' };
     const overlap = await prisma.booking.findFirst({
       where: { employeeId: p.employeeId, status: { in: ACTIVE_STATES }, startAt: { lt: winEnd }, endAt: { gt: winStart } },
     });
@@ -77,7 +77,7 @@ export async function daySlots(params: AvailabilityParams & { date: string; step
   const step = params.stepMin ?? 15;
   const out: { start: string; end: string }[] = [];
   for (const h of hours) {
-    for (let m = hhmmToMin(h.openTime); m + service.durationMin <= hhmmToMin(h.closeTime); m += step) {
+    for (let m = hhmmToMin(h.openTime); m + service.duracion <= hhmmToMin(h.closeTime); m += step) {
       const start = new Date(day); start.setHours(0, 0, 0, 0); start.setMinutes(m);
       const r = await checkAvailability({ ...params, start });
       if (r.ok) out.push({ start: start.toISOString(), end: r.endAt!.toISOString() });

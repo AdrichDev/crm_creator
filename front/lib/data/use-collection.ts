@@ -13,7 +13,9 @@ export type { WithId };
  */
 export function useCollection<T extends WithId>(key: string, seed: T[]) {
   const backend = getBackend();
-  const [items, setItems] = useState<T[]>(seed);
+  // Remoto (Supabase) → arranca VACÍO (sin mock); refresh trae los datos reales.
+  // Local (generador) → arranca con el seed mock.
+  const [items, setItems] = useState<T[]>(backend.remote ? [] : seed);
   const mounted = useRef(true);
 
   const refresh = useCallback(async () => {
