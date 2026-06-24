@@ -49,7 +49,7 @@ export async function checkAvailability(p: AvailabilityParams): Promise<Availabi
     });
     if (overlap) return { ok: false, reason: 'employee_busy' };
     const off = await prisma.timeOffRequest.findFirst({
-      where: { employeeId: p.employeeId, status: 'APPROVED', startDate: { lte: startAt }, endDate: { gte: startAt } },
+      where: { employeeId: p.employeeId, estado: 'APPROVED', inicio: { lte: startAt }, fin: { gte: startAt } },
     });
     if (off) return { ok: false, reason: 'employee_time_off' };
   }
