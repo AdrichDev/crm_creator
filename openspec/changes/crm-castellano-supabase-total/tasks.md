@@ -57,6 +57,16 @@ dropdown que NADIE pidió, y metí un mock sintético de Estudio Lúa. El usuari
   P.7 COMPLETO salvo EXCEPCIONES decididas (infra/auth, invisibles, se quedan inglés): `Membership.role` (enum permisos rbac), `User.firstName/lastName/email/...` (auth, acoplado a front gestión-usuarios). Documentado en cabecera schema.
 - [x] P.8 HECHO: columna `Employee.rol` aplicada + cableada (employeesRouter + seed Estilista/Barbero + página ya la pinta).
 
+## Hardening post-auditoría (devil's advocate, 2026-06-25)
+- [x] H.1 AA `/api/channels`: solo webhooks públicos; connect/status/delete con auth (repo agents-agency, rama security-channels-auth). Reglas en lib/public-routes.ts + test.
+- [x] H.2 Gate FK tenant (CRM): lib/tenant.ts assertBelongsToBusiness/assertFks en bookings/packages/crud(fkFields). FK ajeno → 422 cross_tenant. e2e tenant-gate.
+- [x] H.3 Fuente única REST (front): getBackend() solo apiBackend en modo API; eliminado supabaseBackend directo.
+- [x] H.4 /me por Customer.userId (email fallback migratorio).
+- [x] H.5 env.ts assertConfig() fail-closed en server.ts. (.env.example BLOQUEADO por permisos → actualizar a mano: SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY/DATABASE_URL, quitar JWT_SECRET.)
+- [x] H.6 Docs: ARQUITECTURA.md actualizado (Supabase/Prisma/RLS, no mock). Migración formal `20260625000000_softdelete_rol` registra eliminado_en+rol (drift Prisma resuelto).
+- [ ] H.7 REGLA DE NEGOCIO documentar: proyecto soft-deleted **revive** (tenant_id @unique) en POST /projects — está en código (projects.ts) + aquí. Confirmado intencional.
+- [ ] H.8 PENDIENTE: actualizar .env.example a mano (bloqueado); unificar definitivamente estrategia migraciones (adoptado Prisma migrate, retirar SQL manual de back/schema/*.sql si redundante); archivar SDD_v1/docs viejas.
+
 ## Fase 5 / OTROS — cierre
 - [~] 5.1 Proxies AA: DECISIÓN documentada. `/api/ai/generate` (Next→AA, branding IA del onboarding)
   está roto (AA exige JWT Supabase real, no token estático). Es feature SOLO del generador, no del
