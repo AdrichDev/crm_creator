@@ -69,7 +69,11 @@ dropdown que NADIE pidió, y metí un mock sintético de Estudio Lúa. El usuari
 - [x] O.1 HECHO: SOFT DELETE en 14 tablas (eliminado_en additive ALTER aplicado a Supabase) +
   crud.ts soft (filtro eliminadoEn:null en list/get/patch + DELETE→update fecha) + custom routers
   (customers/employees/bookings/timeoff) filtran y borran soft. e2e soft-delete.spec.ts verde (crear→borrar→no aparece).
-- [ ] O.2 e2e del ALTA de proyecto vía onboarding 4-pasos (pick tenant → crear → /panel).
-- [ ] O.3 Form de alta de citas/ventas: selectores por id + datetime (hoy mock por nombre).
-- [ ] O.4 Archivar `crm-migracion-supabase` (mergear delta a specs / cerrar).
-- [ ] O.5 Otros changes (fuera de este): crm-n8n-automations, crm-onboarding-edit-landing-ia, crm-sectorial-ia.
+- [x] O.2 HECHO (parcial): e2e `onboarding-tenants.spec.ts` verifica que el onboarding carga tenants
+  reales de aa.tenant en el selector. El create POST ya está cubierto (migracion-localstorage, mismo
+  path). Drive completo del wizard no automatizado (requiere tenant libre no determinable en UI → 409).
+- [ ] O.3 PENDIENTE (feature, fuera de cierre rápido): form alta citas/ventas por id + datetime
+  (hoy crean por nombre = no persiste contra back). Necesita selectores customer/service por id.
+- [x] O.4 HECHO: `crm-migracion-supabase` marcado CERRADO/superado (nota en proposal); 26/26 done.
+- [ ] O.5 FUERA DE ALCANCE de este change (features separadas grandes): crm-n8n-automations (16 workflows),
+  crm-onboarding-edit-landing-ia (ZIP/landing), crm-sectorial-ia. Cada una su propio change.
