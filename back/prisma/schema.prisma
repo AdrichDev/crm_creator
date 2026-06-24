@@ -1,13 +1,14 @@
 // OperaOS — Business OS para negocios locales. Multi-tenant (businessId en todo).
 // NOMENCLATURA (2026-06): columnas físicas en castellano snake_case vía @@map/@map.
-// Los CAMPOS Prisma se están castellanizando (P.7): hechos los modelos de negocio
-// (Customer, Service, Product, Employee, Booking, Sale, Campaign, Fichaje, Business,
-// Location, Resource, Tag, Package, CustomerPackage, TimeOffRequest, Holiday,
-// OpeningHour, BookingStatusHistory, PackageSession). PENDIENTE (infra): Membership.role,
-// User.firstName/lastName, y modelos a cablear (EmployeeSchedule, Document, Notification,
-// BusinessSetting). NOMBRES de MODELO en inglés (prisma.business, .customer…) — no se tocan.
-// Excepciones que se quedan: tenant/tenant_id, id, FKs *Id, createdAt/updatedAt, logoUrl,
-// vertical, plan. Enums: VALUES intactos (RLS depende de role<>'CLIENT').
+// Los CAMPOS Prisma están castellanizados (P.7) en TODOS los modelos: Customer, Service,
+// Product, Employee, Booking, Sale/SaleLine, Campaign, Fichaje, Business, Location, Resource,
+// Tag, Package, CustomerPackage, TimeOffRequest, Holiday, OpeningHour, BookingStatusHistory,
+// PackageSession, Document, Notification, EmployeeSchedule, BusinessSetting.
+// NOMBRES de MODELO en inglés (prisma.business, .customer…) — no se tocan.
+// EXCEPCIONES que se quedan en inglés (infra/auth, invisibles al usuario): tenant/tenant_id,
+// id, FKs *Id, createdAt/updatedAt, logoUrl, vertical, plan, Membership.role (enum permisos,
+// usado en rbac), User.firstName/lastName/email/username/phone (auth, acoplado al front
+// gestión-usuarios). Enums: VALUES intactos (RLS depende de role<>'CLIENT').
 generator client {
   provider = "prisma-client-js"
 }
@@ -179,10 +180,10 @@ model BusinessSetting {
   businessId String   @map("negocio_id")
   business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   locationId String?  @map("sucursal_id")
-  category   String   @map("categoria")
-  data       Json     @default("{}") @map("datos")
+  categoria  String   @map("categoria")
+  datos      Json     @default("{}") @map("datos")
   updatedAt  DateTime @updatedAt @map("actualizado_en")
-  @@unique([businessId, locationId, category])
+  @@unique([businessId, locationId, categoria])
   @@map("config_negocio")
 }
 
@@ -279,10 +280,10 @@ model EmployeeSchedule {
   id         String   @id @default(cuid())
   employeeId String   @map("empleado_id")
   employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  weekday    Int      @map("dia_semana")
-  startTime  String   @map("hora_inicio")
-  endTime    String   @map("hora_fin")
-  @@index([employeeId, weekday])
+  diaSemana  Int      @map("dia_semana")
+  inicio     String   @map("hora_inicio")
+  fin        String   @map("hora_fin")
+  @@index([employeeId, diaSemana])
   @@map("horario_empleado")
 }
 
@@ -458,11 +459,11 @@ model Document {
   business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   employeeId  String?  @map("empleado_id")
   employee    Employee? @relation(fields: [employeeId], references: [id])
-  title       String   @map("titulo")
-  type        DocumentType @default(OTHER) @map("tipo")
-  filePath    String   @map("ruta_archivo")
-  visibility  DocVisibility @default(OWNER_ONLY) @map("visibilidad")
-  uploadedBy  String?  @map("subido_por")
+  titulo      String   @map("titulo")
+  tipo        DocumentType @default(OTHER) @map("tipo")
+  rutaArchivo String   @map("ruta_archivo")
+  visibilidad DocVisibility @default(OWNER_ONLY) @map("visibilidad")
+  subidoPor   String?  @map("subido_por")
   createdAt   DateTime @default(now()) @map("creado_en")
   @@index([businessId])
   @@index([employeeId])
@@ -614,14 +615,14 @@ model Notification {
   id          String   @id @default(cuid())
   businessId  String   @map("negocio_id")
   business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  type        String   @map("tipo")
-  channel     String   @default("email") @map("canal")
-  target      String?  @map("destino")
+  tipo        String   @map("tipo")
+  canal       String   @default("email") @map("canal")
+  destino     String?  @map("destino")
   payload     Json     @default("{}") @map("payload")
-  scheduledAt DateTime? @map("programado_en")
-  sentAt      DateTime? @map("enviado_en")
-  status      String   @default("pending") @map("estado")
+  programadoEn DateTime? @map("programado_en")
+  enviadoEn   DateTime? @map("enviado_en")
+  estado      String   @default("pending") @map("estado")
   createdAt   DateTime @default(now()) @map("creado_en")
-  @@index([scheduledAt, status])
+  @@index([programadoEn, estado])
   @@map("notificacion")
 }

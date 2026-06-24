@@ -30,7 +30,7 @@ interface BusinessRow {
   marcaPrimario: string;
   marcaSecundario: string;
   logoUrl: string | null;
-  settings: { data: unknown }[];
+  settings: { datos: unknown }[];
 }
 
 // Reconstruye el "proyecto" para el front: config guardada (BusinessSetting) si existe,
@@ -40,7 +40,7 @@ function toProject(b: BusinessRow) {
   return {
     id: b.id,
     createdAt: b.createdAt.toISOString(),
-    config: (b.settings[0]?.data as unknown) ?? null,
+    config: (b.settings[0]?.datos as unknown) ?? null,
     business: {
       nombre: b.nombre,
       vertical: b.vertical,
@@ -63,7 +63,7 @@ projectsRouter.get('/', async (req: AuthedRequest, res: Response) => {
     select: {
       id: true, createdAt: true, nombre: true, vertical: true,
       marcaPrimario: true, marcaSecundario: true, logoUrl: true,
-      settings: { where: { category: CONFIG_CATEGORY }, select: { data: true } },
+      settings: { where: { categoria: CONFIG_CATEGORY }, select: { datos: true } },
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -99,16 +99,16 @@ projectsRouter.post('/', async (req: AuthedRequest, res: Response) => {
       // Tenant con proyecto soft-deleted → REVIVIR (no se puede recrear por el unique).
       if (dup) {
         const b = await tx.business.update({ where: { id: dup.id }, data: { ...mirror, eliminadoEn: null } });
-        const setting = await tx.businessSetting.findFirst({ where: { businessId: b.id, category: CONFIG_CATEGORY } });
-        if (setting) await tx.businessSetting.update({ where: { id: setting.id }, data: { data: config as Prisma.InputJsonValue } });
-        else await tx.businessSetting.create({ data: { businessId: b.id, category: CONFIG_CATEGORY, data: config as Prisma.InputJsonValue } });
+        const setting = await tx.businessSetting.findFirst({ where: { businessId: b.id, categoria: CONFIG_CATEGORY } });
+        if (setting) await tx.businessSetting.update({ where: { id: setting.id }, data: { datos: config as Prisma.InputJsonValue } });
+        else await tx.businessSetting.create({ data: { businessId: b.id, categoria: CONFIG_CATEGORY, datos: config as Prisma.InputJsonValue } });
         const member = await tx.membership.findFirst({ where: { userId: req.userId, businessId: b.id } });
         if (!member) await tx.membership.create({ data: { userId: req.userId!, businessId: b.id, role: 'OWNER' } });
         return b;
       }
       const b = await tx.business.create({ data: { tenantId, ...mirror } });
       await tx.location.create({ data: { businessId: b.id, nombre: config.business?.name ?? 'Sede' } });
-      await tx.businessSetting.create({ data: { businessId: b.id, category: CONFIG_CATEGORY, data: config as Prisma.InputJsonValue } });
+      await tx.businessSetting.create({ data: { businessId: b.id, categoria: CONFIG_CATEGORY, datos: config as Prisma.InputJsonValue } });
       await tx.membership.create({ data: { userId: req.userId!, businessId: b.id, role: 'OWNER' } });
       return b;
     });
@@ -142,11 +142,11 @@ projectsRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
     });
     // locationId nullable en el unique compuesto → Prisma no permite where con null;
     // resolvemos con findFirst + update/create.
-    const existing = await tx.businessSetting.findFirst({ where: { businessId: id, category: CONFIG_CATEGORY } });
+    const existing = await tx.businessSetting.findFirst({ where: { businessId: id, categoria: CONFIG_CATEGORY } });
     if (existing) {
-      await tx.businessSetting.update({ where: { id: existing.id }, data: { data: config as Prisma.InputJsonValue } });
+      await tx.businessSetting.update({ where: { id: existing.id }, data: { datos: config as Prisma.InputJsonValue } });
     } else {
-      await tx.businessSetting.create({ data: { businessId: id, category: CONFIG_CATEGORY, data: config as Prisma.InputJsonValue } });
+      await tx.businessSetting.create({ data: { businessId: id, categoria: CONFIG_CATEGORY, datos: config as Prisma.InputJsonValue } });
     }
   });
   res.json({ id, config });
