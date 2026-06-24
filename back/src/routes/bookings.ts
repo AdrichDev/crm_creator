@@ -23,6 +23,7 @@ bookingsRouter.get('/', async (req: AuthedRequest, res: Response) => {
   const rows = await prisma.booking.findMany({
     where: {
       businessId: req.businessId,
+      eliminadoEn: null,
       ...(status ? { status: status as BookingStatus } : {}),
       ...(employeeId ? { employeeId } : {}),
       ...(from || to ? { startAt: { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) } } : {}),
@@ -82,7 +83,7 @@ bookingsRouter.post('/', async (req: AuthedRequest, res: Response) => {
       },
       include: { service: true, customer: true, employee: true, resources: true },
     });
-    await prisma.bookingStatusHistory.create({ data: { bookingId: booking.id, toStatus: 'PENDING', changedBy: req.userId } });
+    await prisma.bookingStatusHistory.create({ data: { bookingId: booking.id, estadoNuevo: 'PENDING', cambiadoPor: req.userId } });
     return { booking };
   });
 
@@ -94,22 +95,30 @@ async function transition(req: AuthedRequest, res: Response, to: BookingStatus) 
   const booking = await prisma.booking.findFirst({ where: { id: req.params.id, businessId: req.businessId } });
   if (!booking) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
   const updated = await prisma.booking.update({ where: { id: booking.id }, data: { status: to } });
-  await prisma.bookingStatusHistory.create({ data: { bookingId: booking.id, fromStatus: booking.status, toStatus: to, changedBy: req.userId, reason: req.body?.reason } });
+  await prisma.bookingStatusHistory.create({ data: { bookingId: booking.id, estadoAnterior: booking.status, estadoNuevo: to, cambiadoPor: req.userId, motivo: req.body?.reason } });
 
   // Al completar: consumir una sesión de bono si el cliente tiene uno activo para ese servicio.
   if (to === 'COMPLETED' && booking.customerId) {
     const candidates = await prisma.customerPackage.findMany({
-      where: { businessId: req.businessId, customerId: booking.customerId, status: 'ACTIVE', package: { services: { some: { id: booking.serviceId } } } },
-      orderBy: { purchasedAt: 'asc' },
+      where: { businessId: req.businessId, customerId: booking.customerId, estado: 'ACTIVE', package: { services: { some: { id: booking.serviceId } } } },
+      orderBy: { compradoEn: 'asc' },
     });
-    const cp = candidates.find((c: { sessionsUsed: number; sessionsTotal: number }) => c.sessionsUsed < c.sessionsTotal);
+    const cp = candidates.find((c: { sesionesUsadas: number; sesionesTotal: number }) => c.sesionesUsadas < c.sesionesTotal);
     if (cp) {
-      await prisma.customerPackage.update({ where: { id: cp.id }, data: { sessionsUsed: { increment: 1 } } });
+      await prisma.customerPackage.update({ where: { id: cp.id }, data: { sesionesUsadas: { increment: 1 } } });
       await prisma.packageSession.create({ data: { customerPackageId: cp.id, bookingId: booking.id } });
     }
   }
   res.json(updated);
 }
+
+// DELETE /:id → soft delete (la cita desaparece de la agenda; cancelar es un estado).
+bookingsRouter.delete('/:id', async (req: AuthedRequest, res: Response) => {
+  const booking = await prisma.booking.findFirst({ where: { id: req.params.id, businessId: req.businessId, eliminadoEn: null } });
+  if (!booking) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
+  await prisma.booking.update({ where: { id: booking.id }, data: { eliminadoEn: new Date() } });
+  res.status(204).end();
+});
 
 bookingsRouter.post('/:id/cancel', (req: AuthedRequest, res) => transition(req, res, 'CANCELLED'));
 bookingsRouter.post('/:id/complete', (req: AuthedRequest, res) => transition(req, res, 'COMPLETED'));

@@ -32,13 +32,13 @@ export async function checkAvailability(p: AvailabilityParams): Promise<Availabi
   const winEnd = new Date(endAt.getTime() + service.margenDespues * 60000);
 
   // Horario de apertura
-  const hours = await prisma.openingHour.findMany({ where: { locationId: p.locationId, weekday: startAt.getDay() } });
-  const within = hours.some((h: { openTime: string; closeTime: string }) => minutesOfDay(startAt) >= hhmmToMin(h.openTime) && minutesOfDay(endAt) <= hhmmToMin(h.closeTime));
+  const hours = await prisma.openingHour.findMany({ where: { locationId: p.locationId, diaSemana: startAt.getDay() } });
+  const within = hours.some((h: { apertura: string; cierre: string }) => minutesOfDay(startAt) >= hhmmToMin(h.apertura) && minutesOfDay(endAt) <= hhmmToMin(h.cierre));
   if (hours.length > 0 && !within) return { ok: false, reason: 'outside_opening_hours' };
 
   // Festivos / cierres
-  const holiday = await prisma.holiday.findFirst({ where: { locationId: p.locationId, date: dateOnly(startAt) } });
-  if (holiday && !holiday.isOpen) return { ok: false, reason: 'holiday' };
+  const holiday = await prisma.holiday.findFirst({ where: { locationId: p.locationId, fecha: dateOnly(startAt) } });
+  if (holiday && !holiday.abierto) return { ok: false, reason: 'holiday' };
 
   // Empleado: solape + ausencias aprobadas
   if (p.employeeId) {
@@ -49,7 +49,7 @@ export async function checkAvailability(p: AvailabilityParams): Promise<Availabi
     });
     if (overlap) return { ok: false, reason: 'employee_busy' };
     const off = await prisma.timeOffRequest.findFirst({
-      where: { employeeId: p.employeeId, status: 'APPROVED', startDate: { lte: startAt }, endDate: { gte: startAt } },
+      where: { employeeId: p.employeeId, estado: 'APPROVED', inicio: { lte: startAt }, fin: { gte: startAt } },
     });
     if (off) return { ok: false, reason: 'employee_time_off' };
   }
@@ -58,11 +58,11 @@ export async function checkAvailability(p: AvailabilityParams): Promise<Availabi
   const resourceIds = p.resourceIds ?? [];
   for (const rid of resourceIds) {
     const res = await prisma.resource.findFirst({ where: { id: rid, businessId: p.businessId } });
-    if (!res || res.status !== 'Activo') return { ok: false, reason: 'resource_unavailable' };
+    if (!res || res.estado !== 'Activo') return { ok: false, reason: 'resource_unavailable' };
     const concurrent = await prisma.booking.count({
       where: { status: { in: ACTIVE_STATES }, startAt: { lt: endAt }, endAt: { gt: startAt }, resources: { some: { id: rid } } },
     });
-    if (concurrent >= res.capacity) return { ok: false, reason: 'resource_full' };
+    if (concurrent >= res.capacidad) return { ok: false, reason: 'resource_full' };
   }
 
   return { ok: true, startAt, endAt };
@@ -73,11 +73,11 @@ export async function daySlots(params: AvailabilityParams & { date: string; step
   const service = await prisma.service.findFirst({ where: { id: params.serviceId, businessId: params.businessId } });
   if (!service) return [];
   const day = new Date(params.date);
-  const hours = await prisma.openingHour.findMany({ where: { locationId: params.locationId, weekday: day.getDay() } });
+  const hours = await prisma.openingHour.findMany({ where: { locationId: params.locationId, diaSemana: day.getDay() } });
   const step = params.stepMin ?? 15;
   const out: { start: string; end: string }[] = [];
   for (const h of hours) {
-    for (let m = hhmmToMin(h.openTime); m + service.duracion <= hhmmToMin(h.closeTime); m += step) {
+    for (let m = hhmmToMin(h.apertura); m + service.duracion <= hhmmToMin(h.cierre); m += step) {
       const start = new Date(day); start.setHours(0, 0, 0, 0); start.setMinutes(m);
       const r = await checkAvailability({ ...params, start });
       if (r.ok) out.push({ start: start.toISOString(), end: r.endAt!.toISOString() });

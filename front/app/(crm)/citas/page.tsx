@@ -6,6 +6,8 @@ import { PageHeader, Stat, Table, Td, Badge, Button, RowActions } from '@/compon
 import { EntityModal, type Field } from '@/components/ui/entity-modal';
 import { useCollection } from '@/lib/data/use-collection';
 import { citas as seed, type Cita } from '@/lib/mock/data';
+import { isApiEnabled } from '@/lib/api/client';
+import { NuevaCitaModal } from '@/components/crm/nueva-cita-modal';
 import { CalendarPlus } from 'lucide-react';
 
 const FIELDS: Field[] = [
@@ -19,8 +21,10 @@ const FIELDS: Field[] = [
 
 export default function Page() {
   const term = useTerm('citas', 'Citas');
-  const { items, create, update, remove } = useCollection<Cita>('citas', seed);
+  const { items, create, update, remove, refresh } = useCollection<Cita>('citas', seed);
+  const apiMode = isApiEnabled();
   const [open, setOpen] = useState(false);
+  const [openNueva, setOpenNueva] = useState(false);
   const [editing, setEditing] = useState<Cita | null>(null);
   const tone = (s: string) => s === 'Confirmada' ? 'green' : s === 'Pendiente' ? 'amber' : s === 'Completada' ? 'blue' : 'red';
 
@@ -28,11 +32,13 @@ export default function Page() {
     if (editing) update(editing.id, v as Partial<Cita>); else create(v as unknown as Omit<Cita, 'id'>);
     setOpen(false);
   }
+  // En modo CRM el alta es real (selectores por id + disponibilidad); en generador, el modal mock.
+  function onNueva() { if (apiMode) setOpenNueva(true); else { setEditing(null); setOpen(true); } }
 
   return (
     <ModuleGuard module="citas">
       <PageHeader title={term} subtitle="Agenda y reservas con estados."
-        action={<Button onClick={() => { setEditing(null); setOpen(true); }}><CalendarPlus className="h-4 w-4" /> Nueva</Button>} />
+        action={<Button onClick={onNueva}><CalendarPlus className="h-4 w-4" /> Nueva</Button>} />
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <Stat label="Total" value={items.length} />
         <Stat label="Confirmadas" value={items.filter(c => c.estado === 'Confirmada').length} />
@@ -50,6 +56,7 @@ export default function Page() {
       </Table>
       <EntityModal open={open} title={editing ? 'Editar cita' : 'Nueva cita'} fields={FIELDS}
         initial={editing as unknown as Record<string, string | number> | null} onSubmit={onSubmit} onClose={() => setOpen(false)} />
+      <NuevaCitaModal open={openNueva} onClose={() => setOpenNueva(false)} onCreated={() => void refresh()} />
     </ModuleGuard>
   );
 }

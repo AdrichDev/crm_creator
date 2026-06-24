@@ -1,3 +1,7 @@
+> **CERRADO (2026-06-25)** — Change completado (26/26) e INCORPORADO/superado por
+> `crm-castellano-supabase-total` (consola Supabase, datos castellano, proyectos=Business,
+> soft-delete). Se conserva como registro histórico.
+
 # Proposal — Migración CRM a Supabase (paridad con agents-agency)
 
 **Nivel Gru: 3 — Large** (datos persistentes, migración, retira acoplamiento docker). Fase 4 destructiva → **HUMAN-IN-THE-LOOP** antes de ejecutar.

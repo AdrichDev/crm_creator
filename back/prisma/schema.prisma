@@ -1,9 +1,14 @@
 // OperaOS — Business OS para negocios locales. Multi-tenant (businessId en todo).
-// NOMENCLATURA DB (2026-06): tablas y columnas físicas en castellano snake_case vía
-// @@map/@map. Los NOMBRES de modelo y de campo en Prisma se mantienen en inglés para
-// no romper el API de Prisma Client (src/ y tests usan prisma.business, .firstName, …).
-// @@map/@map afectan SOLO al SQL físico, no al cliente JS. Enums: VALUES intactos
-// (RLS depende de role<>'CLIENT').
+// NOMENCLATURA (2026-06): columnas físicas en castellano snake_case vía @@map/@map.
+// Los CAMPOS Prisma están castellanizados (P.7) en TODOS los modelos: Customer, Service,
+// Product, Employee, Booking, Sale/SaleLine, Campaign, Fichaje, Business, Location, Resource,
+// Tag, Package, CustomerPackage, TimeOffRequest, Holiday, OpeningHour, BookingStatusHistory,
+// PackageSession, Document, Notification, EmployeeSchedule, BusinessSetting.
+// NOMBRES de MODELO en inglés (prisma.business, .customer…) — no se tocan.
+// EXCEPCIONES que se quedan en inglés (infra/auth, invisibles al usuario): tenant/tenant_id,
+// id, FKs *Id, createdAt/updatedAt, logoUrl, vertical, plan, Membership.role (enum permisos,
+// usado en rbac), User.firstName/lastName/email/username/phone (auth, acoplado al front
+// gestión-usuarios). Enums: VALUES intactos (RLS depende de role<>'CLIENT').
 generator client {
   provider = "prisma-client-js"
 }
@@ -109,15 +114,15 @@ model Business {
   // 1:1 con Tenant. La constraint FK se aplica por SQL (Prisma no modela relaciones
   // cross-schema sin multiSchema; ver migración add-tenant-fk.sql).
   tenantId        String?  @unique @map("tenant_id")
-  name            String   @map("nombre")
-  legalName       String?  @map("razon_social")
-  taxId           String?  @map("nif")
+  nombre          String   @map("nombre")
+  razonSocial     String?  @map("razon_social")
+  nif             String?  @map("nif")
   vertical        String   @default("custom") @map("vertical")
-  defaultCurrency String   @default("EUR") @map("moneda")
-  defaultTimezone String   @default("Europe/Madrid") @map("zona_horaria")
+  moneda          String   @default("EUR") @map("moneda")
+  zonaHoraria     String   @default("Europe/Madrid") @map("zona_horaria")
   plan            String   @default("starter") @map("plan")
-  brandPrimary    String   @default("#1b431c") @map("marca_primario")
-  brandSecondary  String   @default("#8cc63f") @map("marca_secundario")
+  marcaPrimario   String   @default("#1b431c") @map("marca_primario")
+  marcaSecundario String   @default("#8cc63f") @map("marca_secundario")
   logoUrl         String?  @map("logo_url") // URL pública en Supabase Storage (bucket 'branding'); usada en emails
   eliminadoEn     DateTime? @map("eliminado_en") // soft delete: null = activo; fecha = borrado (hard delete en prod)
   createdAt       DateTime @default(now()) @map("creado_en")
@@ -150,14 +155,14 @@ model Location {
   id        String   @id @default(cuid())
   businessId String  @map("negocio_id")
   business  Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  name      String   @map("nombre")
-  address   String?  @map("direccion")
-  timezone  String   @default("Europe/Madrid") @map("zona_horaria")
-  currency  String   @default("EUR") @map("moneda")
-  phone     String?  @map("telefono")
+  nombre    String   @map("nombre")
+  direccion String?  @map("direccion")
+  zonaHoraria String @default("Europe/Madrid") @map("zona_horaria")
+  moneda    String   @default("EUR") @map("moneda")
+  telefono  String?  @map("telefono")
   email     String?  @map("email")
-  onlineBookingEnabled Boolean @default(true) @map("reserva_online_activa")
-  active    Boolean  @default(true) @map("activo")
+  reservaOnline Boolean @default(true) @map("reserva_online_activa")
+  activo    Boolean  @default(true) @map("activo")
   createdAt DateTime @default(now()) @map("creado_en")
   updatedAt DateTime @updatedAt @map("actualizado_en")
 
@@ -167,6 +172,7 @@ model Location {
   resources    Resource[]
   bookings     Booking[]
   @@index([businessId])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("sucursal")
 }
 
@@ -175,10 +181,10 @@ model BusinessSetting {
   businessId String   @map("negocio_id")
   business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   locationId String?  @map("sucursal_id")
-  category   String   @map("categoria")
-  data       Json     @default("{}") @map("datos")
+  categoria  String   @map("categoria")
+  datos      Json     @default("{}") @map("datos")
   updatedAt  DateTime @updatedAt @map("actualizado_en")
-  @@unique([businessId, locationId, category])
+  @@unique([businessId, locationId, categoria])
   @@map("config_negocio")
 }
 
@@ -186,10 +192,10 @@ model OpeningHour {
   id         String   @id @default(cuid())
   locationId String   @map("sucursal_id")
   location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  weekday    Int      @map("dia_semana") // 0=domingo .. 6=sábado
-  openTime   String   @map("hora_apertura") // "09:00"
-  closeTime  String   @map("hora_cierre") // "20:00"
-  @@index([locationId, weekday])
+  diaSemana  Int      @map("dia_semana") // 0=domingo .. 6=sábado
+  apertura   String   @map("hora_apertura") // "09:00"
+  cierre     String   @map("hora_cierre") // "20:00"
+  @@index([locationId, diaSemana])
   @@map("horario_apertura")
 }
 
@@ -197,10 +203,10 @@ model Holiday {
   id         String   @id @default(cuid())
   locationId String   @map("sucursal_id")
   location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  date       DateTime @db.Date @map("fecha")
-  name       String?  @map("nombre")
-  isOpen     Boolean  @default(false) @map("abierto")
-  @@index([locationId, date])
+  fecha      DateTime @db.Date @map("fecha")
+  nombre     String?  @map("nombre")
+  abierto    Boolean  @default(false) @map("abierto")
+  @@index([locationId, fecha])
   @@map("festivo")
 }
 
@@ -268,6 +274,7 @@ model Employee {
   fichajes   Fichaje[]
   @@index([businessId])
   @@index([locationId])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("empleado")
 }
 
@@ -275,10 +282,10 @@ model EmployeeSchedule {
   id         String   @id @default(cuid())
   employeeId String   @map("empleado_id")
   employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  weekday    Int      @map("dia_semana")
-  startTime  String   @map("hora_inicio")
-  endTime    String   @map("hora_fin")
-  @@index([employeeId, weekday])
+  diaSemana  Int      @map("dia_semana")
+  inicio     String   @map("hora_inicio")
+  fin        String   @map("hora_fin")
+  @@index([employeeId, diaSemana])
   @@map("horario_empleado")
 }
 
@@ -313,6 +320,7 @@ model Customer {
   @@index([businessId])
   @@index([businessId, telefono])
   @@index([businessId, email])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("cliente")
 }
 
@@ -320,10 +328,11 @@ model Tag {
   id         String   @id @default(cuid())
   businessId String   @map("negocio_id")
   business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  name       String   @map("nombre")
+  nombre     String   @map("nombre")
   color      String   @default("#9ca3af") @map("color")
   customers  Customer[] @relation("CustomerTags")
   @@index([businessId])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("etiqueta")
 }
 
@@ -355,6 +364,7 @@ model Service {
   bookings    Booking[]
   packages    Package[]  @relation("PackageServices")
   @@index([businessId])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("servicio")
 }
 
@@ -364,13 +374,13 @@ model Resource {
   business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   locationId  String?  @map("sucursal_id")
   location    Location? @relation(fields: [locationId], references: [id])
-  name        String   @map("nombre")
-  type        ResourceType @default(OTHER) @map("tipo")
-  capacity    Int      @default(1) @map("capacidad")
-  status      String   @default("Activo") @map("estado")
-  locationNote String? @map("nota_ubicacion")
-  description String?  @map("descripcion")
-  metadata    Json     @default("{}") @map("metadatos")
+  nombre      String   @map("nombre")
+  tipo        ResourceType @default(OTHER) @map("tipo")
+  capacidad   Int      @default(1) @map("capacidad")
+  estado      String   @default("Activo") @map("estado")
+  notaUbicacion String? @map("nota_ubicacion")
+  descripcion String?  @map("descripcion")
+  metadatos   Json     @default("{}") @map("metadatos")
   createdAt   DateTime @default(now()) @map("creado_en")
   updatedAt   DateTime @updatedAt @map("actualizado_en")
 
@@ -378,7 +388,8 @@ model Resource {
   employees   Employee[] @relation("ResEmployees")
   bookings    Booking[]  @relation("BookingResources")
   @@index([businessId])
-  @@index([locationId, type])
+  @@index([locationId, tipo])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("recurso")
 }
 
@@ -412,6 +423,7 @@ model Booking {
   @@index([employeeId, startAt])
   @@index([customerId])
   @@index([status])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("reserva")
 }
 
@@ -419,12 +431,12 @@ model BookingStatusHistory {
   id         String   @id @default(cuid())
   bookingId  String   @map("reserva_id")
   booking    Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  fromStatus BookingStatus? @map("estado_anterior")
-  toStatus   BookingStatus  @map("estado_nuevo")
-  changedBy  String?  @map("cambiado_por")
-  changedAt  DateTime @default(now()) @map("cambiado_en")
-  reason     String?  @map("motivo")
-  @@index([bookingId, changedAt])
+  estadoAnterior BookingStatus? @map("estado_anterior")
+  estadoNuevo BookingStatus  @map("estado_nuevo")
+  cambiadoPor String?  @map("cambiado_por")
+  cambiadoEn  DateTime @default(now()) @map("cambiado_en")
+  motivo     String?  @map("motivo")
+  @@index([bookingId, cambiadoEn])
   @@map("historial_estado_reserva")
 }
 
@@ -435,16 +447,17 @@ model TimeOffRequest {
   business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   employeeId  String   @map("empleado_id")
   employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  type        TimeOffType @default(VACATION) @map("tipo")
-  startDate   DateTime @db.Date @map("fecha_inicio")
-  endDate     DateTime @db.Date @map("fecha_fin")
-  days        Int?     @map("dias")
-  status      TimeOffStatus @default(PENDING) @map("estado")
-  reason      String?  @map("motivo")
-  decidedBy   String?  @map("decidido_por")
-  decidedAt   DateTime? @map("decidido_en")
+  tipo        TimeOffType @default(VACATION) @map("tipo")
+  inicio      DateTime @db.Date @map("fecha_inicio")
+  fin         DateTime @db.Date @map("fecha_fin")
+  dias        Int?     @map("dias")
+  estado      TimeOffStatus @default(PENDING) @map("estado")
+  motivo      String?  @map("motivo")
+  decididoPor String?  @map("decidido_por")
+  decididoEn  DateTime? @map("decidido_en")
   createdAt   DateTime @default(now()) @map("creado_en")
-  @@index([employeeId, startDate])
+  @@index([employeeId, inicio])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("solicitud_ausencia")
 }
 
@@ -454,11 +467,11 @@ model Document {
   business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   employeeId  String?  @map("empleado_id")
   employee    Employee? @relation(fields: [employeeId], references: [id])
-  title       String   @map("titulo")
-  type        DocumentType @default(OTHER) @map("tipo")
-  filePath    String   @map("ruta_archivo")
-  visibility  DocVisibility @default(OWNER_ONLY) @map("visibilidad")
-  uploadedBy  String?  @map("subido_por")
+  titulo      String   @map("titulo")
+  tipo        DocumentType @default(OTHER) @map("tipo")
+  rutaArchivo String   @map("ruta_archivo")
+  visibilidad DocVisibility @default(OWNER_ONLY) @map("visibilidad")
+  subidoPor   String?  @map("subido_por")
   createdAt   DateTime @default(now()) @map("creado_en")
   @@index([businessId])
   @@index([employeeId])
@@ -469,15 +482,16 @@ model Package {
   id           String   @id @default(cuid())
   businessId   String   @map("negocio_id")
   business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  name         String   @map("nombre")
-  sessionsTotal Int     @map("sesiones_total")
-  validityDays Int      @default(365) @map("validez_dias")
-  price        Decimal? @map("precio")
-  active       Boolean  @default(true) @map("activo")
+  nombre       String   @map("nombre")
+  sesionesTotal Int     @map("sesiones_total")
+  diasValidez  Int      @default(365) @map("validez_dias")
+  precio       Decimal? @map("precio")
+  activo       Boolean  @default(true) @map("activo")
   createdAt    DateTime @default(now()) @map("creado_en")
   services     Service[] @relation("PackageServices")
   instances    CustomerPackage[]
   @@index([businessId])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("paquete")
 }
 
@@ -489,11 +503,11 @@ model CustomerPackage {
   customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   packageId   String   @map("paquete_id")
   package     Package  @relation(fields: [packageId], references: [id])
-  sessionsTotal Int    @map("sesiones_total")
-  sessionsUsed Int     @default(0) @map("sesiones_usadas")
-  purchasedAt DateTime @default(now()) @map("comprado_en")
-  expiresAt   DateTime? @map("expira_en")
-  status      PackageStatus @default(ACTIVE) @map("estado")
+  sesionesTotal Int   @map("sesiones_total")
+  sesionesUsadas Int  @default(0) @map("sesiones_usadas")
+  compradoEn  DateTime @default(now()) @map("comprado_en")
+  expiraEn    DateTime? @map("expira_en")
+  estado      PackageStatus @default(ACTIVE) @map("estado")
   sessions    PackageSession[]
   @@index([customerId])
   @@map("paquete_cliente")
@@ -505,8 +519,8 @@ model PackageSession {
   customerPackage  CustomerPackage @relation(fields: [customerPackageId], references: [id], onDelete: Cascade)
   bookingId        String?  @map("reserva_id")
   booking          Booking? @relation(fields: [bookingId], references: [id])
-  usedAt           DateTime @default(now()) @map("usado_en")
-  note             String?  @map("nota")
+  usadoEn          DateTime @default(now()) @map("usado_en")
+  nota             String?  @map("nota")
   @@index([customerPackageId])
   @@map("sesion_paquete")
 }
@@ -525,6 +539,7 @@ model Product {
   createdAt   DateTime @default(now()) @map("creado_en")
   updatedAt   DateTime @updatedAt @map("actualizado_en")
   @@index([businessId])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("producto")
 }
 
@@ -534,13 +549,14 @@ model Sale {
   business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   customerId  String?  @map("cliente_id")
   customer    Customer? @relation(fields: [customerId], references: [id])
-  customerName String? @default("Contado") @map("cliente_nombre")
-  date        DateTime @default(now()) @map("fecha")
-  paymentMethod String @default("Tarjeta") @map("metodo_pago")
+  cliente     String? @default("Contado") @map("cliente_nombre")
+  fecha       DateTime @default(now()) @map("fecha")
+  metodo      String   @default("Tarjeta") @map("metodo_pago")
   total       Decimal  @default(0) @map("total")
   createdAt   DateTime @default(now()) @map("creado_en")
   lines       SaleLine[]
   @@index([businessId])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("venta")
 }
 
@@ -548,9 +564,9 @@ model SaleLine {
   id        String   @id @default(cuid())
   saleId    String   @map("venta_id")
   sale      Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  concept   String   @map("concepto")
-  quantity  Int      @default(1) @map("cantidad")
-  unitPrice Decimal  @default(0) @map("precio_unitario")
+  concepto  String   @map("concepto")
+  cantidad  Int      @default(1) @map("cantidad")
+  precioUnitario Decimal @default(0) @map("precio_unitario")
   subtotal  Decimal  @default(0) @map("subtotal")
   @@index([saleId])
   @@map("linea_venta")
@@ -571,6 +587,7 @@ model Invoice {
   documentos Json?    @map("documentos")
   createdAt  DateTime @default(now()) @map("creado_en")
   @@index([businessId])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("factura")
 }
 
@@ -586,6 +603,7 @@ model Campaign {
   createdAt  DateTime @default(now()) @map("creado_en")
   updatedAt  DateTime @updatedAt @map("actualizado_en")
   @@index([businessId])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("campana")
 }
 
@@ -602,6 +620,7 @@ model Fichaje {
   horas       Decimal? @map("horas")
   createdAt   DateTime @default(now()) @map("creado_en")
   @@index([businessId])
+  eliminadoEn DateTime? @map("eliminado_en")
   @@map("fichaje")
 }
 
@@ -610,14 +629,14 @@ model Notification {
   id          String   @id @default(cuid())
   businessId  String   @map("negocio_id")
   business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  type        String   @map("tipo")
-  channel     String   @default("email") @map("canal")
-  target      String?  @map("destino")
+  tipo        String   @map("tipo")
+  canal       String   @default("email") @map("canal")
+  destino     String?  @map("destino")
   payload     Json     @default("{}") @map("payload")
-  scheduledAt DateTime? @map("programado_en")
-  sentAt      DateTime? @map("enviado_en")
-  status      String   @default("pending") @map("estado")
+  programadoEn DateTime? @map("programado_en")
+  enviadoEn   DateTime? @map("enviado_en")
+  estado      String   @default("pending") @map("estado")
   createdAt   DateTime @default(now()) @map("creado_en")
-  @@index([scheduledAt, status])
+  @@index([programadoEn, estado])
   @@map("notificacion")
 }

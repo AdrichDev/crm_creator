@@ -6,13 +6,13 @@ import { supabaseAdmin } from './lib/auth.js';
 // user first, then uses their UUID as the crm.User PK.
 async function main() {
   const business = await prisma.business.create({
-    data: { name: 'Estudio Lúa', vertical: 'peluqueria', brandPrimary: '#1b431c', brandSecondary: '#8cc63f' },
+    data: { nombre: 'Estudio Lúa', vertical: 'peluqueria', marcaPrimario: '#1b431c', marcaSecundario: '#8cc63f' },
   });
-  const location = await prisma.location.create({ data: { businessId: business.id, name: 'Sede Centro' } });
+  const location = await prisma.location.create({ data: { businessId: business.id, nombre: 'Sede Centro' } });
 
   // Horario L-V 9:00-20:00, S 9:00-14:00
-  for (let wd = 1; wd <= 5; wd++) await prisma.openingHour.create({ data: { locationId: location.id, weekday: wd, openTime: '09:00', closeTime: '20:00' } });
-  await prisma.openingHour.create({ data: { locationId: location.id, weekday: 6, openTime: '09:00', closeTime: '14:00' } });
+  for (let wd = 1; wd <= 5; wd++) await prisma.openingHour.create({ data: { locationId: location.id, diaSemana: wd, apertura: '09:00', cierre: '20:00' } });
+  await prisma.openingHour.create({ data: { locationId: location.id, diaSemana: 6, apertura: '09:00', cierre: '14:00' } });
 
   // Create Supabase auth.users entry and use the returned UUID as crm.User.id
   const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
@@ -33,15 +33,15 @@ async function main() {
   const corte = await prisma.service.create({ data: { businessId: business.id, nombre: 'Corte de pelo', duracion: 30, precio: 15, requiereProfesional: true, employees: { connect: [{ id: sara.id }, { id: jorge.id }] } } });
   const color = await prisma.service.create({ data: { businessId: business.id, nombre: 'Color completo', duracion: 90, precio: 55, requiereRecurso: true, tipoRecurso: 'CHAIR', employees: { connect: [{ id: sara.id }] } } });
 
-  const sillon = await prisma.resource.create({ data: { businessId: business.id, locationId: location.id, name: 'Sillón 1', type: 'CHAIR', capacity: 1, services: { connect: [{ id: corte.id }, { id: color.id }] } } });
+  const sillon = await prisma.resource.create({ data: { businessId: business.id, locationId: location.id, nombre: 'Sillón 1', tipo: 'CHAIR', capacidad: 1, services: { connect: [{ id: corte.id }, { id: color.id }] } } });
 
   const ana = await prisma.customer.create({ data: { businessId: business.id, nombre: 'Ana', apellido: 'Gómez', telefono: '600555666', email: 'ana@mail.com' } });
 
   await prisma.product.create({ data: { businessId: business.id, nombre: 'Cera modeladora', categoria: 'Peinado', stock: 24, minimo: 10, precio: 12.5, proveedor: 'BeautyDist' } });
 
   // Bono de 5 sesiones de corte para Ana
-  const bono = await prisma.package.create({ data: { businessId: business.id, name: 'Bono 5 cortes', sessionsTotal: 5, validityDays: 180, price: 60, services: { connect: [{ id: corte.id }] } } });
-  await prisma.customerPackage.create({ data: { businessId: business.id, customerId: ana.id, packageId: bono.id, sessionsTotal: 5, expiresAt: new Date(Date.now() + 180 * 86400000) } });
+  const bono = await prisma.package.create({ data: { businessId: business.id, nombre: 'Bono 5 cortes', sesionesTotal: 5, diasValidez: 180, precio: 60, services: { connect: [{ id: corte.id }] } } });
+  await prisma.customerPackage.create({ data: { businessId: business.id, customerId: ana.id, packageId: bono.id, sesionesTotal: 5, expiraEn: new Date(Date.now() + 180 * 86400000) } });
 
   // Una reserva de mañana 10:00
   const start = new Date(); start.setDate(start.getDate() + 1); start.setHours(10, 0, 0, 0);

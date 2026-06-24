@@ -19,7 +19,7 @@ interface ApiProject {
   id: string;
   createdAt: string;
   config: unknown;
-  business?: { name: string; vertical: string; brandPrimary: string; brandSecondary: string; logoUrl: string | null };
+  business?: { nombre: string; vertical: string; marcaPrimario: string; marcaSecundario: string; logoUrl: string | null };
 }
 
 // Un "proyecto" = un producto generado para un cliente (su configuración).
@@ -74,9 +74,9 @@ function projectFromApi(p: ApiProject): Project {
   if (!cfg) {
     const v: VerticalId = (p.business && VERTICAL_MAP[p.business.vertical as VerticalId])
       ? (p.business.vertical as VerticalId) : 'custom';
-    cfg = configFromVertical(v, p.business?.name ?? 'Proyecto');
-    if (p.business?.brandPrimary) cfg.branding.primary = p.business.brandPrimary;
-    if (p.business?.brandSecondary) cfg.branding.secondary = p.business.brandSecondary;
+    cfg = configFromVertical(v, p.business?.nombre ?? 'Proyecto');
+    if (p.business?.marcaPrimario) cfg.branding.primary = p.business.marcaPrimario;
+    if (p.business?.marcaSecundario) cfg.branding.secondary = p.business.marcaSecundario;
     if (p.business?.logoUrl) cfg.branding.logoImage = p.business.logoUrl;
   }
   cfg.setupComplete = true;

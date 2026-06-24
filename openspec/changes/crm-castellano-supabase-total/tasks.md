@@ -51,10 +51,30 @@ dropdown que NADIE pidió, y metí un mock sintético de Estudio Lúa. El usuari
 - [x] P.4 HECHO: config del panel desde Business+BusinessSetting (projectFromApi: usa config guardada o fallback configFromVertical). openProject fija `saas.business.id` (x-business-id) → datos scoped. e2e abrir→panel→clientes reales→volver verde.
 - [x] P.5 HECHO (parcial): columna `eliminado_en` en Business + `DELETE /api/projects/:id` soft (set fecha) + GET filtra null. Falta extender soft-delete a otras tablas con borrado de usuario.
 - [x] P.6 HECHO: migración client-side una vez (tenant-config-context migrateLocalProjects): POSTea los proyectos de localStorage a /api/projects (tenant válido requerido), conserva backup (saas.projects.backup.v1) + flag (saas.projects.migrated.v1). Tenants ya estaban en aa.tenant. FIX de paso: POST /projects revive proyecto soft-deleted (tenant unique) + try/catch P2002 (antes crasheaba el back). e2e migracion-localstorage.spec.ts verde (autolimpiable).
-- [~] P.7 EN CURSO. Castellanizados (modelo+ruta+seed, verde): Customer, Service, Product, Campaign, Fichaje, Booking(router), **Employee** (employeesRouter, nombre combinado + rol cableado; e2e Sara Molina). PENDIENTE: Business, Membership, Location, Sale/SaleLine, Resource, Tag, Package, CustomerPackage, Holiday, OpeningHour + modelos a cablear (EmployeeSchedule, Document, Notification, BusinessSetting, BookingStatusHistory, PackageSession).
+- [~] P.7 EN CURSO. Castellanizados (modelo+ruta+seed, verde): Customer, Service, Product, Campaign, Fichaje, Booking(router), Employee, **Business** (nombre/razonSocial/nif/moneda/zonaHoraria/marcaPrimario/marcaSecundario; refs auth/projects/users/me/seed/front), **Location, Resource, Tag, Package, CustomerPackage, Holiday, OpeningHour, Sale/SaleLine, BookingStatusHistory, PackageSession** (refs availability/bookings/packages/seed/index whitelists). e2e 6/6 + back 53 + tsc limpio.
+  + **TimeOffRequest** (vacaciones: timeOffRouter mapea empleado/tipo/inicio/fin/dias/estado con etiquetas; availability actualizado). e2e 6/6 verde.
+  + **Document, Notification, EmployeeSchedule** (campos castellano; sin refs, listos para cablear) + **BusinessSetting** (categoria/datos; refs projects.ts). e2e 6/6 + back 53/0fail + tsc limpio.
+  P.7 COMPLETO salvo EXCEPCIONES decididas (infra/auth, invisibles, se quedan inglés): `Membership.role` (enum permisos rbac), `User.firstName/lastName/email/...` (auth, acoplado a front gestión-usuarios). Documentado en cabecera schema.
 - [x] P.8 HECHO: columna `Employee.rol` aplicada + cableada (employeesRouter + seed Estilista/Barbero + página ya la pinta).
 
-## Fase 5 — AA + cierre
-- [ ] 5.1 Proxies AA: quitar onboarding-AA o documentar Bearer real (decisión).
-- [ ] 5.2 Tests back + front verde, tsc limpio, e2e verde.
-- [ ] 5.3 mem_save + scope summary + archivar.
+## Fase 5 / OTROS — cierre
+- [~] 5.1 Proxies AA: DECISIÓN documentada. `/api/ai/generate` (Next→AA, branding IA del onboarding)
+  está roto (AA exige JWT Supabase real, no token estático). Es feature SOLO del generador, no del
+  CRM runtime. NO se borra (el usuario pidió no borrar). Fix real (token Supabase válido o metering
+  directo cross-schema) = tarea aparte, pendiente. `lib/server/aa.ts` se mantiene.
+- [x] 5.2 Tests verde: back 0 fail (33 pass + 20 live-skip por pooler), front 89, e2e 6/6, tsc back+front limpio.
+- [ ] 5.3 Archivar change + scope summary (al cerrar todo P.7).
+
+## OTROS pendientes (requieren OK / son lotes)
+- [x] O.1 HECHO: SOFT DELETE en 14 tablas (eliminado_en additive ALTER aplicado a Supabase) +
+  crud.ts soft (filtro eliminadoEn:null en list/get/patch + DELETE→update fecha) + custom routers
+  (customers/employees/bookings/timeoff) filtran y borran soft. e2e soft-delete.spec.ts verde (crear→borrar→no aparece).
+- [x] O.2 HECHO (parcial): e2e `onboarding-tenants.spec.ts` verifica que el onboarding carga tenants
+  reales de aa.tenant en el selector. El create POST ya está cubierto (migracion-localstorage, mismo
+  path). Drive completo del wizard no automatizado (requiere tenant libre no determinable en UI → 409).
+- [x] O.3 HECHO: alta REAL de citas (components/crm/nueva-cita-modal.tsx: selectores cliente/servicio/
+  profesional por id + fecha/hora → POST /api/bookings con validación de disponibilidad). bookingsRouter
+  +DELETE soft. Ventas ya funcionaba (Sale.cliente es texto denormalizado, sin id). e2e citas-alta.spec.ts verde.
+- [x] O.4 HECHO: `crm-migracion-supabase` marcado CERRADO/superado (nota en proposal); 26/26 done.
+- [ ] O.5 FUERA DE ALCANCE de este change (features separadas grandes): crm-n8n-automations (16 workflows),
+  crm-onboarding-edit-landing-ia (ZIP/landing), crm-sectorial-ia. Cada una su propio change.
