@@ -72,8 +72,9 @@ dropdown que NADIE pidió, y metí un mock sintético de Estudio Lúa. El usuari
 - [x] O.2 HECHO (parcial): e2e `onboarding-tenants.spec.ts` verifica que el onboarding carga tenants
   reales de aa.tenant en el selector. El create POST ya está cubierto (migracion-localstorage, mismo
   path). Drive completo del wizard no automatizado (requiere tenant libre no determinable en UI → 409).
-- [ ] O.3 PENDIENTE (feature, fuera de cierre rápido): form alta citas/ventas por id + datetime
-  (hoy crean por nombre = no persiste contra back). Necesita selectores customer/service por id.
+- [x] O.3 HECHO: alta REAL de citas (components/crm/nueva-cita-modal.tsx: selectores cliente/servicio/
+  profesional por id + fecha/hora → POST /api/bookings con validación de disponibilidad). bookingsRouter
+  +DELETE soft. Ventas ya funcionaba (Sale.cliente es texto denormalizado, sin id). e2e citas-alta.spec.ts verde.
 - [x] O.4 HECHO: `crm-migracion-supabase` marcado CERRADO/superado (nota en proposal); 26/26 done.
 - [ ] O.5 FUERA DE ALCANCE de este change (features separadas grandes): crm-n8n-automations (16 workflows),
   crm-onboarding-edit-landing-ia (ZIP/landing), crm-sectorial-ia. Cada una su propio change.

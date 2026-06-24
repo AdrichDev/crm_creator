@@ -112,6 +112,14 @@ async function transition(req: AuthedRequest, res: Response, to: BookingStatus) 
   res.json(updated);
 }
 
+// DELETE /:id → soft delete (la cita desaparece de la agenda; cancelar es un estado).
+bookingsRouter.delete('/:id', async (req: AuthedRequest, res: Response) => {
+  const booking = await prisma.booking.findFirst({ where: { id: req.params.id, businessId: req.businessId, eliminadoEn: null } });
+  if (!booking) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
+  await prisma.booking.update({ where: { id: booking.id }, data: { eliminadoEn: new Date() } });
+  res.status(204).end();
+});
+
 bookingsRouter.post('/:id/cancel', (req: AuthedRequest, res) => transition(req, res, 'CANCELLED'));
 bookingsRouter.post('/:id/complete', (req: AuthedRequest, res) => transition(req, res, 'COMPLETED'));
 bookingsRouter.post('/:id/no-show', (req: AuthedRequest, res) => transition(req, res, 'NO_SHOW'));
