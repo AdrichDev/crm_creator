@@ -72,8 +72,8 @@ authRouter.post('/register', registerLimiter, async (req, res) => {
   let result;
   try {
     result = await prisma.$transaction(async (tx) => {
-      const business = await tx.business.create({ data: { name: d.businessName, vertical: d.vertical } });
-      await tx.location.create({ data: { businessId: business.id, name: d.businessName } });
+      const business = await tx.business.create({ data: { nombre: d.businessName, vertical: d.vertical } });
+      await tx.location.create({ data: { businessId: business.id, nombre: d.businessName } });
       // crm.User.id = auth.users.id (UUID from Supabase).
       const user = await tx.user.create({
         data: {
@@ -125,8 +125,8 @@ authRouter.get('/me', authenticate, async (req: AuthedRequest, res) => {
     ? await prisma.business.findUnique({
         where: { id: req.businessId },
         select: {
-          id: true, name: true, vertical: true,
-          brandPrimary: true, brandSecondary: true, logoUrl: true,
+          id: true, nombre: true, vertical: true,
+          marcaPrimario: true, marcaSecundario: true, logoUrl: true,
         },
       })
     : null;
@@ -305,7 +305,7 @@ authRouter.post('/register-client', registerLimiter, async (req, res) => {
   const d = parsed.data;
   const NEUTRAL = { message: 'Si el email es válido, te enviaremos un enlace de verificación' };
 
-  const business = await prisma.business.findUnique({ where: { id: businessId }, select: { id: true, name: true, brandPrimary: true, logoUrl: true } });
+  const business = await prisma.business.findUnique({ where: { id: businessId }, select: { id: true, nombre: true, marcaPrimario: true, logoUrl: true } });
   if (!business) {
     return res.status(400).json({ error: { code: 'invalid_business', message: 'Negocio no válido' } });
   }
@@ -315,7 +315,7 @@ authRouter.post('/register-client', registerLimiter, async (req, res) => {
   const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
     email: d.email,
     email_confirm: false, // forces email verification flow
-    user_metadata: { firstName: d.firstName, businessName: business.name, brandPrimary: business.brandPrimary, logoUrl: business.logoUrl ?? undefined },
+    user_metadata: { firstName: d.firstName, businessName: business.nombre, brandPrimary: business.marcaPrimario, logoUrl: business.logoUrl ?? undefined },
   });
 
   if (authError) {

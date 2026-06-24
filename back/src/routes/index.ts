@@ -29,7 +29,7 @@ api.use(authenticate);
 api.use('/me', meRouter);
 
 // Catálogo: lectura para cualquier miembro (incl. CLIENT, para reservar); escritura solo staff.
-api.use('/locations', staffOrClient, crudRouter('location', { fields: ['name', 'address', 'timezone', 'currency', 'phone', 'email', 'onlineBookingEnabled', 'active'] }));
+api.use('/locations', staffOrClient, crudRouter('location', { fields: ['nombre', 'direccion', 'zonaHoraria', 'moneda', 'telefono', 'email', 'reservaOnline', 'activo'] }));
 api.use('/services', staffOrClient, crudRouter('service', { fields: ['nombre', 'descripcion', 'categoria', 'duracion', 'precio', 'impuesto', 'requiereRecurso', 'tipoRecurso', 'requiereProfesional', 'reservableOnline', 'color', 'margenAntes', 'margenDespues', 'requiereConsentimiento', 'requiereBono', 'activo'] }));
 api.use('/products', staffOrClient, crudRouter('product', { fields: ['nombre', 'categoria', 'stock', 'minimo', 'precio', 'proveedor'] }));
 
@@ -39,12 +39,12 @@ api.use(staffOnly);
 
 api.use('/employees', employeesRouter); // castellano + nombre combinado + rol
 api.use('/customers', customersRouter); // castellano + agregados (visitas/gastoTotal/segmento)
-api.use('/resources', crudRouter('resource', { fields: ['locationId', 'name', 'type', 'capacity', 'status', 'locationNote', 'description', 'metadata'] }));
-api.use('/sales', crudRouter('sale', { fields: ['customerId', 'customerName', 'date', 'paymentMethod', 'total'], include: { lines: true } }));
+api.use('/resources', crudRouter('resource', { fields: ['locationId', 'nombre', 'tipo', 'capacidad', 'estado', 'notaUbicacion', 'descripcion', 'metadatos'] }));
+api.use('/sales', crudRouter('sale', { fields: ['customerId', 'cliente', 'fecha', 'metodo', 'total'], include: { lines: true } }));
 api.use('/invoices', crudRouter('invoice', { fields: ['numero', 'cliente', 'servicio', 'fecha', 'total', 'estado', 'documentos'] }));
 api.use('/campaigns', crudRouter('campaign', { fields: ['nombre', 'canal', 'estado', 'enviados', 'aperturas'] }));
 api.use('/fichajes', crudRouter('fichaje', { fields: ['employeeId', 'empleado', 'fecha', 'entrada', 'salida', 'horas'] }));
-api.use('/tags', crudRouter('tag', { fields: ['name', 'color'] }));
+api.use('/tags', crudRouter('tag', { fields: ['nombre', 'color'] }));
 
 // Custom
 api.use('/tenants', tenantsRouter); // clientes de AA (aa.tenant, raw cross-schema) → FK de proyectos

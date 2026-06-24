@@ -10,9 +10,9 @@ packagesRouter.get('/', async (req: AuthedRequest, res: Response) => {
 });
 
 packagesRouter.post('/', async (req: AuthedRequest, res: Response) => {
-  const { name, sessionsTotal, validityDays = 365, price, serviceIds = [] } = req.body ?? {};
-  if (!name || !sessionsTotal) return res.status(422).json({ error: { code: 'validation', message: 'name y sessionsTotal requeridos' } });
-  const row = await prisma.package.create({ data: { businessId: req.businessId!, name, sessionsTotal, validityDays, price, services: serviceIds.length ? { connect: serviceIds.map((id: string) => ({ id })) } : undefined } });
+  const { nombre, sesionesTotal, diasValidez = 365, precio, serviceIds = [] } = req.body ?? {};
+  if (!nombre || !sesionesTotal) return res.status(422).json({ error: { code: 'validation', message: 'nombre y sesionesTotal requeridos' } });
+  const row = await prisma.package.create({ data: { businessId: req.businessId!, nombre, sesionesTotal, diasValidez, precio, services: serviceIds.length ? { connect: serviceIds.map((id: string) => ({ id })) } : undefined } });
   res.status(201).json(row);
 });
 
@@ -22,8 +22,8 @@ packagesRouter.post('/assign', async (req: AuthedRequest, res: Response) => {
   if (!customerId || !packageId) return res.status(422).json({ error: { code: 'validation', message: 'customerId y packageId requeridos' } });
   const tpl = await prisma.package.findFirst({ where: { id: packageId, businessId: req.businessId } });
   if (!tpl) return res.status(404).json({ error: { code: 'not_found', message: 'Bono no encontrado' } });
-  const expiresAt = new Date(Date.now() + tpl.validityDays * 86400000);
-  const cp = await prisma.customerPackage.create({ data: { businessId: req.businessId!, customerId, packageId, sessionsTotal: tpl.sessionsTotal, expiresAt } });
+  const expiraEn = new Date(Date.now() + tpl.diasValidez * 86400000);
+  const cp = await prisma.customerPackage.create({ data: { businessId: req.businessId!, customerId, packageId, sesionesTotal: tpl.sesionesTotal, expiraEn } });
   res.status(201).json(cp);
 });
 
@@ -31,9 +31,9 @@ packagesRouter.post('/assign', async (req: AuthedRequest, res: Response) => {
 packagesRouter.post('/customer-packages/:id/consume-session', async (req: AuthedRequest, res: Response) => {
   const cp = await prisma.customerPackage.findFirst({ where: { id: req.params.id, businessId: req.businessId } });
   if (!cp) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
-  if (cp.status !== 'ACTIVE') return res.status(409).json({ error: { code: 'inactive', message: 'Bono no activo' } });
-  if (cp.sessionsUsed >= cp.sessionsTotal) return res.status(409).json({ error: { code: 'exhausted', message: 'Bono agotado' } });
-  if (cp.expiresAt && cp.expiresAt < new Date()) return res.status(409).json({ error: { code: 'expired', message: 'Bono caducado' } });
-  const updated = await prisma.customerPackage.update({ where: { id: cp.id }, data: { sessionsUsed: { increment: 1 }, sessions: { create: { bookingId: req.body?.bookingId } } } });
+  if (cp.estado !== 'ACTIVE') return res.status(409).json({ error: { code: 'inactive', message: 'Bono no activo' } });
+  if (cp.sesionesUsadas >= cp.sesionesTotal) return res.status(409).json({ error: { code: 'exhausted', message: 'Bono agotado' } });
+  if (cp.expiraEn && cp.expiraEn < new Date()) return res.status(409).json({ error: { code: 'expired', message: 'Bono caducado' } });
+  const updated = await prisma.customerPackage.update({ where: { id: cp.id }, data: { sesionesUsadas: { increment: 1 }, sessions: { create: { bookingId: req.body?.bookingId } } } });
   res.json(updated);
 });

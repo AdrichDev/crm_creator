@@ -34,9 +34,9 @@ async function sendInvite(
 ): Promise<{ sent: boolean; alreadyExists: boolean }> {
   // Branding del tenant en metadata -> email de invitación personalizado por negocio
   // (plantilla Supabase usa {{ .Data.businessName }} / {{ .Data.brandPrimary }}).
-  const biz = await prisma.business.findUnique({ where: { id: businessId }, select: { name: true, brandPrimary: true, logoUrl: true } });
+  const biz = await prisma.business.findUnique({ where: { id: businessId }, select: { nombre: true, marcaPrimario: true, logoUrl: true } });
   const { error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-    data: { businessId, role, firstName, businessName: biz?.name, brandPrimary: biz?.brandPrimary, logoUrl: biz?.logoUrl ?? undefined },
+    data: { businessId, role, firstName, businessName: biz?.nombre, brandPrimary: biz?.marcaPrimario, logoUrl: biz?.logoUrl ?? undefined },
   });
   if (!error) return { sent: true, alreadyExists: false };
   // Supabase returns a 422 / "User already registered" when email exists.

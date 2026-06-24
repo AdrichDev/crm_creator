@@ -25,10 +25,10 @@ async function tenantExists(tenantId: string): Promise<boolean> {
 interface BusinessRow {
   id: string;
   createdAt: Date;
-  name: string;
+  nombre: string;
   vertical: string;
-  brandPrimary: string;
-  brandSecondary: string;
+  marcaPrimario: string;
+  marcaSecundario: string;
   logoUrl: string | null;
   settings: { data: unknown }[];
 }
@@ -42,10 +42,10 @@ function toProject(b: BusinessRow) {
     createdAt: b.createdAt.toISOString(),
     config: (b.settings[0]?.data as unknown) ?? null,
     business: {
-      name: b.name,
+      nombre: b.nombre,
       vertical: b.vertical,
-      brandPrimary: b.brandPrimary,
-      brandSecondary: b.brandSecondary,
+      marcaPrimario: b.marcaPrimario,
+      marcaSecundario: b.marcaSecundario,
       logoUrl: b.logoUrl,
     },
   };
@@ -61,8 +61,8 @@ projectsRouter.get('/', async (req: AuthedRequest, res: Response) => {
   const businesses = await prisma.business.findMany({
     where: { id: { in: ids }, eliminadoEn: null },
     select: {
-      id: true, createdAt: true, name: true, vertical: true,
-      brandPrimary: true, brandSecondary: true, logoUrl: true,
+      id: true, createdAt: true, nombre: true, vertical: true,
+      marcaPrimario: true, marcaSecundario: true, logoUrl: true,
       settings: { where: { category: CONFIG_CATEGORY }, select: { data: true } },
     },
     orderBy: { createdAt: 'desc' },
@@ -87,10 +87,10 @@ projectsRouter.post('/', async (req: AuthedRequest, res: Response) => {
   }
 
   const mirror = {
-    name: config.business?.name ?? 'Nuevo proyecto',
+    nombre: config.business?.name ?? 'Nuevo proyecto',
     vertical: config.business?.vertical ?? 'custom',
-    ...(config.branding?.primary ? { brandPrimary: config.branding.primary } : {}),
-    ...(config.branding?.secondary ? { brandSecondary: config.branding.secondary } : {}),
+    ...(config.branding?.primary ? { marcaPrimario: config.branding.primary } : {}),
+    ...(config.branding?.secondary ? { marcaSecundario: config.branding.secondary } : {}),
     ...(config.branding?.logoImage ? { logoUrl: config.branding.logoImage } : {}),
   };
 
@@ -107,7 +107,7 @@ projectsRouter.post('/', async (req: AuthedRequest, res: Response) => {
         return b;
       }
       const b = await tx.business.create({ data: { tenantId, ...mirror } });
-      await tx.location.create({ data: { businessId: b.id, name: config.business?.name ?? 'Sede' } });
+      await tx.location.create({ data: { businessId: b.id, nombre: config.business?.name ?? 'Sede' } });
       await tx.businessSetting.create({ data: { businessId: b.id, category: CONFIG_CATEGORY, data: config as Prisma.InputJsonValue } });
       await tx.membership.create({ data: { userId: req.userId!, businessId: b.id, role: 'OWNER' } });
       return b;
@@ -133,10 +133,10 @@ projectsRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
     await tx.business.update({
       where: { id },
       data: {
-        ...(config.business?.name ? { name: config.business.name } : {}),
+        ...(config.business?.name ? { nombre: config.business.name } : {}),
         ...(config.business?.vertical ? { vertical: config.business.vertical } : {}),
-        ...(config.branding?.primary ? { brandPrimary: config.branding.primary } : {}),
-        ...(config.branding?.secondary ? { brandSecondary: config.branding.secondary } : {}),
+        ...(config.branding?.primary ? { marcaPrimario: config.branding.primary } : {}),
+        ...(config.branding?.secondary ? { marcaSecundario: config.branding.secondary } : {}),
         ...(config.branding?.logoImage ? { logoUrl: config.branding.logoImage } : {}),
       },
     });
