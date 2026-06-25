@@ -24,7 +24,7 @@ export default function ForgotPasswordPage() {
         <p className="text-sm text-[var(--panel-muted)]">
           Si el email existe, te hemos enviado instrucciones para restablecer tu contraseña.
         </p>
-        <Link href="/" className="btn btn-outline mt-4 inline-block">Volver</Link>
+        <Link href="/login" className="btn btn-outline mt-4 inline-block">Volver</Link>
       </AuthShell>
     );
   }
@@ -37,7 +37,7 @@ export default function ForgotPasswordPage() {
           <input className="opera-control" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </div>
         <button type="submit" className="btn btn-primary w-full" disabled={saving}>{saving ? 'Enviando…' : 'Enviar enlace'}</button>
-        <Link href="/" className="block text-center text-sm text-[var(--panel-muted)] hover:text-white">Volver a iniciar sesión</Link>
+        <Link href="/login" className="block text-center text-sm text-[var(--panel-muted)] hover:text-white">Volver a iniciar sesión</Link>
       </form>
     </AuthShell>
   );

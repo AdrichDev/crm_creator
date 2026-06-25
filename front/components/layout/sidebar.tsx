@@ -35,7 +35,7 @@ export function Sidebar() {
   // login. En la consola fuente cierra el proyecto y vuelve al dashboard general.
   async function salir() {
     if (GENERATED_TENANT) { await logout(); router.replace('/login'); return; }
-    closeProject(); router.push('/');
+    closeProject(); router.push('/dashboard');
   }
 
   return (

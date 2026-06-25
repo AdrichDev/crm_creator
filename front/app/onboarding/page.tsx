@@ -93,7 +93,7 @@ function OnboardingInner() {
       // UC-1: persistir SOBRE el proyecto existente, sin crear uno nuevo.
       openProject(editing.id);
       setConfig(cfg);
-      router.push('/');
+      router.push('/dashboard');
       return;
     }
     // En modo CRM hay que vincular un cliente (tenant) existente de agents-agency.
@@ -119,7 +119,7 @@ function OnboardingInner() {
     // fijos del diseño se remapean a tokens en globals.css (scope .onboarding).
     <div className="crm-console onboarding min-h-screen">
       <div className="mx-auto max-w-4xl px-5 py-10">
-        <button onClick={() => router.push('/')}
+        <button onClick={() => router.push('/dashboard')}
           className="mb-6 inline-flex items-center gap-1.5 rounded-lg border border-[var(--acc)]/40 px-3 py-1.5 text-sm font-medium text-[var(--acc)] transition hover:border-[var(--acc)] hover:bg-[color-mix(in_srgb,var(--acc)_8%,transparent)]">
           <ChevronLeft className="h-4 w-4" /> Volver a proyectos
         </button>

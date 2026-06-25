@@ -26,7 +26,7 @@ export default function LoginPage() {
       const role = await login(email, password);
       setRole(role);
       // Aterriza en el dashboard (consola de proyectos); ahí se abre/crea cada CRM.
-      router.replace('/');
+      router.replace('/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo iniciar sesión');
     } finally {
