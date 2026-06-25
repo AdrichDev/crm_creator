@@ -116,9 +116,11 @@ Rutas relativas a `front/`.
 ## Añadir un módulo nuevo
 
 1. Añade su entrada en `MODULES` (`front/lib/config/modules.ts`).
-2. Crea `front/app/(panel)/<modulo>/page.tsx` envuelta en `<ModuleGuard>`.
-3. Crea su tabla en `back/schema/<NN>_<modulo>.sql` y regístrala en
-   `back/schema/manifest.json`.
+2. Crea `front/app/(crm)/<modulo>/page.tsx` envuelta en `<ModuleGuard>`.
+3. Modela la tabla en `back/prisma/schema.prisma` (castellano vía `@map`) y crea la
+   migración: `npx prisma migrate dev` (Prisma migrate = estrategia única). Expón la ruta
+   en `back/src/routes/index.ts` (crudRouter o router dedicado).
+   <!-- LEGACY: el antiguo back/schema/*.sql por módulo está archivado en docs/_archivo. -->
 4. (Opcional) Inclúyelo en los `defaultModules` de los verticales que lo usen.
 
 ## Portado a agents-agency / Supabase
