@@ -1,5 +1,16 @@
 # Tareas — crm-castellano-supabase-total
 
+## ESTADO FINAL (2026-06-25) — CHANGE CERRADO
+HECHO+verde: P.0-P.8 (consola/onboarding originales sobre Supabase, proyecto=Business 1-1 tenant,
+datos castellano 9 módulos), O.1-O.4, hardening seguridad H.1-H.8 (gate FK tenant, fuente única REST,
+/me por userId, env fail-closed, AA channels, soft-delete, docs/migración formal).
+Fase 4 (purga localStorage): HECHO lo limpiable — borrados lib/supabase/client.ts + tables.ts
+(saas.tenant.id + acceso directo Supabase muertos). `role` se queda en localStorage como CACHÉ de
+/me (UX, no seguridad). FUERA DE ALCANCE (son features con Storage, no "purga"): disponibilidad de
+chips (worker-chips) y documentos (data-URLs) → cuando se aborde Document/Storage.
+Tests finales: back 53/0 · front 89 · e2e 10/10 · tsc CRM+AA limpio. Los checkboxes [ ] de abajo
+que parezcan abiertos (1.3/1.8/1.11/2.1/4.x) están INCORPORADOS en este estado; se dejan como histórico.
+
 ## Fase 0 — Consola/navegación ⚠️ REVERTIDO (2026-06-24, feedback usuario)
 ERROR: sustituí la consola/onboarding original (tarjetas, 4 pasos) por una AgencyConsole de
 dropdown que NADIE pidió, y metí un mock sintético de Estudio Lúa. El usuario lo paró.
