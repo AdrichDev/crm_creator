@@ -12,7 +12,9 @@ const JWKS = createRemoteJWKSet(new URL(`${SUPABASE_ISSUER}/.well-known/jwks.jso
 
 // ---------------------------------------------------------------------------
 // Supabase Auth integration.
-// - verifySupabaseToken: stateless HS256 JWT verification (no network call).
+// - verifySupabaseToken: verificación asimétrica ES256 contra el JWKS del proyecto
+//   (los tokens de Supabase ya no usan el secreto compartido HS256; hay llamada de red
+//   al endpoint JWKS, con caché y rotación por `kid`).
 // - supabaseAdmin: service-role client for admin operations (createUser, signOut, etc.).
 //   SERVICE_ROLE_KEY must NEVER be exposed to the browser.
 // ---------------------------------------------------------------------------
@@ -24,11 +26,6 @@ export interface SupabaseTokenPayload {
   role: string;
 }
 
-/**
- * Verifies a Supabase-issued access token against the project JWKS (ES256, asymmetric).
- * Throws on invalid/expired token — caller must catch and return 401.
- * Returns { sub, email, role } — sub is the auth.users UUID.
- */
 /**
  * Pure mapping of a verified JWT payload → SupabaseTokenPayload.
  * Extracted so the claim-shape contract is unit-testable without crypto/network

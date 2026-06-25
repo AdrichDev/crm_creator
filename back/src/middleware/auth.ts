@@ -3,7 +3,7 @@ import { prisma } from '../prisma.js';
 import { verifySupabaseToken } from '../lib/auth.js';
 import type { AuthedRequest } from './types.js';
 
-// Verifies the Supabase access token (HS256, Bearer), resolves the active tenant
+// Verifies the Supabase access token (ES256 vía JWKS, Bearer), resolves the active tenant
 // via x-business-id header (validated against the user's Memberships), and attaches
 // userId / businessId / role to the request.
 // Session revocation on password change is handled by Supabase (admin.signOut).
