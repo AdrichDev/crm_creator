@@ -24,7 +24,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!ready) return;
-    if (!hasActive) { router.replace('/'); return; }
+    if (!hasActive) { router.replace('/dashboard'); return; }
     if (!needsLogin) { setAuthedState(true); return; }
     isAuthed().then((authed) => {
       setAuthedState(authed);
@@ -36,7 +36,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     return <div className="grid min-h-screen place-items-center bg-ink text-gray-400">Cargando…</div>;
   }
 
-  function volver() { closeProject(); router.push('/'); }
+  function volver() { closeProject(); router.push('/dashboard'); }
 
   return (
     <div className="opera-shell">

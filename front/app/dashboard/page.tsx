@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { GENERATED_TENANT } from '@/lib/config/generated-tenant';
-import { isAuthed } from '@/lib/auth/session';
+import { isAuthed, logout } from '@/lib/auth/session';
 import { useProjects } from '@/lib/tenant-config-context';
 import { MODULES } from '@/lib/config/modules';
 import { VERTICAL_MAP } from '@/lib/config/verticals';
@@ -27,6 +27,7 @@ export default function Consola() {
   }, [ready, config, router]);
 
   function nuevo() { router.push('/onboarding'); }
+  async function cerrarSesion() { await logout(); router.replace('/login'); }
   function abrir(id: string) { openProject(id); router.push('/panel'); }
   // UC-1: "Editar" reabre el ONBOARDING en modo edición (pre-cargado con la config
   // del proyecto), no el editor campo-a-campo. `/configuracion` sigue disponible.
@@ -37,6 +38,16 @@ export default function Consola() {
     try { await generateAndDownload(p.config); markGenerated(id); }
     finally { setBusy(null); }
   }
+
+  // Icono "puerta" de salida (mismo trazo que agents-agency).
+  const LogoutIcon = ({ className = 'h-4 w-4' }: { className?: string }) => (
+    <svg aria-hidden="true" className={className} fill="none" stroke="currentColor"
+      strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="M14 3h5v18h-5" />
+      <path d="M10 17l5-5-5-5" />
+      <path d="M15 12H3" />
+    </svg>
+  );
 
   if (!ready || GENERATED_TENANT) return <div className="grid min-h-screen place-items-center bg-ink text-gray-400">Cargando…</div>;
 
@@ -60,6 +71,10 @@ export default function Consola() {
               <button onClick={nuevo}
                 className="inline-flex items-center gap-2 rounded-xl gold-gradient px-4 py-2.5 text-sm font-semibold text-ink shadow-md transition hover:opacity-90">
                 <Plus className="h-4 w-4" /> Nuevo proyecto
+              </button>
+              <button onClick={cerrarSesion} title="Cerrar sesión" aria-label="Cerrar sesión"
+                className="inline-flex items-center gap-2 rounded-xl border border-[var(--line)] px-4 py-2.5 text-sm font-medium text-[var(--panel-muted)] transition hover:border-[var(--acc)] hover:text-[var(--acc)]">
+                <LogoutIcon /> Salir
               </button>
             </div>
           </div>

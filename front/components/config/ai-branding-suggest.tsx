@@ -1,8 +1,10 @@
 'use client';
-// Sugerir branding con IA (reversible). A partir del contexto del negocio + un
-// texto libre de estilo, la IA propone paleta/tipografía. Si hay un diseño de
-// landing cargado, se basa en su front/CSS; si no, en el estilo que describas.
-// Flujo: Generar prompt → PREVISUALIZAR → Aplicar (guarda el anterior) → Deshacer.
+// Sugerir branding con IA (reversible). Dos vías:
+//  1) "Generar prompt": a partir del contexto del negocio + tu texto de estilo.
+//  2) "Generar desde landing": a partir de los ESTILOS REALES capturados del .zip
+//     importado (paleta/tipografía que extrajo BrandingForm) — disponible solo si hay
+//     landing cargada.
+// Flujo común: generar → PREVISUALIZAR → Aplicar (guarda el anterior) → Deshacer.
 //
 // IMPORTANTE: estas acciones son trabajo del OPERADOR, no del cliente → se llaman
 // con clientId=null para que NO descuenten del cómputo de tokens del cliente.
@@ -11,7 +13,7 @@ import { useState } from 'react';
 import { suggestBranding, AiBlockedError, type BrandingSuggestion } from '@/lib/ai/usage-client';
 import type { DesignTokens } from '@/lib/config/tenant-config';
 import { ModelEffort } from '@/components/ai/model-effort';
-import { Sparkles, Loader2, Check, Undo2 } from 'lucide-react';
+import { Sparkles, Loader2, Check, Undo2, FileArchive } from 'lucide-react';
 
 export interface BrandingSnapshot {
   primary: string;
@@ -23,11 +25,12 @@ type Patch = Partial<{ primary: string; secondary: string; tokens: DesignTokens 
 
 interface Props {
   business: { name: string; vertical: string };
-  /** Branding actual, para poder restaurarlo al deshacer. */
+  /** Branding actual (incluye los tokens capturados del .zip), para deshacer y para
+   *  "Generar desde landing". */
   current: BrandingSnapshot;
   /** Aplica un patch de branding al draft/config. */
   onApply: (patch: Patch) => void;
-  /** Nombre del diseño de landing importado (si lo hay): la IA se basará en él. */
+  /** Nombre del diseño de landing importado (si lo hay): habilita "Generar desde landing". */
   landingSource?: string;
 }
 
@@ -42,15 +45,29 @@ export function AiBrandingSuggest({ business, current, onApply, landingSource }:
 
   const hasLanding = !!landingSource;
 
-  async function onGenerate() {
+  // Descripción a partir de los ESTILOS REALES capturados del .zip (no el nombre).
+  function landingDescription(): string {
+    const pal = current.tokens?.palette ?? {};
+    const typo = current.tokens?.typography;
+    const colors = [
+      `principal ${pal.primary ?? current.primary}`,
+      `secundario ${pal.secondary ?? current.secondary}`,
+      pal.accent ? `acento ${pal.accent}` : '',
+      pal.background ? `fondo ${pal.background}` : '',
+      pal.text ? `texto ${pal.text}` : '',
+    ].filter(Boolean).join(', ');
+    return [
+      `Genera un branding de CRM coherente con los estilos REALES capturados de la landing del cliente ("${landingSource}").`,
+      `Paleta capturada: ${colors}.`,
+      typo && (typo.heading || typo.body) ? `Tipografía capturada: ${[typo.heading, typo.body].filter(Boolean).join(' / ')}.` : '',
+      style.trim() ? `Indicaciones adicionales: ${style.trim()}.` : '',
+      'Respeta esos colores y tipografía como base; completa de forma armónica los que falten.',
+    ].filter(Boolean).join(' ');
+  }
+
+  async function generate(description: string) {
     setBusy(true); setError(null); setPreview(null);
     try {
-      // Contexto: si hay landing cargada, la IA se basa en su estilo; el texto
-      // libre afina la dirección. Sin landing, el texto libre manda.
-      const description = [
-        hasLanding ? `Básate en el estilo del diseño de landing importado ("${landingSource}").` : '',
-        style.trim(),
-      ].filter(Boolean).join(' ');
       // clientId=null → trabajo del operador, NO cuenta para los tokens del cliente.
       const s = await suggestBranding({ business: { ...business, description }, clientId: null, model, effort });
       setPreview(s);
@@ -98,9 +115,8 @@ export function AiBrandingSuggest({ business, current, onApply, landingSource }:
         )}
       </div>
       <p className="mt-1 text-[11px] text-gray-400">
-        {hasLanding
-          ? `La IA se basará en el diseño de "${landingSource}". Añade indicaciones si quieres.`
-          : 'No hay landing cargada: describe el estilo que quieres y genera el prompt.'}
+        Genera el branding desde tu descripción, o directamente desde los estilos del
+        .zip de la landing si lo has importado.
       </p>
 
       {/* Selector de IA (mismos modelos que agents-agency) */}
@@ -116,13 +132,19 @@ export function AiBrandingSuggest({ business, current, onApply, landingSource }:
           className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" />
       </div>
 
-      <div className="mt-3 flex items-center gap-2">
-        <button type="button" onClick={onGenerate} disabled={busy}
+      {/* Dos botones: desde texto / desde landing (este, solo si hay .zip importado) */}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button type="button" onClick={() => generate(style.trim())} disabled={busy}
           className="inline-flex items-center gap-1.5 rounded-xl border border-[#2563eb] px-3 py-2 text-sm font-medium text-[#2563eb] hover:bg-[#2563eb]/10 disabled:opacity-50">
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Generar prompt
         </button>
-        <span className="text-[11px] text-gray-400">Estos tokens no se cargan al cliente (trabajo del operador).</span>
+        <button type="button" onClick={() => generate(landingDescription())} disabled={busy || !hasLanding}
+          title={hasLanding ? `Captura los estilos de "${landingSource}"` : 'Importa un .zip de landing para activarlo'}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--gold,#b8860b)] px-3 py-2 text-sm font-medium text-[var(--gold,#b8860b)] hover:bg-[color-mix(in_srgb,var(--gold,#b8860b)_10%,transparent)] disabled:opacity-40">
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileArchive className="h-4 w-4" />} Generar desde landing
+        </button>
       </div>
+      <p className="mt-1 text-[11px] text-gray-400">Estos tokens no se cargan al cliente (trabajo del operador).</p>
 
       {error && <p className="mt-2 text-xs text-amber-600">{error}</p>}
 
