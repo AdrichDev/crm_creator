@@ -5,6 +5,7 @@ import type { AuthedRequest } from '../middleware/types.js';
 import { BookingStatus } from '@prisma/client';
 import { assertFks, handleCrossTenant } from '../lib/tenant.js';
 import { joinNombre } from '../lib/nombre.js';
+import { sendEmail, confirmedTemplate, noShowTemplate } from '../lib/email.js';
 
 export const bookingsRouter = Router();
 
@@ -99,6 +100,71 @@ bookingsRouter.post('/', async (req: AuthedRequest, res: Response) => {
   });
 
   if ('conflict' in result) return res.status(409).json({ error: { code: 'availability', message: 'No disponible', reason: result.conflict } });
+
+  // Fire-and-forget: email de confirmación + filas de recordatorio.
+  // Nunca bloquea la respuesta 201 — el CRM no depende del envío.
+  void (async () => {
+    try {
+      const booking = result.booking;
+      const customerEmail = booking.customer?.email ?? null;
+      const businessId = req.businessId!;
+
+      // Nombre del negocio para las plantillas (carga ligera, fuera de la transacción).
+      const business = await prisma.business.findFirst({ where: { id: businessId }, select: { nombre: true } });
+      const businessName = business?.nombre ?? '';
+
+      // Email de confirmación (solo si el cliente tiene email).
+      if (customerEmail) {
+        const html = confirmedTemplate({
+          customerName: joinNombre(booking.customer) || 'Cliente',
+          serviceName: booking.service?.nombre ?? '',
+          startsAt: booking.startAt,
+          employeeName: booking.employee ? joinNombre(booking.employee) : undefined,
+          businessName,
+        });
+        void sendEmail({
+          to: customerEmail,
+          subject: `Cita confirmada — ${booking.service?.nombre ?? 'tu servicio'}`,
+          html,
+        }).catch(() => { /* ya logueado en sendEmail */ });
+
+        // Upsert 2 filas de recordatorio (24h y 2h antes).
+        const reminderPayload = {
+          bookingId: booking.id,
+          customerName: joinNombre(booking.customer) || 'Cliente',
+          serviceName: booking.service?.nombre ?? '',
+          startsAt: booking.startAt.toISOString(),
+          employeeName: booking.employee ? joinNombre(booking.employee) : undefined,
+          businessName,
+        };
+        const reminders = [
+          { offset: 24 * 60 * 60 * 1000, tipo: 'booking.reminder.24h' },
+          { offset: 2 * 60 * 60 * 1000,  tipo: 'booking.reminder.2h' },
+        ];
+        const now = new Date();
+        for (const { offset, tipo } of reminders) {
+          const programadoEn = new Date(booking.startAt.getTime() - offset);
+          if (programadoEn > now) {
+            await prisma.notification.upsert({
+              where: {
+                tipo_businessId_destino_programadoEn: {
+                  tipo, businessId, destino: customerEmail, programadoEn,
+                },
+              },
+              create: {
+                businessId, tipo, canal: 'email', destino: customerEmail,
+                payload: reminderPayload as object, programadoEn, estado: 'pending',
+              },
+              update: {}, // duplicado → no-op
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[booking.confirmed] error en post-create email/notificaciones:', (err as Error).message);
+    }
+  })();
+
   res.status(201).json(result.booking);
 });
 
@@ -133,7 +199,42 @@ bookingsRouter.delete('/:id', async (req: AuthedRequest, res: Response) => {
 
 bookingsRouter.post('/:id/cancel', (req: AuthedRequest, res) => transition(req, res, 'CANCELLED'));
 bookingsRouter.post('/:id/complete', (req: AuthedRequest, res) => transition(req, res, 'COMPLETED'));
-bookingsRouter.post('/:id/no-show', (req: AuthedRequest, res) => transition(req, res, 'NO_SHOW'));
+
+// No-show: transición de estado + email de seguimiento al cliente (fire-and-forget).
+bookingsRouter.post('/:id/no-show', async (req: AuthedRequest, res: Response) => {
+  await transition(req, res, 'NO_SHOW');
+
+  // Fire-and-forget: email de seguimiento. Nunca bloquea la respuesta 200.
+  void (async () => {
+    try {
+      const booking = await prisma.booking.findFirst({
+        where: { id: req.params.id, businessId: req.businessId },
+        include: { customer: true, service: true },
+      });
+      if (!booking?.customer?.email) return;
+
+      const business = await prisma.business.findFirst({
+        where: { id: req.businessId },
+        select: { nombre: true },
+      });
+
+      const html = noShowTemplate({
+        customerName: joinNombre(booking.customer) || 'Cliente',
+        serviceName: booking.service?.nombre ?? '',
+        startsAt: booking.startAt,
+        businessName: business?.nombre ?? '',
+      });
+
+      void sendEmail({
+        to: booking.customer.email,
+        subject: `Te echamos de menos — ${booking.service?.nombre ?? 'tu cita'}`,
+        html,
+      }).catch(() => { /* ya logueado en sendEmail */ });
+    } catch (err) {
+      console.error('[booking.no-show] error en email de seguimiento:', (err as Error).message);
+    }
+  })();
+});
 
 bookingsRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
   const booking = await prisma.booking.findFirst({ where: { id: req.params.id, businessId: req.businessId } });

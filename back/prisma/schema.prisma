@@ -637,6 +637,7 @@ model Notification {
   enviadoEn   DateTime? @map("enviado_en")
   estado      String   @default("pending") @map("estado")
   createdAt   DateTime @default(now()) @map("creado_en")
+  @@unique([tipo, businessId, destino, programadoEn])  // idempotencia: evita recordatorios duplicados
   @@index([programadoEn, estado])
   @@map("notificacion")
 }

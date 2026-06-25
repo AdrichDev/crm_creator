@@ -32,6 +32,16 @@ export const env = {
   supabaseServiceRoleKey: envOr('SUPABASE_SERVICE_ROLE_KEY', 'placeholder-service-role-key'),
   // SUPABASE_JWT_SECRET eliminado: los tokens se verifican vía JWKS (ES256), no con
   // un secreto HS256 compartido. Ya no se lee ningún secreto para verificar.
+
+  // SMTP (nodemailer) — transporte de email transaccional de citas.
+  // Default seguro: smtpHost vacío → no-op (EMAIL_ENABLED=false en tests).
+  smtpHost:    process.env.SMTP_HOST    ?? '',
+  smtpPort:    Number(process.env.SMTP_PORT ?? 587),
+  smtpSecure:  process.env.SMTP_SECURE === 'true',   // false = STARTTLS (puerto 587)
+  smtpUser:    process.env.SMTP_USER    ?? '',
+  smtpPass:    process.env.SMTP_PASS    ?? '',        // Gmail App Password (cuenta "SMTP CRM")
+  smtpFrom:    process.env.SMTP_FROM    ?? '',        // e.g. "CRM <noreply@example.com>"
+  emailEnabled: process.env.EMAIL_ENABLED !== 'false',// default true; poner false en tests/dev
 };
 
 /**
