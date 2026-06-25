@@ -44,4 +44,23 @@ describe('AiBrandingSuggest — dos botones', () => {
     expect(arg.business.description).toContain('Poppins'); // tipografía capturada
     expect(arg.business.description).toContain('landing.zip');
   });
+
+  it('landing por heurística (sin tokens): botón activo y usa los colores reales sin afirmar tipografía', async () => {
+    // Caso fallback offline de BrandingForm: designSource + primary/secondary, SIN tokens.
+    render(
+      <AiBrandingSuggest
+        business={business}
+        current={{ primary: '#0a7d55', secondary: '#f4c542' }}
+        onApply={() => {}}
+        landingSource="landing.zip"
+      />
+    );
+    const btn = screen.getByRole('button', { name: /Generar desde landing/i });
+    expect(btn).not.toBeDisabled();
+    fireEvent.click(btn);
+    await waitFor(() => expect(suggestMock).toHaveBeenCalledTimes(1));
+    const arg = suggestMock.mock.calls[0][0] as { business: { description: string } };
+    expect(arg.business.description).toContain('#0a7d55'); // color real (heurística)
+    expect(arg.business.description).not.toContain('Tipografía capturada'); // no se inventa tipografía
+  });
 });
