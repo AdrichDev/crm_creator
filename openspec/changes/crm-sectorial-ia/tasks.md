@@ -1,5 +1,17 @@
 # Tareas — crm-sectorial-ia
 
+## ESTADO (2026-06-25)
+Fases 1-5 (sector-data, picker, usage-client, tema, stats, provisión) YA estaban implementadas.
+HECHO (subagente, integrado): arreglada fragilidad de teardown en auth e2e (guard `if(!backUp||!SB_URL) return`
+en auth-users/auth-client-register.e2e) → back 53/0. (smoke ya estaba alineado en mi rama.)
+BLOQUEADO/POSPUESTO — tarea (b): el incremento de `tokensUsed` (aa.tenant) al generar un CRM NO está
+cableado end-to-end. El lado CRM está OK (usage-client → /api/ai/generate → aaFetch con clientId), pero
+en agents-agency NO contabiliza: `deductTokens` solo lo llama el chat del agente; `/api/ai/marketing-plan`
+y `/api/ai/generate` NO existen en AA; `market-study` no llama deductTokens y MarketStudy no tiene tenantId.
+→ FIX en AA (repo aparte): crear esos endpoints + llamar deductTokens (firma exige agentId+conversationId)
++ CORS/AA_SERVICE_TOKEN. Relacionado con el proxy AA roto (JWKS).
+
+
 Orden de implementación. ✅ = hecho en esta entrega; ⏳ = fase siguiente.
 
 ## Fase 1 — Base testeable (esta entrega)

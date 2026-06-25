@@ -1,4 +1,16 @@
-# Tasks — crm-onboarding-edit-landing-ia   (Nivel 4 — todas PENDING)
+# Tasks — crm-onboarding-edit-landing-ia   (Nivel 4)
+
+## ESTADO (2026-06-25) — base segura integrada
+HECHO (subagente, integrado aditivo): INGESTA SEGURA del ZIP sin servir nada →
+`front/lib/landing/validate-zip.ts` (allowlist ext, anti path-traversal POSIX/Win/UNC, anti zip-bomb,
+requiere index.html, fail-closed) + `front/lib/landing/store.ts` (LocalLandingStore en `.landing-store/`
+fuera de public/, doble barrera anti-traversal, hueco Supabase Storage) + bloc `landing?` en TenantConfig
+(`enabled:false`) + 41 tests (front 130 verde). `.landing-store/` gitignored.
+POSPUESTO por SEGURIDAD (vector #1 devil-notes: servir JS de terceros = robo de sesión): 2.3 sanitizar/
+servir HTML, 3.1 rutas `app/(landing)/`, 3.2 login embebido → requieren capa de servido AISLADA
+(CSP + sandbox/subdominio) + revisión cybersec + aprobación humana. 4.1/V.2/V.3 pospuestas. 3.3 no
+regresión garantizado (landing? opcional). UC-1/UC-3 ya estaban.
+
 
 > Requiere aprobación humana. Incluye superficie de seguridad (ingesta ZIP) → revisión cybersec.
 
