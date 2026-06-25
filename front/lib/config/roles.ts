@@ -30,10 +30,10 @@ export const ROLE_LABEL: Record<Role, string> = {
 // ---------------------------------------------------------------------------
 const ROLE_MODULES: Record<Role, ModuleId[] | '*'> = {
   admin: '*',
-  trabajador: ['dashboard', 'citas', 'clientes', 'servicios', 'productos', 'fichaje', 'vacaciones', 'ventas'],
+  trabajador: ['dashboard', 'citas', 'clientes', 'servicios', 'productos', 'fichaje', 'vacaciones', 'ventas', 'mi-cuenta'],
   // Portal del cliente: SUS citas (/me/bookings) + catálogo (servicios/productos, solo lectura) +
-  // Configuración (perfil/marca). Sin dashboard ni facturas (staff-only / pendiente de scoping).
-  cliente: ['citas', 'servicios', 'productos', 'configuracion'],
+  // Mi Cuenta (perfil personal). Sin dashboard, facturas ni configuración admin.
+  cliente: ['citas', 'servicios', 'productos', 'mi-cuenta'],
 };
 
 export function moduleAllowedForRole(role: Role, id: ModuleId): boolean {
@@ -50,11 +50,12 @@ const READONLY_FOR: Record<Role, ModuleId[] | '*' | null> = {
   trabajador: ['servicios', 'productos', 'empleados', 'marketing', 'configuracion'],
   cliente: '*',
 };
-// Excepciones: módulos donde el rol SÍ puede actuar. El cliente es de SOLO LECTURA
-// (ve sus citas/catálogo) salvo Configuración (perfil/marca + switch del tenant).
+// Excepciones: módulos donde el rol SÍ puede actuar a pesar del modo READONLY.
+// El cliente es de SOLO LECTURA (ve sus citas/catálogo) pero puede escribir en
+// Mi Cuenta (editar su perfil y contraseña).
 // La reserva online (crear/cancelar citas) queda fuera de alcance — fase posterior.
 const WRITE_EXCEPTIONS: Partial<Record<Role, ModuleId[]>> = {
-  cliente: ['configuracion'],
+  cliente: ['mi-cuenta'],
 };
 
 export function canWrite(role: Role, id: ModuleId): boolean {
@@ -78,7 +79,9 @@ export function canManage(role: Role): boolean {
 export function moduleFromPath(pathname: string): ModuleId | null {
   if (!pathname) return null;
   if (pathname === '/panel') return 'dashboard';
-  const m = MODULES.find((mm) => mm.href !== '/panel' && pathname.startsWith(mm.href));
+  // Sort by href length descending so more-specific paths win (e.g. /cuenta before /cuentas if any).
+  const sorted = [...MODULES].sort((a, b) => b.href.length - a.href.length);
+  const m = sorted.find((mm) => mm.href !== '/panel' && pathname.startsWith(mm.href));
   return m?.id ?? null;
 }
 

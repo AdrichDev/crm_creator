@@ -8,12 +8,13 @@ import { ModuleGridPanel } from '@/components/config/module-grid-panel';
 import { WorkerChipsGrid } from '@/components/config/worker-chips-grid';
 import { UsersPanel } from '@/components/config/users-panel';
 import { ChangePasswordForm } from '@/components/config/change-password-form';
+import { MyAccountPanel } from '@/components/config/my-account-panel';
 import { PageHeader, Card, CardBody, Button, Badge, Toggle } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 
-type Tab = 'estado' | 'modulos' | 'trabajador' | 'usuarios' | 'marca' | 'negocio';
-const TAB_LABEL: Record<Tab, string> = { estado: 'Estado', modulos: 'Módulos', trabajador: 'Trabajador', usuarios: 'Usuarios', marca: 'Marca', negocio: 'Negocio' };
-const BASE_TABS: Tab[] = ['estado', 'modulos', 'trabajador', 'marca', 'negocio'];
+type Tab = 'estado' | 'modulos' | 'trabajador' | 'usuarios' | 'marca' | 'negocio' | 'cuenta';
+const TAB_LABEL: Record<Tab, string> = { estado: 'Estado', modulos: 'Módulos', trabajador: 'Trabajador', usuarios: 'Usuarios', marca: 'Marca', negocio: 'Negocio', cuenta: 'Mi Cuenta' };
+const BASE_TABS: Tab[] = ['estado', 'modulos', 'trabajador', 'marca', 'negocio', 'cuenta'];
 
 export default function ConfiguracionPage() {
   const { config, update, reset, toggleModule, setModuleEmoji, toggleWorkerChip } = useTenantConfig();
@@ -21,8 +22,9 @@ export default function ConfiguracionPage() {
   const isAdmin = role === 'admin';
 
   // El tab "Usuarios" (gestión de cuentas + cambio de contraseña) es solo para admin.
+  // "Mi Cuenta" es accesible para todos los roles.
   const TABS: Tab[] = isAdmin
-    ? ['estado', 'modulos', 'trabajador', 'usuarios', 'marca', 'negocio']
+    ? ['estado', 'modulos', 'trabajador', 'usuarios', 'marca', 'negocio', 'cuenta']
     : BASE_TABS;
 
   const [tab, setTab] = useState<Tab>('estado');
@@ -104,6 +106,9 @@ export default function ConfiguracionPage() {
           <ChangePasswordForm />
         </div>
       )}
+
+      {/* Mi Cuenta: nombre, apellido, teléfono y contraseña del usuario logado (todos los roles) */}
+      {tab === 'cuenta' && <MyAccountPanel />}
 
       {tab === 'marca' && (
         <BrandingForm primary={config.branding.primary} secondary={config.branding.secondary} logoText={config.branding.logoText}

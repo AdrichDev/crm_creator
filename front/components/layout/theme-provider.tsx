@@ -2,7 +2,7 @@
 import { useEffect } from 'react';
 import { initTheme } from '@/lib/theme/crm-theme';
 
-/** Aplica el tema (sistema/claro/oscuro) al cargar y escucha cambios del SO. */
+/** Aplica el tema (claro/oscuro) al cargar. El modo "system" se retiró; ya no sigue al SO en vivo. */
 export function CrmThemeProvider() {
   useEffect(() => initTheme(), []);
   return null;

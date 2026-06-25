@@ -11,8 +11,9 @@ export const metadata: Metadata = {
 };
 
 // Resuelve el tema antes de pintar: evita el flash y fija data-theme en <html>
-// antes de hidratar. Espejo de lib/theme/crm-theme.ts (key + system→prefers-color).
-const themeBootstrap = `(function(){try{var m=localStorage.getItem('crm-theme.mode.v1');if(m!=='light'&&m!=='dark'&&m!=='system')m='system';var dark=m==='dark'||(m==='system'&&(!window.matchMedia||window.matchMedia('(prefers-color-scheme: dark)').matches));document.documentElement.dataset.theme=dark?'dark':'light';}catch(e){}})();`;
+// antes de hidratar. Espejo de lib/theme/crm-theme.ts: solo light/dark; cualquier
+// valor que no sea 'light' (incluido 'system' legado o ausente) → resuelve por SO una vez.
+const themeBootstrap = `(function(){try{var m=localStorage.getItem('crm-theme.mode.v1');var dark=m==='dark'||(m!=='light'&&(!window.matchMedia||window.matchMedia('(prefers-color-scheme: dark)').matches));document.documentElement.dataset.theme=dark?'dark':'light';}catch(e){}})();`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

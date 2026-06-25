@@ -2,10 +2,17 @@
 import { useState } from 'react';
 import { Card, CardBody, Button } from '@/components/ui/primitives';
 import { isApiEnabled } from '@/lib/api/client';
-import { changePassword, passwordPolicyError } from '@/lib/api/account';
+import { changePassword, forgotPassword, passwordPolicyError } from '@/lib/api/account';
+
+interface ChangePasswordFormProps {
+  /** Email del usuario logado. Necesario para el flujo "olvidé mi contraseña". */
+  userEmail?: string;
+}
 
 // Formulario "Cambiar contraseña" para el usuario logueado (cualquier rol).
-export function ChangePasswordForm() {
+// La verificación de la contraseña antigua es server-side (POST /auth/change-password).
+// No usa supabaseClient.auth.signInWithPassword — evita side-effects en la sesión activa.
+export function ChangePasswordForm({ userEmail }: ChangePasswordFormProps) {
   const apiOn = isApiEnabled();
   const [oldPassword, setOld] = useState('');
   const [newPassword, setNew] = useState('');
@@ -13,6 +20,10 @@ export function ChangePasswordForm() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+
+  const [resetSending, setResetSending] = useState(false);
+  const [resetMsg, setResetMsg] = useState<string | null>(null);
+  const [resetError, setResetError] = useState<string | null>(null);
 
   async function submit() {
     setError(null); setDone(false);
@@ -25,8 +36,22 @@ export function ChangePasswordForm() {
       await changePassword(oldPassword, newPassword, repeat);
       setDone(true); setOld(''); setNew(''); setRepeat('');
     } catch (e) {
+      // El back devuelve "La contraseña actual es incorrecta" en caso de wrong_password (401).
       setError(e instanceof Error ? e.message : 'No se pudo cambiar la contraseña');
     } finally { setSaving(false); }
+  }
+
+  async function handleForgotPassword() {
+    if (!userEmail) { setResetError('No se pudo obtener tu email. Recarga la página.'); return; }
+    setResetError(null); setResetMsg(null); setResetSending(true);
+    try {
+      await forgotPassword(userEmail);
+      setResetMsg('Si existe una cuenta con ese email, recibirás instrucciones para restablecer tu contraseña.');
+    } catch {
+      setResetError('No se pudo enviar el email de restablecimiento. Inténtalo de nuevo.');
+    } finally {
+      setResetSending(false);
+    }
   }
 
   if (!apiOn) {
@@ -63,6 +88,20 @@ export function ChangePasswordForm() {
         {error && <p className="text-sm text-red-400">{error}</p>}
         {done && <p className="text-sm text-green-400">Contraseña actualizada.</p>}
         <Button onClick={submit} disabled={saving}>{saving ? 'Guardando…' : 'Cambiar contraseña'}</Button>
+      </div>
+
+      {/* Enlace a recuperación por email */}
+      <div className="border-t border-white/10 pt-3">
+        <button
+          type="button"
+          onClick={handleForgotPassword}
+          disabled={resetSending}
+          className="text-sm text-[var(--panel-muted)] hover:text-white transition disabled:opacity-50"
+        >
+          {resetSending ? 'Enviando…' : '¿No recuerdas tu contraseña?'}
+        </button>
+        {resetMsg && <p className="mt-2 text-sm text-green-400">{resetMsg}</p>}
+        {resetError && <p className="mt-2 text-sm text-red-400">{resetError}</p>}
       </div>
     </CardBody></Card>
   );

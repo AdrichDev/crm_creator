@@ -1,11 +1,12 @@
 'use client';
 import Link from 'next/link';
+import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { MODULES, CATEGORY_LABEL, type ModuleCategory } from '@/lib/config/modules';
 import { useProjects, useRole } from '@/lib/tenant-config-context';
 import { resolveModuleEmoji } from '@/lib/config/icons';
 import { cn } from '@/lib/utils';
-import { moduleAllowedForRole, DEMO_USERS, type Role } from '@/lib/config/roles';
+import { moduleAllowedForRole, moduleFromPath, DEMO_USERS, type Role } from '@/lib/config/roles';
 import { GENERATED_TENANT } from '@/lib/config/generated-tenant';
 import { logout } from '@/lib/auth/session';
 import { LogOut } from 'lucide-react';
@@ -21,6 +22,19 @@ export function Sidebar() {
   const { role } = useRole();
   const pathname = usePathname();
   const router = useRouter();
+
+  // Guard centralizado: si el módulo de la ruta actual no está permitido para
+  // el rol → redirige al destino apropiado. Así un cliente que escriba
+  // /configuracion en la barra de direcciones es redirigido a /cuenta.
+  useEffect(() => {
+    const moduleId = moduleFromPath(pathname);
+    if (moduleId && !moduleAllowedForRole(role, moduleId)) {
+      // Para el cliente, la home es /cuenta (Mi Cuenta).
+      // Para otros roles sin acceso a una ruta concreta, se va al panel.
+      const fallback = role === 'cliente' ? '/cuenta' : '/panel';
+      router.replace(fallback);
+    }
+  }, [pathname, role, router]);
 
   // Los módulos obligatorios (dashboard, configuración) se muestran siempre,
   // aunque una config antigua no los tenga marcados — el rol sigue filtrando.
