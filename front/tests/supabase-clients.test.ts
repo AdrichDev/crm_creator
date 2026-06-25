@@ -85,7 +85,6 @@ describe('getCrmClient', () => {
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-key-123');
     const { getCrmClient } = await import('@/lib/supabase/data-client');
     getCrmClient();
-    // First call may be for _dataClient if getDataClient was called; find crm call
     const crmCall = mockCreateClient.mock.calls.find((c) => c[2]?.db?.schema === 'crm');
     expect(crmCall).toBeTruthy();
     vi.unstubAllEnvs();
