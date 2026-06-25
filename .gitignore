@@ -55,3 +55,6 @@ front/lib/config/generated-tenant.ts
 
 # Landing bundles importados (ZIP) — assets locales, no se versionan
 .landing-store/
+
+# Worktrees de subagentes (no versionar)
+.claude/
