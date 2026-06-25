@@ -6,6 +6,7 @@ import { authenticate } from '../middleware/auth.js';
 import type { AuthedRequest } from '../middleware/types.js';
 import { rateLimit, ipKey, ipEmailKey, resetRateLimits } from '../lib/rateLimit.js';
 import { validatePassword } from '../lib/password.js';
+import { loadActiveBusiness } from '../lib/business.js';
 
 export const authRouter = Router();
 
@@ -121,15 +122,7 @@ authRouter.get('/me', authenticate, async (req: AuthedRequest, res) => {
   const memberships = await prisma.membership.findMany({ where: { userId: req.userId } });
   // Config del negocio activo (la fuente de verdad del front: nombre, vertical,
   // branding). El front la usa para construir su TenantConfig — sin mocks locales.
-  const business = req.businessId
-    ? await prisma.business.findUnique({
-        where: { id: req.businessId },
-        select: {
-          id: true, nombre: true, vertical: true,
-          marcaPrimario: true, marcaSecundario: true, logoUrl: true,
-        },
-      })
-    : null;
+  const business = await loadActiveBusiness(req.businessId);
   res.json({
     user: user && { id: user.id, email: user.email, firstName: user.firstName },
     memberships,

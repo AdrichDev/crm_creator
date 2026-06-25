@@ -1,7 +1,8 @@
 import { Router, type Response } from 'express';
 import { prisma } from '../prisma.js';
 import type { AuthedRequest } from '../middleware/types.js';
-import { assertBelongsToBusiness, CrossTenantError, type TenantModel } from './tenant.js';
+import { assertBelongsToBusiness, handleCrossTenant, type TenantModel } from './tenant.js';
+import { pickFields } from './nombre.js';
 
 type Delegate = {
   findMany: (args: unknown) => Promise<unknown[]>;
@@ -20,12 +21,6 @@ interface CrudOptions {
   orderBy?: Record<string, 'asc' | 'desc'>;
   /** FKs del body a validar contra el negocio activo (campo → modelo destino). */
   fkFields?: Record<string, TenantModel>;
-}
-
-function pick(body: Record<string, unknown>, fields: string[]): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const f of fields) if (body[f] !== undefined) out[f] = body[f];
-  return out;
 }
 
 // Valida cada FK presente en el body contra el negocio activo. Lanza CrossTenantError.
@@ -61,10 +56,10 @@ export function crudRouter(model: string, opts: CrudOptions): Router {
     try {
       await validateFks(req.body ?? {}, req.businessId, opts.fkFields);
     } catch (e) {
-      if (e instanceof CrossTenantError) return res.status(422).json({ error: { code: 'cross_tenant', message: e.message } });
+      if (handleCrossTenant(e, res)) return;
       throw e;
     }
-    const data = pick(req.body ?? {}, opts.fields);
+    const data = pickFields(req.body ?? {}, opts.fields);
     const row = await delegate.create({ data: { ...data, businessId: req.businessId } });
     res.status(201).json(row);
   });
@@ -75,10 +70,10 @@ export function crudRouter(model: string, opts: CrudOptions): Router {
     try {
       await validateFks(req.body ?? {}, req.businessId, opts.fkFields);
     } catch (e) {
-      if (e instanceof CrossTenantError) return res.status(422).json({ error: { code: 'cross_tenant', message: e.message } });
+      if (handleCrossTenant(e, res)) return;
       throw e;
     }
-    const data = pick(req.body ?? {}, opts.fields);
+    const data = pickFields(req.body ?? {}, opts.fields);
     const row = await delegate.update({ where: { id: req.params.id }, data });
     res.json(row);
   });

@@ -1,7 +1,7 @@
 import { Router, type Response } from 'express';
 import { prisma } from '../prisma.js';
 import type { AuthedRequest } from '../middleware/types.js';
-import { assertBelongsToBusiness, CrossTenantError } from '../lib/tenant.js';
+import { assertBelongsToBusiness, handleCrossTenant } from '../lib/tenant.js';
 
 export const packagesRouter = Router();
 
@@ -24,7 +24,7 @@ packagesRouter.post('/assign', async (req: AuthedRequest, res: Response) => {
   try {
     await assertBelongsToBusiness('customer', customerId, req.businessId, 'customerId');
   } catch (e) {
-    if (e instanceof CrossTenantError) return res.status(422).json({ error: { code: 'cross_tenant', message: e.message } });
+    if (handleCrossTenant(e, res)) return;
     throw e;
   }
   const tpl = await prisma.package.findFirst({ where: { id: packageId, businessId: req.businessId } });

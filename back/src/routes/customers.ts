@@ -2,18 +2,13 @@ import { Router, type Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import type { AuthedRequest } from '../middleware/types.js';
+import { splitNombre, joinNombre, pickFields } from '../lib/nombre.js';
 
 // Clientes (crm.cliente) en CASTELLANO, con agregados calculados (visitas,
 // gastoTotal, ultimaVisita, segmento). Sustituye al crudRouter genérico para
 // /customers porque la lista del front necesita esos derivados — que no son
 // columnas, sino agregación de citas (Booking) y ventas (Sale).
 export const customersRouter = Router();
-
-// "Nombre Apellidos" → { nombre: primer token, apellido: resto }.
-function splitNombre(full: string): { nombre: string; apellido: string | null } {
-  const t = full.trim().split(/\s+/).filter(Boolean);
-  return { nombre: t[0] ?? '', apellido: t.length > 1 ? t.slice(1).join(' ') : null };
-}
 
 // Regla de segmento (derivada; no se almacena).
 function segmentoDe(visitas: number, gastoTotal: number, ultima: Date | null): string {
@@ -26,8 +21,7 @@ function segmentoDe(visitas: number, gastoTotal: number, ultima: Date | null): s
 // Campos editables que SÍ son columnas (los derivados se ignoran al escribir).
 const INPUT = ['email', 'telefono', 'direccion', 'notas'] as const;
 function buildData(body: Record<string, unknown>): Record<string, unknown> {
-  const data: Record<string, unknown> = {};
-  for (const f of INPUT) if (body[f] !== undefined) data[f] = body[f];
+  const data = pickFields(body, INPUT);
   if (typeof body.nombre === 'string') {
     const { nombre, apellido } = splitNombre(body.nombre);
     data.nombre = nombre;
@@ -65,7 +59,7 @@ customersRouter.get('/', async (req: AuthedRequest, res: Response) => {
     const ultima = b?._max.startAt ?? null;
     return {
       id: c.id,
-      nombre: [c.nombre, c.apellido].filter(Boolean).join(' '),
+      nombre: joinNombre(c),
       email: c.email ?? '',
       telefono: c.telefono ?? '',
       direccion: c.direccion ?? '',

@@ -3,7 +3,8 @@ import { prisma } from '../prisma.js';
 import { checkAvailability, daySlots } from '../lib/availability.js';
 import type { AuthedRequest } from '../middleware/types.js';
 import { BookingStatus } from '@prisma/client';
-import { assertFks, CrossTenantError } from '../lib/tenant.js';
+import { assertFks, handleCrossTenant } from '../lib/tenant.js';
+import { joinNombre } from '../lib/nombre.js';
 
 export const bookingsRouter = Router();
 
@@ -12,11 +13,6 @@ const ESTADO_LABEL: Record<string, string> = {
   PENDING: 'Pendiente', CONFIRMED: 'Confirmada', CANCELLED: 'Cancelada',
   COMPLETED: 'Completada', NO_SHOW: 'Cancelada',
 };
-const nombreCompleto = (c: { nombre: string; apellido?: string | null } | null | undefined) =>
-  c ? [c.nombre, c.apellido].filter(Boolean).join(' ') : '';
-const nombreEmpleado = (e: { nombre: string; apellido?: string | null } | null | undefined) =>
-  e ? [e.nombre, e.apellido].filter(Boolean).join(' ') : '';
-
 // GET / → citas en el shape castellano que consume el front (cliente/servicio/
 // empleado/fecha/hora/estado). Punto único: lo usan citas, panel, estadísticas.
 bookingsRouter.get('/', async (req: AuthedRequest, res: Response) => {
@@ -34,9 +30,9 @@ bookingsRouter.get('/', async (req: AuthedRequest, res: Response) => {
   });
   res.json(rows.map((b) => ({
     id: b.id,
-    cliente: nombreCompleto(b.customer),
+    cliente: joinNombre(b.customer),
     servicio: b.service?.nombre ?? '',
-    empleado: nombreEmpleado(b.employee),
+    empleado: joinNombre(b.employee),
     fecha: b.startAt.toISOString().slice(0, 10),
     hora: b.startAt.toISOString().slice(11, 16),
     estado: ESTADO_LABEL[b.status] ?? 'Pendiente',
@@ -82,7 +78,7 @@ bookingsRouter.post('/', async (req: AuthedRequest, res: Response) => {
       ...(resourceIds as string[]).map((id) => ({ model: 'resource' as const, id, field: 'resourceIds' })),
     ]);
   } catch (e) {
-    if (e instanceof CrossTenantError) return res.status(422).json({ error: { code: 'cross_tenant', message: e.message } });
+    if (handleCrossTenant(e, res)) return;
     throw e;
   }
 
