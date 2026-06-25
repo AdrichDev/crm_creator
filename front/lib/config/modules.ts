@@ -14,7 +14,8 @@ export type ModuleId =
   | 'facturas'
   | 'marketing'
   | 'estadisticas'
-  | 'configuracion';
+  | 'configuracion'
+  | 'mi-cuenta';
 
 export type ModuleCategory = 'core' | 'operativa' | 'personas' | 'retail' | 'marketing';
 
@@ -48,6 +49,7 @@ export const MODULES: ModuleDef[] = [
   { id: 'marketing', termKey: 'marketing', defaultLabel: 'Marketing', description: 'Campañas, fidelización y notificaciones.', category: 'marketing', icon: 'Megaphone', href: '/marketing', recommends: ['clientes'] },
   { id: 'estadisticas', termKey: 'estadisticas', defaultLabel: 'Estadísticas', description: 'Estudios de mercado e informes con IA.', category: 'marketing', icon: 'BarChart3', href: '/estadisticas', recommends: ['clientes'] },
   { id: 'configuracion', termKey: 'configuracion', defaultLabel: 'Configuración', description: 'Módulos, branding y terminología.', category: 'core', icon: 'Settings', href: '/configuracion', mandatory: true },
+  { id: 'mi-cuenta', termKey: 'mi-cuenta', defaultLabel: 'Mi Cuenta', description: 'Perfil personal y contraseña.', category: 'core', icon: 'UserCircle', href: '/cuenta', mandatory: true },
 ];
 
 export const MODULE_MAP: Record<ModuleId, ModuleDef> = Object.fromEntries(
