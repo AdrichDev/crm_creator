@@ -57,7 +57,7 @@ export function AiBrandingSuggest({ business, current, onApply, landingSource }:
       pal.text ? `texto ${pal.text}` : '',
     ].filter(Boolean).join(', ');
     return [
-      `Genera un branding de CRM coherente con los estilos REALES capturados de la landing del cliente ("${landingSource}").`,
+      `Genera un branding de CRM coherente con los estilos capturados de la landing del cliente ("${landingSource}").`,
       `Paleta capturada: ${colors}.`,
       typo && (typo.heading || typo.body) ? `Tipografía capturada: ${[typo.heading, typo.body].filter(Boolean).join(' / ')}.` : '',
       style.trim() ? `Indicaciones adicionales: ${style.trim()}.` : '',
