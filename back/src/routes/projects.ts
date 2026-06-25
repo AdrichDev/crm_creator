@@ -70,6 +70,52 @@ projectsRouter.get('/', async (req: AuthedRequest, res: Response) => {
   res.json(businesses.map(toProject));
 });
 
+type Tx = Prisma.TransactionClient;
+
+// Calcula las columnas espejo (nombre/vertical/marca…) a partir de la config.
+function mirrorColumns(config: Cfg) {
+  return {
+    nombre: config.business?.name ?? 'Nuevo proyecto',
+    vertical: config.business?.vertical ?? 'custom',
+    ...(config.branding?.primary ? { marcaPrimario: config.branding.primary } : {}),
+    ...(config.branding?.secondary ? { marcaSecundario: config.branding.secondary } : {}),
+    ...(config.branding?.logoImage ? { logoUrl: config.branding.logoImage } : {}),
+  };
+}
+
+// Tenant con proyecto soft-deleted → REVIVIR (no se puede recrear por el unique).
+// Reusa la fila existente: limpia eliminadoEn, re-espeja config y asegura membership.
+async function reviveProject(
+  tx: Tx,
+  dupId: string,
+  userId: string,
+  config: Cfg,
+  mirror: ReturnType<typeof mirrorColumns>,
+) {
+  const b = await tx.business.update({ where: { id: dupId }, data: { ...mirror, eliminadoEn: null } });
+  const setting = await tx.businessSetting.findFirst({ where: { businessId: b.id, categoria: CONFIG_CATEGORY } });
+  if (setting) await tx.businessSetting.update({ where: { id: setting.id }, data: { datos: config as Prisma.InputJsonValue } });
+  else await tx.businessSetting.create({ data: { businessId: b.id, categoria: CONFIG_CATEGORY, datos: config as Prisma.InputJsonValue } });
+  const member = await tx.membership.findFirst({ where: { userId, businessId: b.id } });
+  if (!member) await tx.membership.create({ data: { userId, businessId: b.id, role: 'OWNER' } });
+  return b;
+}
+
+// Crea el proyecto desde cero: Business + sede + config + membership OWNER.
+async function createProject(
+  tx: Tx,
+  tenantId: string,
+  userId: string,
+  config: Cfg,
+  mirror: ReturnType<typeof mirrorColumns>,
+) {
+  const b = await tx.business.create({ data: { tenantId, ...mirror } });
+  await tx.location.create({ data: { businessId: b.id, nombre: config.business?.name ?? 'Sede' } });
+  await tx.businessSetting.create({ data: { businessId: b.id, categoria: CONFIG_CATEGORY, datos: config as Prisma.InputJsonValue } });
+  await tx.membership.create({ data: { userId, businessId: b.id, role: 'OWNER' } });
+  return b;
+}
+
 // POST / → crea proyecto. Exige tenant existente en AA (no proyecto sin cliente). 1-1.
 projectsRouter.post('/', async (req: AuthedRequest, res: Response) => {
   const config = (req.body?.config ?? {}) as Cfg;
@@ -86,32 +132,14 @@ projectsRouter.post('/', async (req: AuthedRequest, res: Response) => {
     return res.status(409).json({ error: { code: 'tenant_taken', message: 'Ese cliente ya tiene un proyecto' } });
   }
 
-  const mirror = {
-    nombre: config.business?.name ?? 'Nuevo proyecto',
-    vertical: config.business?.vertical ?? 'custom',
-    ...(config.branding?.primary ? { marcaPrimario: config.branding.primary } : {}),
-    ...(config.branding?.secondary ? { marcaSecundario: config.branding.secondary } : {}),
-    ...(config.branding?.logoImage ? { logoUrl: config.branding.logoImage } : {}),
-  };
+  const mirror = mirrorColumns(config);
 
   try {
-    const business = await prisma.$transaction(async (tx) => {
-      // Tenant con proyecto soft-deleted → REVIVIR (no se puede recrear por el unique).
-      if (dup) {
-        const b = await tx.business.update({ where: { id: dup.id }, data: { ...mirror, eliminadoEn: null } });
-        const setting = await tx.businessSetting.findFirst({ where: { businessId: b.id, categoria: CONFIG_CATEGORY } });
-        if (setting) await tx.businessSetting.update({ where: { id: setting.id }, data: { datos: config as Prisma.InputJsonValue } });
-        else await tx.businessSetting.create({ data: { businessId: b.id, categoria: CONFIG_CATEGORY, datos: config as Prisma.InputJsonValue } });
-        const member = await tx.membership.findFirst({ where: { userId: req.userId, businessId: b.id } });
-        if (!member) await tx.membership.create({ data: { userId: req.userId!, businessId: b.id, role: 'OWNER' } });
-        return b;
-      }
-      const b = await tx.business.create({ data: { tenantId, ...mirror } });
-      await tx.location.create({ data: { businessId: b.id, nombre: config.business?.name ?? 'Sede' } });
-      await tx.businessSetting.create({ data: { businessId: b.id, categoria: CONFIG_CATEGORY, datos: config as Prisma.InputJsonValue } });
-      await tx.membership.create({ data: { userId: req.userId!, businessId: b.id, role: 'OWNER' } });
-      return b;
-    });
+    const business = await prisma.$transaction((tx) =>
+      dup
+        ? reviveProject(tx, dup.id, req.userId!, config, mirror)
+        : createProject(tx, tenantId, req.userId!, config, mirror),
+    );
     res.status(201).json({ id: business.id, config, createdAt: business.createdAt.toISOString() });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
