@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { aaFetch } from '@/lib/server/aa';
+import { isAuthedOperator } from '@/lib/server/require-operator';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,6 +17,10 @@ function targetPath(path: string[] | undefined, search: string): string {
 }
 
 async function forward(req: Request, path: string[] | undefined, method: string) {
+  // Solo operadores autenticados (sesión Supabase): el proxy lleva el service token.
+  if (!(await isAuthedOperator(req))) {
+    return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+  }
   const { search } = new URL(req.url);
   const hasBody = method === 'POST' || method === 'PATCH';
   const body = hasBody ? await req.text() : undefined;

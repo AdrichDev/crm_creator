@@ -4,7 +4,7 @@ import { Table, Td } from '@/components/ui/primitives';
 import { StarRating } from '@/components/stats/star-rating';
 import { StudyWebStatusBadge } from '@/components/stats/study-web-status-badge';
 import {
-  discoverProspects, purgeOutOfRadius, patchProspectStatus, prospectsExportUrl,
+  discoverProspects, purgeOutOfRadius, patchProspectStatus, downloadProspectsCsv,
   type Prospect, type ProspectStatus, type WebsiteStatus,
 } from '@/lib/api/market-studies';
 
@@ -101,14 +101,14 @@ export function StudyProspectsTable({
             {searching ? 'Buscando…' : 'Descubrir prospectos'}
           </button>
           {prospects.length > 0 && (
-            <a
-              href={prospectsExportUrl(studyId)}
-              download
+            <button
+              type="button"
+              onClick={() => { void downloadProspectsCsv(studyId); }}
               className="rounded-lg border border-[var(--line,rgba(255,255,255,0.1))] px-3 py-1.5 text-xs transition-colors"
               style={{ color: 'var(--acc)' }}
             >
               Exportar CSV
-            </a>
+            </button>
           )}
         </div>
       </div>

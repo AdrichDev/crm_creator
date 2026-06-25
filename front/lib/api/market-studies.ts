@@ -65,6 +65,8 @@ export interface StudySummary {
   createdAt: string;
 }
 
+import { getAccessToken } from '@/lib/auth/session';
+
 const BASE = '/api/market-studies';
 
 async function msFetch<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
@@ -72,6 +74,9 @@ async function msFetch<T = unknown>(path: string, init: RequestInit = {}): Promi
     'Content-Type': 'application/json',
     ...(init.headers as Record<string, string> | undefined),
   };
+  // El proxy exige sesión Supabase del operador (no es relay abierto).
+  const tok = await getAccessToken();
+  if (tok) headers.Authorization = `Bearer ${tok}`;
   const res = await fetch(`${BASE}${path}`, { ...init, headers, cache: 'no-store' });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -140,6 +145,22 @@ export function patchProspectStatus(id: string, placeId: string, status: Prospec
 }
 
 /** URL de exportación CSV (pasa por el proxy GET → AA). */
-export function prospectsExportUrl(id: string): string {
-  return `${BASE}/${id}/prospects/export`;
+/** Descarga el CSV de prospectos vía el proxy autenticado (Bearer) → blob → download.
+ *  No se puede usar <a href> porque el proxy exige sesión y un enlace no envía el token. */
+export async function downloadProspectsCsv(id: string): Promise<void> {
+  const tok = await getAccessToken();
+  const res = await fetch(`${BASE}/${id}/prospects/export`, {
+    headers: tok ? { Authorization: `Bearer ${tok}` } : {},
+    cache: 'no-store',
+  });
+  if (!res.ok) throw new Error(`Error ${res.status}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `prospectos-${id}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
