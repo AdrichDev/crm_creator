@@ -64,8 +64,8 @@ dropdown que NADIE pidió, y metí un mock sintético de Estudio Lúa. El usuari
 - [x] H.4 /me por Customer.userId (email fallback migratorio).
 - [x] H.5 env.ts assertConfig() fail-closed en server.ts. (.env.example BLOQUEADO por permisos → actualizar a mano: SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY/DATABASE_URL, quitar JWT_SECRET.)
 - [x] H.6 Docs: ARQUITECTURA.md actualizado (Supabase/Prisma/RLS, no mock). Migración formal `20260625000000_softdelete_rol` registra eliminado_en+rol (drift Prisma resuelto).
-- [ ] H.7 REGLA DE NEGOCIO documentar: proyecto soft-deleted **revive** (tenant_id @unique) en POST /projects — está en código (projects.ts) + aquí. Confirmado intencional.
-- [ ] H.8 PENDIENTE: actualizar .env.example a mano (bloqueado); unificar definitivamente estrategia migraciones (adoptado Prisma migrate, retirar SQL manual de back/schema/*.sql si redundante); archivar SDD_v1/docs viejas.
+- [x] H.7 REGLA DE NEGOCIO: proyecto soft-deleted **revive** (tenant_id @unique) en POST /projects. Documentada (projects.ts + tasks).
+- [x] H.8 HECHO: .env.example actualizado (usuario). back/schema/*.sql legacy + SDD_v1.md → docs/_archivo/. README a Prisma migrate. `prisma migrate deploy` aplicado (drift resuelto). Pendiente OPCIONAL/baja prioridad: unificar versiones Prisma/Next entre CRM y AA (apps separadas, no interoperan en código → no urgente); check-security.sql en CI (no hay CI montado).
 
 ## Fase 5 / OTROS — cierre
 - [~] 5.1 Proxies AA: DECISIÓN documentada. `/api/ai/generate` (Next→AA, branding IA del onboarding)
