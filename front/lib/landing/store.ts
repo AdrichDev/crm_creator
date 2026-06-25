@@ -1,9 +1,8 @@
 // Almacenamiento de assets de landing por proyecto (UC-2, tarea 2.2).
 //
 // Abstracción `LandingStore` con una implementación LOCAL (filesystem) y un hueco
-// explícito para Supabase Storage en el futuro (design.md §2.3). Espejo del patrón
-// de `lib/supabase/data-client.ts`: el caller no cambia cuando se sustituya el
-// backend; solo cambia la factoría.
+// explícito para Supabase Storage en el futuro (design.md §2.3): el caller no cambia
+// cuando se sustituya el backend; solo cambia la factoría.
 //
 // SEGURIDAD:
 //  - Server-only. NO importar desde componentes de cliente.

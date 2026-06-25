@@ -1,6 +1,6 @@
 'use client';
 import { apiFetch, isApiEnabled } from '@/lib/api/client';
-import { getMyBookings, mapBookingStatus } from '@/lib/api/me';
+import { getMyBookings } from '@/lib/api/me';
 
 export type WithId = { id: number | string };
 
@@ -84,11 +84,11 @@ const apiBackend: DataBackend = {
           return rows.map((b) => ({
             id: b.id,
             cliente: 'Tú',
-            servicio: b.service?.name ?? '',
-            empleado: '',
-            fecha: (b.startAt ?? '').slice(0, 10),
-            hora: (b.startAt ?? '').slice(11, 16),
-            estado: mapBookingStatus(b.status),
+            servicio: b.servicio,
+            empleado: b.empleado,
+            fecha: b.fecha,
+            hora: b.hora,
+            estado: b.estado,
           })) as unknown as typeof _seed;
         } catch { return empty; }
       }
