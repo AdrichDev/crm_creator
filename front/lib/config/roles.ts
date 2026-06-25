@@ -89,14 +89,16 @@ export function moduleFromPath(pathname: string): ModuleId | null {
 // Usuario demo por rol (mostrado en el pie del sidebar). Sin BD aún.
 // ---------------------------------------------------------------------------
 export interface DemoUser {
+  /** Nombre completo "Nombre Apellido" (se separa al mostrar en Mi Cuenta). */
   nombre: string;
   rolLabel: string;
   iniciales: string;
   email: string;
+  telefono: string;
 }
 
 export const DEMO_USERS: Record<Role, DemoUser> = {
-  admin: { nombre: 'Administrador', rolLabel: 'Administrador', iniciales: 'AD', email: 'admin@negocio.com' },
-  trabajador: { nombre: 'Sara Molina', rolLabel: 'Empleada', iniciales: 'SM', email: 'sara@negocio.com' },
-  cliente: { nombre: 'Lucía Fernández', rolLabel: 'Cliente', iniciales: 'LF', email: 'lucia@mail.com' },
+  admin: { nombre: 'Administrador', rolLabel: 'Administrador', iniciales: 'AD', email: 'admin@negocio.com', telefono: '+34 600 000 001' },
+  trabajador: { nombre: 'Sara Molina', rolLabel: 'Empleada', iniciales: 'SM', email: 'sara@negocio.com', telefono: '+34 600 000 002' },
+  cliente: { nombre: 'Lucía Fernández', rolLabel: 'Cliente', iniciales: 'LF', email: 'lucia@mail.com', telefono: '+34 600 112 233' },
 };

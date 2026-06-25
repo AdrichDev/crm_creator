@@ -12,7 +12,7 @@ vi.mock('@/lib/api/client', () => ({
   isApiEnabled: () => true,
 }));
 
-import { changePassword, forgotPassword, passwordPolicyError } from '@/lib/api/account';
+import { changePassword, forgotPassword, passwordPolicyError, passwordChecks } from '@/lib/api/account';
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => vi.restoreAllMocks());
@@ -76,20 +76,30 @@ describe('forgotPassword', () => {
 
 // ─── passwordPolicyError ─────────────────────────────────────────────────────
 describe('passwordPolicyError', () => {
-  it('returns null for a valid password (≥12, letra+número)', () => {
-    expect(passwordPolicyError('SecurePass123')).toBeNull();
-    expect(passwordPolicyError('abcdefghij12')).toBeNull();
+  it('returns null for a valid password (≥12 + 4 clases)', () => {
+    expect(passwordPolicyError('SecurePass12!')).toBeNull();
+    expect(passwordPolicyError('Abcdefghij1!')).toBeNull();
   });
 
   it('rejects passwords shorter than 12 characters', () => {
-    expect(passwordPolicyError('Short1')).toMatch(/12/);
+    expect(passwordPolicyError('Short1!')).toMatch(/12/);
   });
 
-  it('rejects passwords without a number', () => {
-    expect(passwordPolicyError('OnlyLettersHere')).toMatch(/número/);
+  it('rejects passwords missing a character class', () => {
+    expect(passwordPolicyError('SecurePass123')).toMatch(/mayúscula, minúscula, número y símbolo/); // sin símbolo
+    expect(passwordPolicyError('securepass12!')).toMatch(/mayúscula, minúscula, número y símbolo/); // sin mayúscula
+    expect(passwordPolicyError('SECUREPASS12!')).toMatch(/mayúscula, minúscula, número y símbolo/); // sin minúscula
+    expect(passwordPolicyError('SecurePass!!!')).toMatch(/mayúscula, minúscula, número y símbolo/); // sin número
   });
+});
 
-  it('rejects passwords without a letter', () => {
-    expect(passwordPolicyError('123456789012')).toMatch(/letra/);
+// ─── passwordChecks (leyenda viva) ───────────────────────────────────────────
+describe('passwordChecks', () => {
+  it('marca cada clase de carácter', () => {
+    expect(passwordChecks('abc')).toEqual({ upper: false, lower: true, digit: false, special: false });
+    expect(passwordChecks('A')).toEqual({ upper: true, lower: false, digit: false, special: false });
+    expect(passwordChecks('1')).toEqual({ upper: false, lower: false, digit: true, special: false });
+    expect(passwordChecks('!')).toEqual({ upper: false, lower: false, digit: false, special: true });
+    expect(passwordChecks('Ab1!')).toEqual({ upper: true, lower: true, digit: true, special: true });
   });
 });

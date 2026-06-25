@@ -1,11 +1,16 @@
 'use client';
 // Panel "Mi Cuenta" — datos del usuario logado (nombre, apellido, teléfono).
 // Email: solo lectura (cambio de email es un flujo Supabase aparte).
-// Guarda via PATCH /auth/profile.
+// Con backend: GET /auth/me + guarda via PATCH /auth/profile.
+// Sin backend (consola demo): precarga el usuario demo del rol activo (mock) y
+// guarda en local — así el nombre registrado (p.ej. "Lucía Fernández" para el
+// rol cliente) aparece bien aunque los datos sean mock.
 import { useState, useEffect } from 'react';
 import { Card, CardBody, Button } from '@/components/ui/primitives';
 import { isApiEnabled } from '@/lib/api/client';
 import { getAuthProfile, updateProfile, type AuthUserProfile } from '@/lib/api/profile';
+import { useRole } from '@/lib/tenant-config-context';
+import { DEMO_USERS } from '@/lib/config/roles';
 
 interface MyAccountFormProps {
   /** Perfil precargado externamente (evita doble fetch cuando el panel padre ya lo cargó). */
@@ -14,57 +19,79 @@ interface MyAccountFormProps {
   onProfileChange?: (profile: AuthUserProfile) => void;
 }
 
+/** Separa "Nombre Apellido(s)" en firstName + lastName. */
+function splitName(full: string): { firstName: string; lastName: string } {
+  const parts = full.trim().split(/\s+/);
+  const firstName = parts.shift() ?? '';
+  return { firstName, lastName: parts.join(' ') };
+}
+
 export function MyAccountForm({ initialProfile, onProfileChange }: MyAccountFormProps) {
   const apiOn = isApiEnabled();
+  const { role } = useRole();
 
-  const [profile, setProfile] = useState<AuthUserProfile | null>(initialProfile ?? null);
-  const [loading, setLoading] = useState(!initialProfile);
+  /** Perfil mock del rol activo (cuando no hay backend). */
+  function demoProfile(): AuthUserProfile {
+    const u = DEMO_USERS[role];
+    const { firstName, lastName } = splitName(u.nombre);
+    return { id: `demo-${role}`, email: u.email, firstName, lastName, phone: u.telefono };
+  }
+
+  const seed = initialProfile ?? (!apiOn ? demoProfile() : null);
+
+  const [profile, setProfile] = useState<AuthUserProfile | null>(seed);
+  const [loading, setLoading] = useState(!seed);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [firstName, setFirstName] = useState(initialProfile?.firstName ?? '');
-  const [lastName, setLastName] = useState(initialProfile?.lastName ?? '');
-  const [phone, setPhone] = useState(initialProfile?.phone ?? '');
+  const [firstName, setFirstName] = useState(seed?.firstName ?? '');
+  const [lastName, setLastName] = useState(seed?.lastName ?? '');
+  const [phone, setPhone] = useState(seed?.phone ?? '');
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
+  function applyProfile(p: AuthUserProfile) {
+    setProfile(p);
+    setFirstName(p.firstName ?? '');
+    setLastName(p.lastName ?? '');
+    setPhone(p.phone ?? '');
+    onProfileChange?.(p);
+  }
+
   useEffect(() => {
-    if (initialProfile) {
-      setProfile(initialProfile);
-      setFirstName(initialProfile.firstName ?? '');
-      setLastName(initialProfile.lastName ?? '');
-      setPhone(initialProfile.phone ?? '');
-      return;
-    }
-    if (!apiOn) { setLoading(false); return; }
+    if (initialProfile) { applyProfile(initialProfile); setLoading(false); return; }
+    if (!apiOn) { applyProfile(demoProfile()); setLoading(false); setDone(false); return; }
+    setLoading(true);
     getAuthProfile()
-      .then((p) => {
-        setProfile(p);
-        setFirstName(p.firstName ?? '');
-        setLastName(p.lastName ?? '');
-        setPhone(p.phone ?? '');
-        onProfileChange?.(p);
-      })
+      .then((p) => applyProfile(p))
       .catch((e) => setLoadError(e instanceof Error ? e.message : 'Error al cargar el perfil'))
       .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [apiOn, role]);
 
   async function submit() {
     if (!firstName.trim()) { setError('El nombre no puede estar vacío.'); return; }
     setError(null); setDone(false); setSaving(true);
     try {
+      if (!apiOn) {
+        // Demo: guardado local (sin backend).
+        const p: AuthUserProfile = {
+          ...(profile ?? demoProfile()),
+          firstName: firstName.trim(),
+          lastName: lastName.trim() || null,
+          phone: phone.trim() || null,
+        };
+        applyProfile(p);
+        setDone(true);
+        return;
+      }
       const updated = await updateProfile({
         firstName: firstName.trim(),
         lastName: lastName.trim() || undefined,
         phone: phone.trim() || undefined,
       });
-      setProfile(updated);
-      setFirstName(updated.firstName ?? '');
-      setLastName(updated.lastName ?? '');
-      setPhone(updated.phone ?? '');
-      onProfileChange?.(updated);
+      applyProfile(updated);
       setDone(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo guardar el perfil');
@@ -73,36 +100,11 @@ export function MyAccountForm({ initialProfile, onProfileChange }: MyAccountForm
     }
   }
 
-  if (!apiOn) {
-    return (
-      <Card>
-        <CardBody>
-          <p className="text-sm text-[var(--panel-muted)]">
-            La edición de perfil requiere el backend conectado (<code>NEXT_PUBLIC_API_URL</code>).
-          </p>
-        </CardBody>
-      </Card>
-    );
-  }
-
   if (loading) {
-    return (
-      <Card>
-        <CardBody>
-          <p className="text-sm text-[var(--panel-muted)]">Cargando perfil…</p>
-        </CardBody>
-      </Card>
-    );
+    return <Card><CardBody><p className="text-sm text-[var(--panel-muted)]">Cargando perfil…</p></CardBody></Card>;
   }
-
   if (loadError) {
-    return (
-      <Card>
-        <CardBody>
-          <p className="text-sm text-red-400">{loadError}</p>
-        </CardBody>
-      </Card>
-    );
+    return <Card><CardBody><p className="text-sm text-red-400">{loadError}</p></CardBody></Card>;
   }
 
   return (
@@ -112,20 +114,10 @@ export function MyAccountForm({ initialProfile, onProfileChange }: MyAccountForm
           <p className="font-medium text-white">Datos personales</p>
           <p className="mt-1 text-sm text-[var(--panel-muted)]">
             Actualiza tu nombre, apellido y teléfono de contacto.
+            {!apiOn && ' (Datos de ejemplo — sin backend conectado.)'}
           </p>
         </div>
         <div className="max-w-sm space-y-3">
-          <div>
-            <label className="opera-label">Email</label>
-            <input
-              className="opera-control opacity-60 cursor-not-allowed"
-              type="email"
-              value={profile?.email ?? ''}
-              readOnly
-              disabled
-              aria-readonly="true"
-            />
-          </div>
           <div>
             <label className="opera-label">Nombre *</label>
             <input
@@ -144,6 +136,17 @@ export function MyAccountForm({ initialProfile, onProfileChange }: MyAccountForm
               autoComplete="family-name"
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="opera-label">Email</label>
+            <input
+              className="opera-control opacity-60 cursor-not-allowed"
+              type="email"
+              value={profile?.email ?? ''}
+              readOnly
+              disabled
+              aria-readonly="true"
             />
           </div>
           <div>

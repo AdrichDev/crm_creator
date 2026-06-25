@@ -51,7 +51,7 @@ authRouter.post('/register', registerLimiter, async (req, res) => {
   const d = parsed.data;
   const pwError = validatePassword(d.password);
   if (pwError) {
-    return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con al menos una letra y un número)' } });
+    return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con mayúscula, minúscula, número y símbolo especial)' } });
   }
 
   // Create the auth.users entry first. Branding del tenant en user_metadata para que
@@ -216,7 +216,7 @@ authRouter.post('/set-password', tokenLimiter, (req, res) => {
   }
   const pwError = validatePassword(newPassword);
   if (pwError) {
-    return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con al menos una letra y un número)' } });
+    return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con mayúscula, minúscula, número y símbolo especial)' } });
   }
   // Supabase OTP tokens are opaque to the server. The front must use:
   // supabaseClient.auth.verifyOtp({ token_hash, type: 'invite' }) to get a session,
@@ -244,7 +244,7 @@ authRouter.post('/reset-password', tokenLimiter, async (req, res) => {
   }
   const pwError = validatePassword(newPassword);
   if (pwError) {
-    return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con al menos una letra y un número)' } });
+    return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con mayúscula, minúscula, número y símbolo especial)' } });
   }
   // Front must: supabaseClient.auth.verifyOtp({ token_hash, type: 'recovery' })
   // then supabase.auth.updateUser({ password: newPassword }).
@@ -279,7 +279,7 @@ authRouter.post('/change-password', changePwLimiter, authenticate, async (req: A
   }
   const pwError = validatePassword(newPassword);
   if (pwError) {
-    return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con al menos una letra y un número)' } });
+    return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con mayúscula, minúscula, número y símbolo especial)' } });
   }
 
   const userId = req.userId!;
