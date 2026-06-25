@@ -3,6 +3,8 @@ import { prisma } from '../prisma.js';
 import { checkAvailability, daySlots } from '../lib/availability.js';
 import type { AuthedRequest } from '../middleware/types.js';
 import { BookingStatus } from '@prisma/client';
+import { assertFks, handleCrossTenant } from '../lib/tenant.js';
+import { joinNombre } from '../lib/nombre.js';
 
 export const bookingsRouter = Router();
 
@@ -11,11 +13,6 @@ const ESTADO_LABEL: Record<string, string> = {
   PENDING: 'Pendiente', CONFIRMED: 'Confirmada', CANCELLED: 'Cancelada',
   COMPLETED: 'Completada', NO_SHOW: 'Cancelada',
 };
-const nombreCompleto = (c: { nombre: string; apellido?: string | null } | null | undefined) =>
-  c ? [c.nombre, c.apellido].filter(Boolean).join(' ') : '';
-const nombreEmpleado = (e: { nombre: string; apellido?: string | null } | null | undefined) =>
-  e ? [e.nombre, e.apellido].filter(Boolean).join(' ') : '';
-
 // GET / → citas en el shape castellano que consume el front (cliente/servicio/
 // empleado/fecha/hora/estado). Punto único: lo usan citas, panel, estadísticas.
 bookingsRouter.get('/', async (req: AuthedRequest, res: Response) => {
@@ -33,9 +30,9 @@ bookingsRouter.get('/', async (req: AuthedRequest, res: Response) => {
   });
   res.json(rows.map((b) => ({
     id: b.id,
-    cliente: nombreCompleto(b.customer),
+    cliente: joinNombre(b.customer),
     servicio: b.service?.nombre ?? '',
-    empleado: nombreEmpleado(b.employee),
+    empleado: joinNombre(b.employee),
     fecha: b.startAt.toISOString().slice(0, 10),
     hora: b.startAt.toISOString().slice(11, 16),
     estado: ESTADO_LABEL[b.status] ?? 'Pendiente',
@@ -70,6 +67,20 @@ bookingsRouter.post('/check-availability', async (req: AuthedRequest, res: Respo
 bookingsRouter.post('/', async (req: AuthedRequest, res: Response) => {
   const { locationId, serviceId, customerId, employeeId, resourceIds = [], start, channel = 'MANUAL', notes } = req.body ?? {};
   if (!locationId || !serviceId || !start) return res.status(422).json({ error: { code: 'validation', message: 'locationId, serviceId y start requeridos' } });
+
+  // Gate tenancy: ningún FK puede apuntar a otro negocio.
+  try {
+    await assertFks(req.businessId, [
+      { model: 'location', id: locationId, field: 'locationId' },
+      { model: 'service', id: serviceId, field: 'serviceId' },
+      { model: 'customer', id: customerId, field: 'customerId' },
+      { model: 'employee', id: employeeId, field: 'employeeId' },
+      ...(resourceIds as string[]).map((id) => ({ model: 'resource' as const, id, field: 'resourceIds' })),
+    ]);
+  } catch (e) {
+    if (handleCrossTenant(e, res)) return;
+    throw e;
+  }
 
   const result = await prisma.$transaction(async () => {
     const avail = await checkAvailability({ businessId: req.businessId!, locationId, serviceId, employeeId, resourceIds, start });

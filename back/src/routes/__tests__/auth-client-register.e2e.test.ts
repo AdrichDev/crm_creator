@@ -50,6 +50,10 @@ beforeEach(async () => {
 });
 
 after(async () => {
+  // Si el back no respondió o no hay credenciales Supabase (sin .env en el proceso de
+  // test), los tests se saltaron y no hay nada que limpiar. Sin SB_URL, createClient
+  // reventaría en el teardown ("supabaseUrl is required"), así que salimos antes.
+  if (!backUp || !SB_URL) return;
   // Borra los auth.users de test (cascade limpia crm.User + Customer + Membership).
   const cleanup = createClient(SB_URL, SB_SRK, { auth: { persistSession: false } });
   for (const id of created.userIds) await cleanup.auth.admin.deleteUser(id).catch(() => {});

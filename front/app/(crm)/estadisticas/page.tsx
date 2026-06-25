@@ -4,7 +4,7 @@ import { ModuleGuard } from '@/components/layout/module-guard';
 import { useTenantConfig, useTerm } from '@/lib/tenant-config-context';
 import { PageHeader, Stat, Table, Td, Card, CardBody, Button, Badge } from '@/components/ui/primitives';
 import { Modal } from '@/components/ui/modal';
-import { ModelEffortPicker } from '@/components/ai/model-effort-picker';
+import { ModelEffort } from '@/components/ai/model-effort';
 import { useCollection } from '@/lib/data/use-collection';
 import { generateWithAI, AiBlockedError } from '@/lib/ai/usage-client';
 import { Sparkles, Info, X } from 'lucide-react';
@@ -223,7 +223,7 @@ export default function Page() {
             <textarea className="opera-control" rows={3} value={prompt} onChange={(e) => setPrompt(e.target.value)}
               placeholder="p. ej. Análisis de competencia y oportunidades para el negocio en su zona." />
           </div>
-          <ModelEffortPicker model={model} effort={effort} onModel={setModel} onEffort={setEffort} />
+          <ModelEffort variant="opera" model={model} effort={effort} onModel={setModel} onEffort={setEffort} />
           {error && <p className="text-sm text-red-400">{error}</p>}
         </div>
       </Modal>

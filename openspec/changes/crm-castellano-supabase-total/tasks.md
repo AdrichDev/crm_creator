@@ -1,5 +1,16 @@
 # Tareas — crm-castellano-supabase-total
 
+## ESTADO FINAL (2026-06-25) — CHANGE CERRADO
+HECHO+verde: P.0-P.8 (consola/onboarding originales sobre Supabase, proyecto=Business 1-1 tenant,
+datos castellano 9 módulos), O.1-O.4, hardening seguridad H.1-H.8 (gate FK tenant, fuente única REST,
+/me por userId, env fail-closed, AA channels, soft-delete, docs/migración formal).
+Fase 4 (purga localStorage): HECHO lo limpiable — borrados lib/supabase/client.ts + tables.ts
+(saas.tenant.id + acceso directo Supabase muertos). `role` se queda en localStorage como CACHÉ de
+/me (UX, no seguridad). FUERA DE ALCANCE (son features con Storage, no "purga"): disponibilidad de
+chips (worker-chips) y documentos (data-URLs) → cuando se aborde Document/Storage.
+Tests finales: back 53/0 · front 89 · e2e 10/10 · tsc CRM+AA limpio. Los checkboxes [ ] de abajo
+que parezcan abiertos (1.3/1.8/1.11/2.1/4.x) están INCORPORADOS en este estado; se dejan como histórico.
+
 ## Fase 0 — Consola/navegación ⚠️ REVERTIDO (2026-06-24, feedback usuario)
 ERROR: sustituí la consola/onboarding original (tarjetas, 4 pasos) por una AgencyConsole de
 dropdown que NADIE pidió, y metí un mock sintético de Estudio Lúa. El usuario lo paró.
@@ -56,6 +67,16 @@ dropdown que NADIE pidió, y metí un mock sintético de Estudio Lúa. El usuari
   + **Document, Notification, EmployeeSchedule** (campos castellano; sin refs, listos para cablear) + **BusinessSetting** (categoria/datos; refs projects.ts). e2e 6/6 + back 53/0fail + tsc limpio.
   P.7 COMPLETO salvo EXCEPCIONES decididas (infra/auth, invisibles, se quedan inglés): `Membership.role` (enum permisos rbac), `User.firstName/lastName/email/...` (auth, acoplado a front gestión-usuarios). Documentado en cabecera schema.
 - [x] P.8 HECHO: columna `Employee.rol` aplicada + cableada (employeesRouter + seed Estilista/Barbero + página ya la pinta).
+
+## Hardening post-auditoría (devil's advocate, 2026-06-25)
+- [x] H.1 AA `/api/channels`: solo webhooks públicos; connect/status/delete con auth (repo agents-agency, rama security-channels-auth). Reglas en lib/public-routes.ts + test.
+- [x] H.2 Gate FK tenant (CRM): lib/tenant.ts assertBelongsToBusiness/assertFks en bookings/packages/crud(fkFields). FK ajeno → 422 cross_tenant. e2e tenant-gate.
+- [x] H.3 Fuente única REST (front): getBackend() solo apiBackend en modo API; eliminado supabaseBackend directo.
+- [x] H.4 /me por Customer.userId (email fallback migratorio).
+- [x] H.5 env.ts assertConfig() fail-closed en server.ts. (.env.example BLOQUEADO por permisos → actualizar a mano: SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY/DATABASE_URL, quitar JWT_SECRET.)
+- [x] H.6 Docs: ARQUITECTURA.md actualizado (Supabase/Prisma/RLS, no mock). Migración formal `20260625000000_softdelete_rol` registra eliminado_en+rol (drift Prisma resuelto).
+- [x] H.7 REGLA DE NEGOCIO: proyecto soft-deleted **revive** (tenant_id @unique) en POST /projects. Documentada (projects.ts + tasks).
+- [x] H.8 HECHO: .env.example actualizado (usuario). back/schema/*.sql legacy + SDD_v1.md → docs/_archivo/. README a Prisma migrate. `prisma migrate deploy` aplicado (drift resuelto). Pendiente OPCIONAL/baja prioridad: unificar versiones Prisma/Next entre CRM y AA (apps separadas, no interoperan en código → no urgente); check-security.sql en CI (no hay CI montado).
 
 ## Fase 5 / OTROS — cierre
 - [~] 5.1 Proxies AA: DECISIÓN documentada. `/api/ai/generate` (Next→AA, branding IA del onboarding)

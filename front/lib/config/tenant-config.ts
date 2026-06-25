@@ -65,6 +65,21 @@ export interface TenantConfig {
     /** URL completa de conexión, si se prefiere a los campos sueltos. */
     url?: string;
   };
+  /**
+   * Landing del cliente importada por ZIP (UC-2). Bloque OPCIONAL: sin él, no hay
+   * landing y el CRM funciona como hoy (no regresión). La INGESTA (validación +
+   * almacenamiento local, lib/landing/) está disponible; SERVIR la landing
+   * públicamente queda POSPUESTO por seguridad (capa aislada CSP+sandbox + cybersec).
+   * `enabled` permanece false hasta entonces.
+   */
+  landing?: {
+    enabled: boolean;
+    source: string;
+    entry: string;
+    assetsRef: string;
+    uploadedAt: string;
+    sha256?: string;
+  };
   /** Tarjetas favoritas del dashboard (máx. 6). */
   favorites?: Favorite[];
   /** Interruptor maestro del tenant. undefined/true = activo; false = en mantenimiento. */

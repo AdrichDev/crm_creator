@@ -1,65 +1,22 @@
 'use client';
-// Client portal: own profile. Reads Customer row via direct Supabase-js (crm schema).
-// RLS policy customer_read: userId = auth.uid() → only own row returned.
-// This exercises the RLS path; the Node backend is NOT called for this read.
+// Portal del cliente: su ficha. Vía REST (/me/profile) — fuente única. El back
+// devuelve solo campos seguros del Customer (no datos internos de staff).
 import { useEffect, useState } from 'react';
-import { getCrmClient } from '@/lib/supabase/data-client';
-import { getAuthClient } from '@/lib/supabase/auth-client';
-
-interface CustomerProfile {
-  id: string;
-  nombre: string;
-  apellido?: string | null;
-  email?: string | null;
-  telefono?: string | null;
-  estado?: string | null;
-  notas?: string | null;
-  creado_en?: string | null;
-}
+import { getMyProfile, type MyProfile } from '@/lib/api/me';
 
 export default function MyProfilePage() {
-  const [profile, setProfile] = useState<CustomerProfile | null>(null);
+  const [profile, setProfile] = useState<MyProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function load() {
-      try {
-        const authClient = getAuthClient();
-        if (!authClient) { setError('Supabase no configurado'); return; }
-
-        const { data: sessionData } = await authClient.auth.getSession();
-        if (!sessionData.session) { setError('No autenticado'); return; }
-
-        const crmClient = getCrmClient();
-        if (!crmClient) { setError('Supabase no configurado'); return; }
-
-        // RLS customer_read policy: userId = auth.uid()
-        // The crm.Customer table has userId (UUID) linking to auth.users.id.
-        // Supabase PostgREST passes the access_token; RLS filters to own row.
-        // NO seleccionar `notes`/`status`: son campos internos de staff. RLS es row-level
-        // (no oculta columnas), así que el cliente solo debe pedir columnas seguras.
-        const { data, error: dbError } = await crmClient
-          .from('cliente')
-          .select('id, nombre, apellido, email, telefono, creado_en')
-          .single();
-
-        if (dbError) {
-          if (dbError.code === 'PGRST116') {
-            // No rows — customer record doesn't exist yet for this auth user
-            setError('No se encontró perfil de cliente vinculado.');
-          } else {
-            setError(dbError.message);
-          }
-          return;
-        }
-
-        setProfile(data as CustomerProfile);
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
+    getMyProfile()
+      .then((p) => {
+        if (!p) setError('No se encontró perfil de cliente vinculado.');
+        else setProfile(p);
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : 'Error'))
+      .finally(() => setLoading(false));
   }, []);
 
   if (loading) return <p className="text-sm text-gray-400">Cargando perfil…</p>;
@@ -70,7 +27,7 @@ export default function MyProfilePage() {
     <div>
       <h1 className="text-xl font-semibold text-white mb-6">Mi perfil</h1>
       <dl className="space-y-4 text-sm">
-        <Row label="Nombre" value={[profile.nombre, profile.apellido].filter(Boolean).join(' ')} />
+        <Row label="Nombre" value={profile.nombre} />
         <Row label="Email" value={profile.email} />
         <Row label="Teléfono" value={profile.telefono} />
       </dl>

@@ -2,20 +2,15 @@ import { Router, type Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import type { AuthedRequest } from '../middleware/types.js';
+import { splitNombre, joinNombre, pickFields } from '../lib/nombre.js';
 
 // Empleados (crm.empleado) en castellano. La página usa nombre COMBINADO
 // (nombre+apellido); aquí se combina al leer y se parte al escribir.
 export const employeesRouter = Router();
 
-function splitNombre(full: string): { nombre: string; apellido: string | null } {
-  const t = full.trim().split(/\s+/).filter(Boolean);
-  return { nombre: t[0] ?? '', apellido: t.length > 1 ? t.slice(1).join(' ') : null };
-}
-
 const INPUT = ['rol', 'especialidad', 'email', 'estado', 'color', 'telefono'] as const;
 function buildData(body: Record<string, unknown>): Record<string, unknown> {
-  const data: Record<string, unknown> = {};
-  for (const f of INPUT) if (body[f] !== undefined) data[f] = body[f];
+  const data = pickFields(body, INPUT);
   if (typeof body.nombre === 'string') {
     const { nombre, apellido } = splitNombre(body.nombre);
     data.nombre = nombre;
@@ -28,7 +23,7 @@ employeesRouter.get('/', async (req: AuthedRequest, res: Response) => {
   const rows = await prisma.employee.findMany({ where: { businessId: req.businessId }, orderBy: { createdAt: 'desc' } });
   res.json(rows.map((e) => ({
     id: e.id,
-    nombre: [e.nombre, e.apellido].filter(Boolean).join(' '),
+    nombre: joinNombre(e),
     rol: e.rol ?? '',
     especialidad: e.especialidad ?? '',
     email: e.email ?? '',

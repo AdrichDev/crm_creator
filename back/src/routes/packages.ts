@@ -1,6 +1,7 @@
 import { Router, type Response } from 'express';
 import { prisma } from '../prisma.js';
 import type { AuthedRequest } from '../middleware/types.js';
+import { assertBelongsToBusiness, handleCrossTenant } from '../lib/tenant.js';
 
 export const packagesRouter = Router();
 
@@ -20,6 +21,12 @@ packagesRouter.post('/', async (req: AuthedRequest, res: Response) => {
 packagesRouter.post('/assign', async (req: AuthedRequest, res: Response) => {
   const { customerId, packageId } = req.body ?? {};
   if (!customerId || !packageId) return res.status(422).json({ error: { code: 'validation', message: 'customerId y packageId requeridos' } });
+  try {
+    await assertBelongsToBusiness('customer', customerId, req.businessId, 'customerId');
+  } catch (e) {
+    if (handleCrossTenant(e, res)) return;
+    throw e;
+  }
   const tpl = await prisma.package.findFirst({ where: { id: packageId, businessId: req.businessId } });
   if (!tpl) return res.status(404).json({ error: { code: 'not_found', message: 'Bono no encontrado' } });
   const expiraEn = new Date(Date.now() + tpl.diasValidez * 86400000);

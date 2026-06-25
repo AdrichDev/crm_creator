@@ -10,7 +10,7 @@
 import { useState } from 'react';
 import { suggestBranding, AiBlockedError, type BrandingSuggestion } from '@/lib/ai/usage-client';
 import type { DesignTokens } from '@/lib/config/tenant-config';
-import { ModelEffortSelect } from '@/components/config/model-effort-select';
+import { ModelEffort } from '@/components/ai/model-effort';
 import { Sparkles, Loader2, Check, Undo2 } from 'lucide-react';
 
 export interface BrandingSnapshot {
@@ -105,7 +105,7 @@ export function AiBrandingSuggest({ business, current, onApply, landingSource }:
 
       {/* Selector de IA (mismos modelos que agents-agency) */}
       <div className="mt-3">
-        <ModelEffortSelect model={model} effort={effort} onModelChange={setModel} onEffortChange={setEffort} />
+        <ModelEffort variant="config" model={model} effort={effort} onModel={setModel} onEffort={setEffort} />
       </div>
 
       {/* Texto libre del estilo deseado */}

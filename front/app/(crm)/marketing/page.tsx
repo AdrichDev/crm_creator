@@ -5,7 +5,7 @@ import { useTerm, useTenantConfig } from '@/lib/tenant-config-context';
 import { PageHeader, Stat, Table, Td, Badge, Button, RowActions } from '@/components/ui/primitives';
 import { EntityModal, type Field } from '@/components/ui/entity-modal';
 import { Modal } from '@/components/ui/modal';
-import { ModelEffortPicker } from '@/components/ai/model-effort-picker';
+import { ModelEffort } from '@/components/ai/model-effort';
 import { generateWithAI, AiBlockedError } from '@/lib/ai/usage-client';
 import { useCollection } from '@/lib/data/use-collection';
 import { campanas as seed, type Campana } from '@/lib/mock/data';
@@ -96,7 +96,7 @@ export default function Page() {
             <textarea className="opera-control" rows={3} value={prompt} onChange={(e) => setPrompt(e.target.value)}
               placeholder="p. ej. Captar clientes nuevos con una promoción de bienvenida este mes." />
           </div>
-          <ModelEffortPicker model={model} effort={effort} onModel={setModel} onEffort={setEffort} />
+          <ModelEffort variant="opera" model={model} effort={effort} onModel={setModel} onEffort={setEffort} />
           {aiError && <p className="text-sm text-red-400">{aiError}</p>}
           {aiResult && (
             <div className="max-h-72 overflow-y-auto rounded-lg border border-white/10 bg-white/[0.03] p-4">

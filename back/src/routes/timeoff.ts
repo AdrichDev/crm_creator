@@ -2,21 +2,20 @@ import { Router, type Response } from 'express';
 import { prisma } from '../prisma.js';
 import { requireRole } from '../middleware/rbac.js';
 import type { AuthedRequest } from '../middleware/types.js';
+import { joinNombre } from '../lib/nombre.js';
 
 export const timeOffRouter = Router();
 
 // Enums → etiquetas castellanas que muestra el front (vacaciones).
 const TIPO_LABEL: Record<string, string> = { VACATION: 'Vacaciones', SICK: 'Baja', LEAVE: 'Asuntos propios', OTHER: 'Otro' };
 const ESTADO_LABEL: Record<string, string> = { PENDING: 'Pendiente', APPROVED: 'Aprobada', REJECTED: 'Rechazada', CANCELLED: 'Cancelada' };
-const nombreEmpleado = (e: { nombre: string; apellido?: string | null } | null | undefined) =>
-  e ? [e.nombre, e.apellido].filter(Boolean).join(' ') : '';
 
 // GET / → solicitudes en el shape castellano del front (empleado/tipo/inicio/fin/dias/estado).
 timeOffRouter.get('/', async (req: AuthedRequest, res: Response) => {
   const rows = await prisma.timeOffRequest.findMany({ where: { businessId: req.businessId, eliminadoEn: null }, include: { employee: true }, orderBy: { inicio: 'desc' } });
   res.json(rows.map((r) => ({
     id: r.id,
-    empleado: nombreEmpleado(r.employee),
+    empleado: joinNombre(r.employee),
     tipo: TIPO_LABEL[r.tipo] ?? 'Otro',
     inicio: r.inicio.toISOString().slice(0, 10),
     fin: r.fin.toISOString().slice(0, 10),

@@ -1,8 +1,11 @@
 import express from 'express';
 import cors from 'cors';
-import { env } from './env.js';
+import { env, assertConfig } from './env.js';
 import { api } from './routes/index.js';
 import { notFound, errorHandler } from './middleware/error.js';
+
+// Fail-closed: no arrancar con config Supabase incompleta/placeholder.
+assertConfig();
 
 const app = express();
 // Confiar en el proxy más cercano (configurable). Necesario para que req.ip

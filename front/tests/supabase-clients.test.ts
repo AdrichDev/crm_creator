@@ -1,5 +1,5 @@
-// Unit tests for Supabase client factories.
-// Validates: auth-client splits from data-client, schema pinning, env guards.
+// Unit tests for the Supabase auth-client factory.
+// Validates: env guards, no schema pin (auth.* needs the default schema), singleton.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockCreateClient = vi.fn();
@@ -66,28 +66,6 @@ describe('getAuthClient', () => {
     const b = getAuthClient();
     expect(a).toBe(b);
     expect(mockCreateClient).toHaveBeenCalledOnce();
-    vi.unstubAllEnvs();
-  });
-});
-
-// ─── getCrmClient ─────────────────────────────────────────────────────────────
-describe('getCrmClient', () => {
-  it('returns null when env vars absent', async () => {
-    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', '');
-    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', '');
-    const { getCrmClient } = await import('@/lib/supabase/data-client');
-    expect(getCrmClient()).toBeNull();
-    vi.unstubAllEnvs();
-  });
-
-  it('creates client with schema:crm when env vars present', async () => {
-    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://test.supabase.co');
-    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-key-123');
-    const { getCrmClient } = await import('@/lib/supabase/data-client');
-    getCrmClient();
-    // First call may be for _dataClient if getDataClient was called; find crm call
-    const crmCall = mockCreateClient.mock.calls.find((c) => c[2]?.db?.schema === 'crm');
-    expect(crmCall).toBeTruthy();
     vi.unstubAllEnvs();
   });
 });

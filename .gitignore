@@ -52,3 +52,9 @@ front/lib/config/generated-tenant.ts
 # Security: env backups duplicate secrets — never commit
 *.bak
 .env.docker*
+
+# Landing bundles importados (ZIP) — assets locales, no se versionan
+.landing-store/
+
+# Worktrees de subagentes (no versionar)
+.claude/
