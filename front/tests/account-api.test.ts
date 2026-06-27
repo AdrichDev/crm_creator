@@ -76,13 +76,14 @@ describe('forgotPassword', () => {
 
 // ─── passwordPolicyError ─────────────────────────────────────────────────────
 describe('passwordPolicyError', () => {
-  it('returns null for a valid password (≥12 + 4 clases)', () => {
+  it('returns null for a valid password (≥10 + 4 clases)', () => {
     expect(passwordPolicyError('SecurePass12!')).toBeNull();
     expect(passwordPolicyError('Abcdefghij1!')).toBeNull();
+    expect(passwordPolicyError('Abcdefgh1!')).toBeNull(); // 10 chars exactos (frontera)
   });
 
-  it('rejects passwords shorter than 12 characters', () => {
-    expect(passwordPolicyError('Short1!')).toMatch(/12/);
+  it('rejects passwords shorter than 10 characters', () => {
+    expect(passwordPolicyError('Short1!')).toMatch(/10/);
   });
 
   it('rejects passwords missing a character class', () => {

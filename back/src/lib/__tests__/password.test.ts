@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { validatePassword } from '../password.js';
 
 test('validatePassword rechaza contraseñas cortas (< mínimo)', () => {
-  assert.equal(validatePassword('Ab1!'), 'too_short');        // 4 chars: 4 clases pero corta
-  assert.equal(validatePassword('Abcdefghi1!'), 'too_short'); // 11 chars
+  assert.equal(validatePassword('Ab1!'), 'too_short');      // 4 chars: 4 clases pero corta
+  assert.equal(validatePassword('Abcdefg1!'), 'too_short'); // 9 chars (justo por debajo del mínimo 10)
 });
 
 test('validatePassword exige las 4 clases de caracteres', () => {
@@ -14,7 +14,8 @@ test('validatePassword exige las 4 clases de caracteres', () => {
   assert.equal(validatePassword('Abcdefghij12'), 'needs_special'); // sin símbolo
 });
 
-test('validatePassword acepta ≥12 con mayúscula, minúscula, número y símbolo', () => {
+test('validatePassword acepta ≥10 con mayúscula, minúscula, número y símbolo', () => {
+  assert.equal(validatePassword('Abcdefgh1!'), null);       // 10 chars exactos (frontera del mínimo)
   assert.equal(validatePassword('Abcdefghij1!'), null);
   assert.equal(validatePassword('Contraseña-Larga-1'), null);
 });

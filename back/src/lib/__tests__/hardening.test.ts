@@ -103,7 +103,7 @@ test('H4: validatePassword rechaza password de 7 chars', () => {
   assert.equal(validatePassword('1234567'), 'too_short');
 });
 
-test('H4: validatePassword rechaza 8 chars (política endurecida ≥12)', () => {
+test('H4: validatePassword rechaza 8 chars (política ≥10)', () => {
   assert.equal(validatePassword('12345678'), 'too_short');
 });
 
