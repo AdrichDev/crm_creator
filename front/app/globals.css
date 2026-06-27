@@ -177,7 +177,9 @@ body {
    ========================================================================= */
 
 /* Shell del panel (oscuro) — fondo normal del proyecto, SIN rejilla */
-.opera-shell { display: flex; min-height: 100vh; background: var(--panel-bg); color: var(--panel-text); }
+/* Altura fija de viewport + overflow hidden: el sidebar queda FIJO y solo .opera-main
+   scrollea (como agents-agency), en vez de scrollear la página entera. */
+.opera-shell { display: flex; height: 100vh; overflow: hidden; background: var(--panel-bg); color: var(--panel-text); }
 
 /* Header superior del panel */
 .opera-header {
@@ -205,7 +207,7 @@ body {
 }
 .opera-role-select select option { color: #111; }
 
-.opera-main { flex: 1; min-width: 0; padding: 2.5rem; overflow-y: auto; }
+.opera-main { flex: 1; min-width: 0; min-height: 0; padding: 2.5rem; overflow-y: auto; }
 
 /* Sidebar — Centro de Mando */
 .opera-sidebar {

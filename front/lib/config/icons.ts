@@ -18,6 +18,7 @@ const DEFAULT_EMOJI: Record<ModuleId, string> = {
   marketing: '📣',
   estadisticas: '📈',
   configuracion: '⚙️',
+  'mi-cuenta': '👤',
 };
 
 // Sobrescrituras por sector: solo los módulos cuyo emoji cambia de significado.

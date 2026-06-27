@@ -97,7 +97,7 @@ async function reviveProject(
   if (setting) await tx.businessSetting.update({ where: { id: setting.id }, data: { datos: config as Prisma.InputJsonValue } });
   else await tx.businessSetting.create({ data: { businessId: b.id, categoria: CONFIG_CATEGORY, datos: config as Prisma.InputJsonValue } });
   const member = await tx.membership.findFirst({ where: { userId, businessId: b.id } });
-  if (!member) await tx.membership.create({ data: { userId, businessId: b.id, role: 'OWNER' } });
+  if (!member) await tx.membership.create({ data: { userId, businessId: b.id, role: 'ADMIN' } });
   return b;
 }
 
@@ -112,7 +112,7 @@ async function createProject(
   const b = await tx.business.create({ data: { tenantId, ...mirror } });
   await tx.location.create({ data: { businessId: b.id, nombre: config.business?.name ?? 'Sede' } });
   await tx.businessSetting.create({ data: { businessId: b.id, categoria: CONFIG_CATEGORY, datos: config as Prisma.InputJsonValue } });
-  await tx.membership.create({ data: { userId, businessId: b.id, role: 'OWNER' } });
+  await tx.membership.create({ data: { userId, businessId: b.id, role: 'ADMIN' } });
   return b;
 }
 

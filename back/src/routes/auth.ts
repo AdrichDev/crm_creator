@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { createClient } from '@supabase/supabase-js';
 import { prisma } from '../prisma.js';
 import { supabaseAdmin } from '../lib/auth.js';
+import { env } from '../env.js';
 import { authenticate } from '../middleware/auth.js';
 import type { AuthedRequest } from '../middleware/types.js';
 import { rateLimit, ipKey, ipEmailKey, resetRateLimits } from '../lib/rateLimit.js';
@@ -17,6 +19,9 @@ const loginLimiter = rateLimit({ bucket: 'login', windowMs: 15 * 60_000, max: 20
 const forgotLimiter = rateLimit({ bucket: 'forgot', windowMs: 15 * 60_000, max: 5, keyOf: ipKey });
 const tokenLimiter = rateLimit({ bucket: 'token', windowMs: 15 * 60_000, max: 10, keyOf: ipKey });
 const registerLimiter = rateLimit({ bucket: 'register', windowMs: 15 * 60_000, max: 5, keyOf: ipKey });
+// Protege el cambio de contraseña: cada intento verifica la antigua contra GoTrue
+// (signInWithPassword). Limita el brute-force de la contraseña actual.
+const changePwLimiter = rateLimit({ bucket: 'changepw', windowMs: 15 * 60_000, max: 10, keyOf: ipKey });
 
 // Test-only endpoint to reset in-memory rate-limit counters (excluded from prod).
 if (process.env.NODE_ENV !== 'production') {
@@ -46,7 +51,7 @@ authRouter.post('/register', registerLimiter, async (req, res) => {
   const d = parsed.data;
   const pwError = validatePassword(d.password);
   if (pwError) {
-    return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con al menos una letra y un número)' } });
+    return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con mayúscula, minúscula, número y símbolo especial)' } });
   }
 
   // Create the auth.users entry first. Branding del tenant en user_metadata para que
@@ -73,6 +78,7 @@ authRouter.post('/register', registerLimiter, async (req, res) => {
   let result;
   try {
     result = await prisma.$transaction(async (tx) => {
+      // El registrante es ADMIN del negocio.
       const business = await tx.business.create({ data: { nombre: d.businessName, vertical: d.vertical } });
       await tx.location.create({ data: { businessId: business.id, nombre: d.businessName } });
       // crm.User.id = auth.users.id (UUID from Supabase).
@@ -84,7 +90,7 @@ authRouter.post('/register', registerLimiter, async (req, res) => {
           lastName: d.lastName,
         },
       });
-      await tx.membership.create({ data: { userId: user.id, businessId: business.id, role: 'OWNER' } });
+      await tx.membership.create({ data: { userId: user.id, businessId: business.id, role: 'ADMIN' } });
       return { business, user };
     });
   } catch {
@@ -124,12 +130,43 @@ authRouter.get('/me', authenticate, async (req: AuthedRequest, res) => {
   // branding). El front la usa para construir su TenantConfig — sin mocks locales.
   const business = await loadActiveBusiness(req.businessId);
   res.json({
-    user: user && { id: user.id, email: user.email, firstName: user.firstName },
+    user: user && { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, phone: user.phone },
     memberships,
     activeBusinessId: req.businessId,
     role: req.role,
     business,
   });
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /auth/profile
+// El usuario logado edita SUS propios datos (nombre, apellido, teléfono).
+// Usa req.userId de la sesión; ignora cualquier id del body (no toca a otro usuario).
+// ---------------------------------------------------------------------------
+const profileSchema = z.object({
+  firstName: z.string().trim().min(1).optional(),
+  lastName: z.string().trim().optional(),
+  phone: z.string().trim().max(30).optional(),
+});
+
+authRouter.patch('/profile', authenticate, async (req: AuthedRequest, res) => {
+  const parsed = profileSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(422).json({ error: { code: 'validation', message: 'Datos inválidos' } });
+  }
+  const d = parsed.data;
+  if (d.firstName === undefined && d.lastName === undefined && d.phone === undefined) {
+    return res.status(422).json({ error: { code: 'empty', message: 'Nada que actualizar' } });
+  }
+  const user = await prisma.user.update({
+    where: { id: req.userId },
+    data: {
+      ...(d.firstName !== undefined ? { firstName: d.firstName } : {}),
+      ...(d.lastName !== undefined ? { lastName: d.lastName } : {}),
+      ...(d.phone !== undefined ? { phone: d.phone } : {}),
+    },
+  });
+  res.json({ user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, phone: user.phone } });
 });
 
 // ---------------------------------------------------------------------------
@@ -180,7 +217,7 @@ authRouter.post('/set-password', tokenLimiter, (req, res) => {
   }
   const pwError = validatePassword(newPassword);
   if (pwError) {
-    return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con al menos una letra y un número)' } });
+    return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con mayúscula, minúscula, número y símbolo especial)' } });
   }
   // Supabase OTP tokens are opaque to the server. The front must use:
   // supabaseClient.auth.verifyOtp({ token_hash, type: 'invite' }) to get a session,
@@ -208,7 +245,7 @@ authRouter.post('/reset-password', tokenLimiter, async (req, res) => {
   }
   const pwError = validatePassword(newPassword);
   if (pwError) {
-    return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con al menos una letra y un número)' } });
+    return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con mayúscula, minúscula, número y símbolo especial)' } });
   }
   // Front must: supabaseClient.auth.verifyOtp({ token_hash, type: 'recovery' })
   // then supabase.auth.updateUser({ password: newPassword }).
@@ -227,33 +264,56 @@ authRouter.post('/reset-password', tokenLimiter, async (req, res) => {
 // n8n emit removed — no password event emitted.
 // ---------------------------------------------------------------------------
 const changeSchema = z.object({
+  oldPassword: z.string().min(1),
   newPassword: z.string(),
   repeatPassword: z.string(),
 });
 
-authRouter.post('/change-password', authenticate, async (req: AuthedRequest, res) => {
+authRouter.post('/change-password', changePwLimiter, authenticate, async (req: AuthedRequest, res) => {
   const parsed = changeSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(422).json({ error: { code: 'validation', message: 'Datos inválidos' } });
   }
-  const { newPassword, repeatPassword } = parsed.data;
+  const { oldPassword, newPassword, repeatPassword } = parsed.data;
   if (newPassword !== repeatPassword) {
     return res.status(422).json({ error: { code: 'mismatch', message: 'Las contraseñas no coinciden' } });
   }
+  if (newPassword === oldPassword) {
+    return res.status(422).json({ error: { code: 'same_password', message: 'La nueva contraseña debe ser distinta de la actual' } });
+  }
   const pwError = validatePassword(newPassword);
   if (pwError) {
-    return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con al menos una letra y un número)' } });
+    return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con mayúscula, minúscula, número y símbolo especial)' } });
   }
 
   const userId = req.userId!;
 
-  const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(userId, { password: newPassword });
-  if (updateError) {
-    return res.status(500).json({ error: { code: 'supabase_error', message: updateError.message } });
+  // Verificar la contraseña ACTUAL sin tocar la sesión del navegador del usuario:
+  // cliente Supabase efímero (persistSession:false) → signInWithPassword. Si falla,
+  // la antigua es incorrecta. No re-dispara onAuthStateChange en el cliente del front.
+  const dbUser = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+  if (!dbUser?.email) {
+    return res.status(404).json({ error: { code: 'no_user', message: 'Usuario no encontrado' } });
+  }
+  const ephemeral = createClient(env.supabaseUrl, env.supabaseServiceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { error: reauthError } = await ephemeral.auth.signInWithPassword({ email: dbUser.email, password: oldPassword });
+  if (reauthError) {
+    return res.status(401).json({ error: { code: 'wrong_password', message: 'La contraseña actual es incorrecta' } });
   }
 
-  // Invalidate all other sessions (D5 design decision).
-  await supabaseAdmin.auth.admin.signOut(userId, 'others');
+  const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(userId, { password: newPassword });
+  if (updateError) {
+    // No filtrar el detalle de Supabase al cliente (puede exponer interno). Log server-side.
+    console.error('[change-password] updateUserById error:', updateError.message);
+    return res.status(500).json({ error: { code: 'update_failed', message: 'No se pudo actualizar la contraseña' } });
+  }
+
+  // Invalidate all other sessions (D5 design decision). No bloquea: la contraseña ya cambió;
+  // si la invalidación falla, se registra pero la operación se considera correcta.
+  const { error: signOutError } = await supabaseAdmin.auth.admin.signOut(userId, 'others');
+  if (signOutError) console.error('[change-password] signOut(others) error:', signOutError.message);
 
   res.status(204).end();
 });

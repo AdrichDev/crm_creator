@@ -9,15 +9,15 @@ import { supabaseAdmin } from '../lib/auth.js';
 export const usersRouter = Router();
 
 // Mounted after `authenticate` global (req.userId/businessId/role already resolved).
-// All /users endpoints require OWNER or ADMIN role on the active business.
-usersRouter.use(requireRole('OWNER', 'ADMIN'));
+// All /users endpoints require ADMIN role on the active business.
+usersRouter.use(requireRole('ADMIN'));
 
 // Explicit field selection — NEVER include passwordHash (removed from schema).
 const USER_PUBLIC = { id: true, email: true, firstName: true, lastName: true, createdAt: true } as const;
 
-const ADMIN_ROLES: MemberRole[] = ['OWNER', 'ADMIN'];
+const ADMIN_ROLES: MemberRole[] = ['ADMIN'];
 
-const assignableRole = z.enum(['ADMIN', 'EMPLOYEE']);
+const assignableRole = z.enum(['ADMIN', 'MANAGER', 'EMPLOYEE']);
 
 interface UserRow { id: string; email: string; firstName: string; lastName: string | null; createdAt: Date; }
 
@@ -150,9 +150,6 @@ usersRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
   }
   const member = await loadMember(req, res);
   if (!member) return;
-  if (member.role === 'OWNER') {
-    return res.status(403).json({ error: { code: 'owner_protected', message: 'No se puede editar al propietario' } });
-  }
 
   const { role } = parsed.data;
   if (role && role !== 'ADMIN' && ADMIN_ROLES.includes(member.role)) {
@@ -175,9 +172,6 @@ usersRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
 usersRouter.delete('/:id', async (req: AuthedRequest, res: Response) => {
   const member = await loadMember(req, res);
   if (!member) return;
-  if (member.role === 'OWNER') {
-    return res.status(403).json({ error: { code: 'owner_protected', message: 'No se puede eliminar al propietario' } });
-  }
   if (member.user.id === req.userId) {
     return res.status(403).json({ error: { code: 'self_delete', message: 'No puedes eliminarte a ti mismo' } });
   }

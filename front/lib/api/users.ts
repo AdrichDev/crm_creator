@@ -2,8 +2,8 @@
 // Cliente del módulo de gestión de usuarios (/api/users). Solo admin.
 import { apiFetch } from './client';
 
-export type BackRole = 'OWNER' | 'ADMIN' | 'MANAGER' | 'EMPLOYEE' | 'RECEPTIONIST' | 'PROFESSIONAL' | 'ACCOUNTANT';
-export type AssignableRole = 'ADMIN' | 'EMPLOYEE';
+export type BackRole = 'ADMIN' | 'MANAGER' | 'EMPLOYEE' | 'CLIENT';
+export type AssignableRole = 'ADMIN' | 'MANAGER' | 'EMPLOYEE';
 export type UserStatus = 'active' | 'invited' | 'disabled';
 
 export interface ManagedUser {
@@ -53,16 +53,22 @@ export function resendInvite(id: string): Promise<{ emailSent: boolean }> {
   return apiFetch<{ emailSent: boolean }>(`/users/${id}/resend-invite`, { method: 'POST' });
 }
 
-// Mapeo canónico MemberRole (back) → rol front (AC-4.1).
-// OWNER/ADMIN → admin; el resto → trabajador. `cliente` no tiene MemberRole.
+// Mapeo canónico MemberRole (back) → rol de vista front.
+// ADMIN → admin; MANAGER/EMPLOYEE → trabajador. CLIENT no se gestiona aquí.
 export function frontRole(role: BackRole): 'admin' | 'trabajador' {
-  return role === 'OWNER' || role === 'ADMIN' ? 'admin' : 'trabajador';
+  return role === 'ADMIN' ? 'admin' : 'trabajador';
 }
 
 export const ROLE_LABEL: Record<BackRole, string> = {
-  OWNER: 'Propietario', ADMIN: 'Administrador', MANAGER: 'Encargado',
-  EMPLOYEE: 'Trabajador', RECEPTIONIST: 'Recepción', PROFESSIONAL: 'Profesional', ACCOUNTANT: 'Contabilidad',
+  ADMIN: 'Administrador', MANAGER: 'Manager', EMPLOYEE: 'Empleado', CLIENT: 'Cliente',
 };
+
+// Roles asignables desde la gestión de usuarios (desplegable). Orden de menor a mayor.
+export const ASSIGNABLE_ROLES: { value: AssignableRole; label: string }[] = [
+  { value: 'EMPLOYEE', label: 'Empleado' },
+  { value: 'MANAGER', label: 'Manager' },
+  { value: 'ADMIN', label: 'Administrador' },
+];
 
 export const STATUS_LABEL: Record<UserStatus, string> = {
   active: 'Activo', invited: 'Invitado', disabled: 'Desactivado',

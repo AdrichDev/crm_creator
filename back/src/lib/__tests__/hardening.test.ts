@@ -107,8 +107,9 @@ test('H4: validatePassword rechaza 8 chars (política endurecida ≥12)', () => 
   assert.equal(validatePassword('12345678'), 'too_short');
 });
 
-test('H4: validatePassword acepta 12 chars con letra + dígito', () => {
-  assert.equal(validatePassword('abcdefghijk1'), null);
+test('H4: validatePassword acepta 12 chars con las 4 clases (may/min/núm/símbolo)', () => {
+  assert.equal(validatePassword('Abcdefghij1!'), null);
+  assert.equal(validatePassword('abcdefghijk1'), 'needs_upper'); // sin mayúscula ni símbolo
 });
 
 // ---------------------------------------------------------------------------

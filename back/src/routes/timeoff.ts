@@ -38,5 +38,5 @@ async function decide(req: AuthedRequest, res: Response, estado: 'APPROVED' | 'R
   const row = await prisma.timeOffRequest.update({ where: { id: existing.id }, data: { estado, decididoPor: req.userId, decididoEn: new Date() } });
   res.json(row);
 }
-timeOffRouter.patch('/:id/approve', requireRole('OWNER', 'ADMIN', 'MANAGER'), (req: AuthedRequest, res) => decide(req, res, 'APPROVED'));
-timeOffRouter.patch('/:id/reject', requireRole('OWNER', 'ADMIN', 'MANAGER'), (req: AuthedRequest, res) => decide(req, res, 'REJECTED'));
+timeOffRouter.patch('/:id/approve', requireRole('ADMIN', 'MANAGER'), (req: AuthedRequest, res) => decide(req, res, 'APPROVED'));
+timeOffRouter.patch('/:id/reject', requireRole('ADMIN', 'MANAGER'), (req: AuthedRequest, res) => decide(req, res, 'REJECTED'));

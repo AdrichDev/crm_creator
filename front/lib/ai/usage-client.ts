@@ -1,7 +1,7 @@
 'use client';
-// Cliente de generación IA del CRM. Llama al proxy /api/ai/generate, que reenvía
-// a agents-agency, donde el modelo se ejecuta y los tokens se descuentan del MISMO
-// cliente (deductTokens + tokenUsage) → cómputo de tokens global compartido.
+// Cliente de generación IA del CRM. Llama al proxy /api/ai/generate, que reenvía a
+// agents-agency con el service token. El proxy exige sesión Supabase del operador.
+import { getAccessToken } from '@/lib/auth/session';
 
 export type AiKind = 'marketing-plan' | 'market-study' | 'branding-suggest';
 
@@ -24,9 +24,14 @@ export interface GenerateInput {
 }
 
 export async function generateWithAI(input: GenerateInput): Promise<AiResult> {
+  // El proxy exige sesión Supabase del operador (no es relay abierto).
+  const tok = await getAccessToken();
   const res = await fetch('/api/ai/generate', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(tok ? { Authorization: `Bearer ${tok}` } : {}),
+    },
     body: JSON.stringify(input),
   });
   if (res.status === 402) {

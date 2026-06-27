@@ -4,11 +4,32 @@ import { apiFetch } from './client';
 
 // Política espejo del back (lib/password.ts). Solo feedback en cliente; la
 // validación de verdad ocurre en el servidor.
+// Requisitos: mín. 12 caracteres + las 4 clases (mayúscula, minúscula, número, símbolo).
 export const PASSWORD_MIN_LENGTH = 12;
+
+export interface PasswordChecks {
+  upper: boolean;
+  lower: boolean;
+  digit: boolean;
+  special: boolean;
+}
+
+/** Estado por requisito, para la leyenda viva (✗/✓) del formulario. */
+export function passwordChecks(pwd: string): PasswordChecks {
+  return {
+    upper: /[A-Z]/.test(pwd),
+    lower: /[a-z]/.test(pwd),
+    digit: /\d/.test(pwd),
+    special: /[^A-Za-z0-9]/.test(pwd),
+  };
+}
 
 export function passwordPolicyError(pwd: string): string | null {
   if (pwd.length < PASSWORD_MIN_LENGTH) return `La contraseña debe tener al menos ${PASSWORD_MIN_LENGTH} caracteres.`;
-  if (!/[A-Za-z]/.test(pwd) || !/\d/.test(pwd)) return 'La contraseña debe incluir al menos una letra y un número.';
+  const c = passwordChecks(pwd);
+  if (!c.upper || !c.lower || !c.digit || !c.special) {
+    return 'La contraseña debe incluir mayúscula, minúscula, número y símbolo especial.';
+  }
   return null;
 }
 

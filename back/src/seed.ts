@@ -25,7 +25,7 @@ async function main() {
   const owner = await prisma.user.create({
     data: { id: authData.user.id, email: 'owner@estudiolua.com', firstName: 'Adrián' },
   });
-  await prisma.membership.create({ data: { userId: owner.id, businessId: business.id, role: 'OWNER' } });
+  await prisma.membership.create({ data: { userId: owner.id, businessId: business.id, role: 'ADMIN' } });
 
   const sara = await prisma.employee.create({ data: { businessId: business.id, locationId: location.id, nombre: 'Sara', apellido: 'Molina', especialidad: 'Color', rol: 'Estilista', color: '#8cc63f' } });
   const jorge = await prisma.employee.create({ data: { businessId: business.id, locationId: location.id, nombre: 'Jorge', apellido: 'Ortega', especialidad: 'Barba', rol: 'Barbero', color: '#f25c2a' } });

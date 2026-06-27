@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { aaFetch } from '@/lib/server/aa';
+import { isAuthedOperator } from '@/lib/server/require-operator';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -15,6 +16,10 @@ const ENDPOINT: Record<string, string> = {
 };
 
 export async function POST(req: Request) {
+  // Solo operadores autenticados (sesión Supabase): el proxy lleva el service token.
+  if (!(await isAuthedOperator(req))) {
+    return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+  }
   let body: { kind?: string; clientId?: string | null; model?: string; effort?: string; prompt?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'JSON inválido' }, { status: 400 }); }
 

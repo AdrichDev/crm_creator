@@ -3,6 +3,7 @@ import cors from 'cors';
 import { env, assertConfig } from './env.js';
 import { api } from './routes/index.js';
 import { notFound, errorHandler } from './middleware/error.js';
+import { startReminderDrainer } from './lib/reminderDrainer.js';
 
 // Fail-closed: no arrancar con config Supabase incompleta/placeholder.
 assertConfig();
@@ -21,4 +22,5 @@ app.use(errorHandler);
 
 app.listen(env.port, () => {
   console.log(`OperaOS backend escuchando en http://localhost:${env.port}`);
+  startReminderDrainer();
 });

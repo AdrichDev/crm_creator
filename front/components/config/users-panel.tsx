@@ -5,7 +5,7 @@ import { Modal } from '@/components/ui/modal';
 import { isApiEnabled } from '@/lib/api/client';
 import {
   listUsers, createUser, updateUser, deleteUser, resendInvite,
-  ROLE_LABEL, STATUS_LABEL, type ManagedUser, type AssignableRole,
+  STATUS_LABEL, ASSIGNABLE_ROLES, type ManagedUser, type AssignableRole,
 } from '@/lib/api/users';
 
 // Panel de gestión de usuarios del negocio (solo admin). Look del panel (--panel-*).
@@ -89,47 +89,39 @@ export function UsersPanel() {
           <table className="data-table">
             <thead><tr><th>Usuario</th><th>Email</th><th>Rol</th><th>Estado</th><th /></tr></thead>
             <tbody>
-              {users.map((u) => {
-                const isOwner = u.role === 'OWNER';
-                return (
-                  <tr key={u.id}>
-                    <td>{u.firstName}{u.lastName ? ` ${u.lastName}` : ''}</td>
-                    <td className="text-[var(--panel-muted)]">{u.email}</td>
-                    <td>
-                      {isOwner ? (
-                        <Badge tone="brand">{ROLE_LABEL.OWNER}</Badge>
-                      ) : (
-                        <select
-                          className="opera-control !py-1 !h-8 w-auto"
-                          value={u.role === 'ADMIN' ? 'ADMIN' : 'EMPLOYEE'}
-                          disabled={busyId === u.id}
-                          onChange={(e) => onChangeRole(u, e.target.value as AssignableRole)}>
-                          <option value="ADMIN">{ROLE_LABEL.ADMIN}</option>
-                          <option value="EMPLOYEE">{ROLE_LABEL.EMPLOYEE}</option>
-                        </select>
+              {users.map((u) => (
+                <tr key={u.id}>
+                  <td>{u.firstName}{u.lastName ? ` ${u.lastName}` : ''}</td>
+                  <td className="text-[var(--panel-muted)]">{u.email}</td>
+                  <td>
+                    <select
+                      className="opera-control !py-1 !h-8 w-auto"
+                      value={u.role}
+                      disabled={busyId === u.id}
+                      onChange={(e) => onChangeRole(u, e.target.value as AssignableRole)}>
+                      {ASSIGNABLE_ROLES.map((r) => (
+                        <option key={r.value} value={r.value}>{r.label}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <Badge tone={u.status === 'active' ? 'green' : u.status === 'invited' ? 'amber' : 'red'}>
+                      {STATUS_LABEL[u.status]}
+                    </Badge>
+                  </td>
+                  <td>
+                    <div className="flex justify-end gap-1">
+                      {u.status === 'invited' && (
+                        <button className="row-action edit" disabled={busyId === u.id} onClick={() => onResend(u)}>Reenviar</button>
                       )}
-                    </td>
-                    <td>
-                      <Badge tone={u.status === 'active' ? 'green' : u.status === 'invited' ? 'amber' : 'red'}>
-                        {STATUS_LABEL[u.status]}
-                      </Badge>
-                    </td>
-                    <td>
-                      {!isOwner && (
-                        <div className="flex justify-end gap-1">
-                          {u.status === 'invited' && (
-                            <button className="row-action edit" disabled={busyId === u.id} onClick={() => onResend(u)}>Reenviar</button>
-                          )}
-                          <button className="row-action edit" disabled={busyId === u.id} onClick={() => onToggleStatus(u)}>
-                            {u.status === 'disabled' ? 'Activar' : 'Desactivar'}
-                          </button>
-                          <button className="row-action danger" disabled={busyId === u.id} onClick={() => onDelete(u)}>Eliminar</button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+                      <button className="row-action edit" disabled={busyId === u.id} onClick={() => onToggleStatus(u)}>
+                        {u.status === 'disabled' ? 'Activar' : 'Desactivar'}
+                      </button>
+                      <button className="row-action danger" disabled={busyId === u.id} onClick={() => onDelete(u)}>Eliminar</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -195,8 +187,9 @@ function NewUserModal({ open, onClose, onCreated }: { open: boolean; onClose: ()
         <div>
           <label className="opera-label">Rol</label>
           <select className="opera-control" value={role} onChange={(e) => setRole(e.target.value as AssignableRole)}>
-            <option value="EMPLOYEE">Trabajador</option>
-            <option value="ADMIN">Administrador</option>
+            {ASSIGNABLE_ROLES.map((r) => (
+              <option key={r.value} value={r.value}>{r.label}</option>
+            ))}
           </select>
         </div>
         {error && <p className="text-sm text-red-400">{error}</p>}
