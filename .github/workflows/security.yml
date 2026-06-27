@@ -11,10 +11,16 @@ jobs:
         with:
           fetch-depth: 0
       # Falla el build si hay secretos en el código o en el historial git.
-      - name: gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+      # Se usa el BINARIO oficial de gitleaks en vez de gitleaks-action@v2:
+      # la action exige GITLEAKS_LICENSE en repos privados/organización. El
+      # binario es Apache-2.0, sin licencia, y escanea el historial igual
+      # (checkout con fetch-depth: 0 + `detect`). Sigue fallando si hay un
+      # secreto real → no oculta hallazgos.
+      - name: gitleaks (binary, license-free)
+        run: |
+          VER=8.21.2
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${VER}/gitleaks_${VER}_linux_x64.tar.gz" | tar -xz gitleaks
+          ./gitleaks detect --source . --redact --no-banner -v
 
   # Gate opcional de postura RLS (requiere el secret DATABASE_URL con la conexión
   # session-pooler de Supabase). Comentado hasta que el secret esté configurado.
