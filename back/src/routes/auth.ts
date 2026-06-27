@@ -278,6 +278,9 @@ authRouter.post('/change-password', changePwLimiter, authenticate, async (req: A
   if (newPassword !== repeatPassword) {
     return res.status(422).json({ error: { code: 'mismatch', message: 'Las contraseñas no coinciden' } });
   }
+  if (newPassword === oldPassword) {
+    return res.status(422).json({ error: { code: 'same_password', message: 'La nueva contraseña debe ser distinta de la actual' } });
+  }
   const pwError = validatePassword(newPassword);
   if (pwError) {
     return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 12 caracteres, con mayúscula, minúscula, número y símbolo especial)' } });
