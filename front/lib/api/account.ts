@@ -4,8 +4,8 @@ import { apiFetch } from './client';
 
 // Política espejo del back (lib/password.ts). Solo feedback en cliente; la
 // validación de verdad ocurre en el servidor.
-// Requisitos: mín. 12 caracteres + las 4 clases (mayúscula, minúscula, número, símbolo).
-export const PASSWORD_MIN_LENGTH = 12;
+// Requisitos: mín. 10 caracteres + las 4 clases (mayúscula, minúscula, número, símbolo).
+export const PASSWORD_MIN_LENGTH = 10;
 
 export interface PasswordChecks {
   upper: boolean;

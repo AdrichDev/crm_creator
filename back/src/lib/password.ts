@@ -1,11 +1,11 @@
 // ---------------------------------------------------------------------------
 // Política de contraseña (compartida por set/change/reset).
-// Endurecida (2026-06-26): mínimo ≥ 12 chars Y las 4 clases de caracteres
+// Endurecida (2026-06-26): mínimo ≥ 10 chars Y las 4 clases de caracteres
 // (mayúscula, minúscula, número y símbolo especial).
 // Portable, sin dependencias. El espejo en front es solo feedback: la
 // validación de verdad ocurre aquí, en el servidor.
 // ---------------------------------------------------------------------------
-export const PASSWORD_MIN_LENGTH = 12;
+export const PASSWORD_MIN_LENGTH = 10;
 
 export type PasswordError = 'too_short' | 'needs_upper' | 'needs_lower' | 'needs_digit' | 'needs_special';
 
