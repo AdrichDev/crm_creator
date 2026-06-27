@@ -19,6 +19,15 @@ interface MyAccountFormProps {
   onProfileChange?: (profile: AuthUserProfile) => void;
 }
 
+/** Valida teléfono: ES nacional (9 dígitos 6-9) o internacional (+prefijo). Vacío = válido (opcional). */
+function validatePhone(raw: string): string | null {
+  const v = raw.trim().replace(/[\s().-]/g, '');
+  if (!v) return null;
+  if (/^[6-9]\d{8}$/.test(v)) return null; // España: 9 dígitos
+  if (/^\+\d{8,15}$/.test(v)) return null; // Internacional (incluye +34…)
+  return 'Teléfono no válido. Usa 9 dígitos (España) o + seguido del prefijo internacional (ej. +44 7700 900123).';
+}
+
 /** Separa "Nombre Apellido(s)" en firstName + lastName. */
 function splitName(full: string): { firstName: string; lastName: string } {
   const parts = full.trim().split(/\s+/);
@@ -72,6 +81,8 @@ export function MyAccountForm({ initialProfile, onProfileChange }: MyAccountForm
 
   async function submit() {
     if (!firstName.trim()) { setError('El nombre no puede estar vacío.'); return; }
+    const phoneError = validatePhone(phone);
+    if (phoneError) { setError(phoneError); return; }
     setError(null); setDone(false); setSaving(true);
     try {
       if (!apiOn) {

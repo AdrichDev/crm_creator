@@ -78,6 +78,7 @@ authRouter.post('/register', registerLimiter, async (req, res) => {
   let result;
   try {
     result = await prisma.$transaction(async (tx) => {
+      // El registrante es ADMIN del negocio.
       const business = await tx.business.create({ data: { nombre: d.businessName, vertical: d.vertical } });
       await tx.location.create({ data: { businessId: business.id, nombre: d.businessName } });
       // crm.User.id = auth.users.id (UUID from Supabase).
@@ -89,7 +90,7 @@ authRouter.post('/register', registerLimiter, async (req, res) => {
           lastName: d.lastName,
         },
       });
-      await tx.membership.create({ data: { userId: user.id, businessId: business.id, role: 'OWNER' } });
+      await tx.membership.create({ data: { userId: user.id, businessId: business.id, role: 'ADMIN' } });
       return { business, user };
     });
   } catch {

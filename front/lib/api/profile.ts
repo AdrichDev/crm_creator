@@ -10,12 +10,15 @@ export interface AuthUserProfile {
   firstName: string;
   lastName: string | null;
   phone: string | null;
+  /** Rol de membresía en el negocio activo (OWNER, ADMIN, EMPLOYEE, CLIENT, …). */
+  role?: string;
 }
 
 /** Datos de perfil del usuario logado, extraídos de la respuesta de /auth/me. */
 export async function getAuthProfile(): Promise<AuthUserProfile> {
-  const data = await apiFetch<{ user: AuthUserProfile }>('/auth/me');
-  return data.user;
+  const data = await apiFetch<{ user: AuthUserProfile; role?: string }>('/auth/me');
+  // `role` viene a nivel raíz en /auth/me (req.role), no dentro de `user`.
+  return { ...data.user, role: data.role };
 }
 
 export interface UpdateProfileInput {

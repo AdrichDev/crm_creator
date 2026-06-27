@@ -42,6 +42,23 @@ export function moduleAllowedForRole(role: Role, id: ModuleId): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Etiqueta legible del rol REAL de membresía del back. El sistema tiene
+// EXACTAMENTE 4 roles: ADMIN, MANAGER, EMPLOYEE y CLIENT.
+// ---------------------------------------------------------------------------
+const MEMBER_ROLE_LABEL: Record<string, string> = {
+  ADMIN: 'Administrador',
+  MANAGER: 'Manager',
+  EMPLOYEE: 'Empleado',
+  CLIENT: 'Cliente',
+};
+
+/** Etiqueta legible del rol real de membresía. "Usuario" si no mapea. */
+export function memberRoleLabel(memberRole: string | null | undefined): string {
+  if (!memberRole) return 'Usuario';
+  return MEMBER_ROLE_LABEL[memberRole] ?? 'Usuario';
+}
+
+// ---------------------------------------------------------------------------
 // Capacidad de escritura (crear / editar / eliminar) por rol y módulo.
 // ---------------------------------------------------------------------------
 // Módulos en los que el rol es SOLO LECTURA. null = escribe en todo; '*' = lee todo.

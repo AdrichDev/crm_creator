@@ -25,7 +25,7 @@ const prisma = new PrismaClient();
 const SB_URL = (process.env.SUPABASE_URL ?? '').replace(/\/+$/, '').replace(/\.$/, '');
 const SB_SRK = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
 
-/** Registers a user (creates business + OWNER membership) and returns a signed-in token. */
+/** Registers a user (creates business + ADMIN membership) and returns a signed-in token. */
 async function registerAndToken(email: string, password: string): Promise<{ token: string; businessId: string; userId: string }> {
   const reg = await api('/auth/register', {
     method: 'POST',
@@ -208,6 +208,57 @@ test('GET /users never includes passwordHash or status fields', async (t) => {
     assert.ok(!('status' in u), 'response must not include status');
     assert.ok(u.id && u.email, 'each row has id + email');
   }
+});
+
+// ---------------------------------------------------------------------------
+// Last-admin protection: the sole ADMIN cannot demote or delete themselves and
+// leave the business without administrators. No "owner" concept — all admins
+// are equal; the only guard is "keep at least one admin" + "no self-delete".
+// ---------------------------------------------------------------------------
+test('sole admin cannot demote self (409 last_admin) nor delete self (403 self_delete)', async (t) => {
+  if (!backUp) return t.skip('back down');
+  if (!SUPABASE_LIVE) return t.skip('needs live Supabase to get a valid token');
+
+  const admin = await registerAndToken(`lastadmin_${uniq()}@test.local`, 'lastadmin-pass-1234');
+  created.businessIds.add(admin.businessId); created.userIds.add(admin.userId);
+
+  // Demoting the only admin would leave the business without admins → 409.
+  const patch = await api(`/users/${admin.userId}`, {
+    method: 'PATCH', body: JSON.stringify({ role: 'EMPLOYEE' }),
+  }, admin.token, admin.businessId);
+  assert.equal(patch.status, 409, `expected 409, got ${JSON.stringify(patch.body)}`);
+  assert.equal((patch.body!.error as { code: string }).code, 'last_admin');
+
+  // Deleting yourself is blocked regardless.
+  const del = await api(`/users/${admin.userId}`, { method: 'DELETE' }, admin.token, admin.businessId);
+  assert.equal(del.status, 403, `expected 403, got ${JSON.stringify(del.body)}`);
+  assert.equal((del.body!.error as { code: string }).code, 'self_delete');
+});
+
+// ---------------------------------------------------------------------------
+// Admin can assign MANAGER (Case A link existing user — no SMTP).
+// ---------------------------------------------------------------------------
+test('POST /users assigns MANAGER (Case A)', async (t) => {
+  if (!backUp) return t.skip('back down');
+  if (!SUPABASE_LIVE) return t.skip('needs live Supabase');
+
+  const admin = await registerAndToken(`mgr_admin_${uniq()}@test.local`, 'mgr-admin-pass-1234');
+  created.businessIds.add(admin.businessId); created.userIds.add(admin.userId);
+
+  const mEmail = `mgr_c_${uniq()}@test.local`;
+  const c = await registerAndToken(mEmail, 'mgr-c-pass-1234');
+  created.businessIds.add(c.businessId); created.userIds.add(c.userId);
+
+  const r = await api('/users', {
+    method: 'POST', body: JSON.stringify({ email: mEmail, firstName: 'Mgr', role: 'MANAGER' }),
+  }, admin.token, admin.businessId);
+  assert.equal(r.status, 201, `manager invite failed: ${JSON.stringify(r.body)}`);
+  assert.equal((r.body as { role: string }).role, 'MANAGER');
+  assert.equal((r.body as { linked: boolean }).linked, true);
+
+  const list = await api('/users', {}, admin.token, admin.businessId);
+  const rows = list.body as unknown as Array<{ id: string; role: string }>;
+  assert.equal(rows.find((x) => x.id === c.userId)?.role, 'MANAGER', 'manager row has MANAGER role');
 });
 
 // ---------------------------------------------------------------------------

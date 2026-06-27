@@ -90,7 +90,7 @@ export function ChangePasswordForm({ userEmail }: ChangePasswordFormProps) {
       <div className="max-w-sm space-y-3">
         <div>
           <label className="opera-label">Contraseña actual</label>
-          <input className="opera-control" type="password" autoComplete="current-password" value={oldPassword} onChange={(e) => setOld(e.target.value)} />
+          <input className="opera-control" type="password" autoComplete="new-password" value={oldPassword} onChange={(e) => setOld(e.target.value)} />
         </div>
         <div>
           <label className="opera-label">Nueva contraseña</label>

@@ -1,13 +1,15 @@
 'use client';
 import Link from 'next/link';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { MODULES, CATEGORY_LABEL, type ModuleCategory } from '@/lib/config/modules';
 import { useProjects, useRole } from '@/lib/tenant-config-context';
 import { resolveModuleEmoji } from '@/lib/config/icons';
 import { cn } from '@/lib/utils';
-import { moduleAllowedForRole, moduleFromPath, DEMO_USERS, type Role } from '@/lib/config/roles';
+import { moduleAllowedForRole, moduleFromPath, memberRoleLabel, DEMO_USERS, type Role } from '@/lib/config/roles';
 import { GENERATED_TENANT } from '@/lib/config/generated-tenant';
+import { isApiEnabled } from '@/lib/api/client';
+import { getAuthProfile } from '@/lib/api/profile';
 import { logout } from '@/lib/auth/session';
 import { LogOut } from 'lucide-react';
 
@@ -16,6 +18,14 @@ const PANEL_TITLE: Record<Role, string> = {
   trabajador: 'Mi Panel',
   cliente: 'Mi Cuenta',
 };
+
+/** Iniciales a partir del nombre completo (2 primeras palabras). */
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '–';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
 
 export function Sidebar() {
   const { config, closeProject } = useProjects();
@@ -43,7 +53,35 @@ export function Sidebar() {
     .map((cat) => ({ cat, items: active.filter((m) => m.category === cat) }))
     .filter((g) => g.items.length > 0);
 
-  const user = DEMO_USERS[role];
+  // Pie del sidebar: usuario REAL de la sesión cuando hay backend; si no
+  // (consola fuente demo) se usa el usuario demo del rol activo. Fallback
+  // "Invitado" si la sesión no resuelve.
+  const apiOn = isApiEnabled();
+  const [realUser, setRealUser] = useState<{ nombre: string; iniciales: string; rolLabel: string } | null>(null);
+
+  useEffect(() => {
+    if (!apiOn) { setRealUser(null); return; }
+    let cancelled = false;
+    getAuthProfile()
+      .then((p) => {
+        if (cancelled) return;
+        const nombre = `${p.firstName} ${p.lastName ?? ''}`.trim() || p.email;
+        // rolLabel del rol REAL del usuario (membresía del back), no del selector "Ver como".
+        setRealUser({
+          nombre,
+          iniciales: initialsOf(nombre),
+          rolLabel: memberRoleLabel(p.role),
+        });
+      })
+      .catch(() => { if (!cancelled) setRealUser(null); });
+    return () => { cancelled = true; };
+  }, [apiOn]);
+
+  const demo = DEMO_USERS[role];
+  const user = apiOn
+    ? (realUser ?? { nombre: 'Invitado', iniciales: '–', rolLabel: '' })
+    : { nombre: demo.nombre, iniciales: demo.iniciales, rolLabel: demo.rolLabel };
+  const rolLabel = user.rolLabel;
 
   // "Salir": en un build generado (cliente final) cierra sesión y vuelve al
   // login. En la consola fuente cierra el proyecto y vuelve al dashboard general.
@@ -101,7 +139,7 @@ export function Sidebar() {
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium text-white">{user.nombre}</p>
-            <p className="truncate text-[11px] text-gold">{user.rolLabel}</p>
+            <p className="truncate text-[11px] text-gold">{rolLabel}</p>
           </div>
           <button onClick={salir} title="Salir"
             className="rounded-lg p-2 text-gray-400 transition hover:bg-white/5 hover:text-red-400">

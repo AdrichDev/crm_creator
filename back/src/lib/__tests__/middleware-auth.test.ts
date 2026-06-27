@@ -66,14 +66,14 @@ beforeEach(() => { nextCalled = false; });
 describe('authenticate middleware', () => {
   test('valid token + matching membership → next() called, req context set', async () => {
     const userId = 'uuid-aaa';
-    const db: FakePrisma = { membership: { findMany: async () => [{ userId, businessId: 'biz-1', role: 'OWNER' }] } };
+    const db: FakePrisma = { membership: { findMany: async () => [{ userId, businessId: 'biz-1', role: 'MANAGER' }] } };
     const req: AuthedReq = { headers: { authorization: 'Bearer tok', 'x-business-id': 'biz-1' } };
     const res = makeRes();
     await makeAuthMiddleware(db, verifyAs(userId))(req, res, next);
     assert.ok(nextCalled, 'next should be called');
     assert.equal(req.userId, userId);
     assert.equal(req.businessId, 'biz-1');
-    assert.equal(req.role, 'OWNER');
+    assert.equal(req.role, 'MANAGER');
   });
 
   test('no Authorization header → 401 no_token', async () => {

@@ -19,13 +19,9 @@ datasource db {
 
 // ----------------------------- Enums -----------------------------
 enum MemberRole {
-  OWNER
   ADMIN
   MANAGER
   EMPLOYEE
-  RECEPTIONIST
-  PROFESSIONAL
-  ACCOUNTANT
   CLIENT
 }
 

@@ -14,7 +14,7 @@ export function requireRole(...roles: MemberRole[]) {
 
 // Roles de "staff" (empleo): tienen acceso a los datos de gestión del negocio.
 // El rol CLIENT queda FUERA → no puede tocar endpoints de staff (solo su /me/*).
-export const STAFF_ROLES: MemberRole[] = ['OWNER', 'ADMIN', 'MANAGER', 'EMPLOYEE', 'RECEPTIONIST', 'PROFESSIONAL', 'ACCOUNTANT'];
+export const STAFF_ROLES: MemberRole[] = ['ADMIN', 'MANAGER', 'EMPLOYEE'];
 
 // Guard: deniega a CLIENT (y a cualquier rol no-staff) los endpoints de gestión.
 export const staffOnly = requireRole(...STAFF_ROLES);

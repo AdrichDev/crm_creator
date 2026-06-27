@@ -1,23 +1,23 @@
 # Tasks — crm-sidebar-usuario-real (Nivel 2)
 
 ## T0 — Exploración
-- [ ] T0.1 Confirmar la fuente del usuario logado en el front CRM (`lib/api/me.ts`, ruta `/me`, o hook de auth). Campos disponibles: firstName, lastName, role, email.
-- [ ] T0.2 Buscar todos los usos de `DEMO_USERS` (sidebar + ¿selector de rol?). Decidir borrar vs conservar.
+- [x] T0.1 Fuente del usuario logado confirmada: `getAuthProfile()` (`lib/api/profile.ts` → `GET /auth/me`). Campos: firstName, lastName, phone, email. Rol vía `useRole()`.
+- [x] T0.2 Usos de `DEMO_USERS`: sidebar (reemplazado), `panel/page.tsx`, `worker-chips.tsx`. Se CONSERVA (sigue usado en panel demo).
 
 ## T1 — Usuario real en el pie
-- [ ] T1.1 `sidebar.tsx`: reemplazar `const user = DEMO_USERS[role]` por el usuario real (cargado de la sesión). Nombre, rolLabel e iniciales del dato real. Fallback "Invitado"/sin sesión.
-- [ ] T1.2 Si `DEMO_USERS` queda huérfano → eliminarlo de `roles.ts`. Si no, dejarlo solo donde se use.
+- [x] T1.1 `sidebar.tsx`: `DEMO_USERS[role]` reemplazado por usuario real de sesión cuando `isApiEnabled()` (`getAuthProfile`). Nombre, iniciales (`initialsOf`) y rolLabel del dato real. **rolLabel = rol REAL de membresía** (`/auth/me` → `role`, mapeado con `roleFromMemberRole` → `ROLE_LABEL`), NO el selector "Ver como". `getAuthProfile` ahora expone `role`. Fallback "Invitado". En consola fuente demo (sin API) se mantiene el demo del rol.
+- [x] T1.2 `DEMO_USERS` NO huérfano (panel + worker-chips) → se mantiene en `roles.ts`.
 
 ## T2 — Sidebar fijo / main scroll
-- [ ] T2.1 `app-shell.tsx`: `<aside>` fijo `sticky top-0 h-screen` (o `fixed` + offset del main); `<main>` `overflow-y-auto` a altura de viewport. Solo el main scrollea.
-- [ ] T2.2 Verificar que el colapso del sidebar y el branding siguen OK con el nuevo layout.
+- [x] T2.1 YA implementado en `globals.css`: `.opera-shell{height:100vh;overflow:hidden}`, `.opera-main{overflow-y:auto}`, `.opera-sidebar{flex-shrink:0}`. Solo el main scrollea.
+- [x] T2.2 Colapso/branding intactos (sin cambios de layout).
 
 ## T3 — Tests
-- [ ] T3.1 Test (front) del pie del sidebar con usuario mock → muestra nombre/iniciales reales, no demo.
+- [x] T3.1 `tests/sidebar-user.test.tsx`: render del pie con perfil mock → muestra nombre real ("Carlos Ruiz Pérez") e iniciales ("CR"), no el demo. Verde.
 
 ## Verificación
-- [ ] V.1 Logado como admin/trabajador/cliente → el pie muestra TU nombre y rol reales.
-- [ ] V.2 Con contenido largo, el sidebar queda fijo y solo el main baja.
-- [ ] V.3 Colapso del sidebar sigue funcionando. `tsc` + tests verde.
+- [x] V.3 `tsc` limpio + 176 tests verde (suite completa front).
+- [ ] V.1 Logado como admin/trabajador/cliente → el pie muestra TU nombre real. (manual con DB real)
+- [ ] V.2 Con contenido largo, el sidebar queda fijo y solo el main baja. (manual visual — CSS ya presente)
 
 ## Tras verde: gate Ruflo antes de commit.
