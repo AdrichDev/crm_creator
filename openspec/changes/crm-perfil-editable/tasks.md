@@ -18,7 +18,7 @@
 - [x] C.5 Tests: antigua incorrecta → error propagado; nueva débil → 422; éxito → cambia. Tests vitest en front (account-api.test.ts, profile-api.test.ts).
 
 ## Seguridad
-- [x] S.1 Revisión seguridad flujo contraseña (jun 2026): PASA. Reautenticación con cliente Supabase efímero (no en navegador); gating por sesión (userId de sesión, nunca del body → solo cambia su propia pass); sin logs de contraseña ni fuga del error de Supabase; rate limit + política + invalidación de otras sesiones. Hardening añadido: back exige `newPassword !== oldPassword` (422 same_password). Pendiente solo aprobación humana para "habilitar".
+- [x] S.1 Revisión seguridad flujo contraseña (jun 2026): PASA. Reautenticación con cliente Supabase efímero (no en navegador); gating por sesión (userId de sesión, nunca del body → solo cambia su propia pass); sin logs de contraseña ni fuga del error de Supabase; rate limit + política + invalidación de otras sesiones. Hardening añadido: back exige `newPassword !== oldPassword` (422 same_password). **Aprobación humana concedida (jun 2026) → flujo habilitado.**
 
 ## Verificación
 - [ ] V.1 Editar nombre/apellido/teléfono persiste y se ve tras reload.
