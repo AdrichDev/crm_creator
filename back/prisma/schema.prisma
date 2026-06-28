@@ -10,11 +10,13 @@
 // usado en rbac), User.firstName/lastName/email/username/phone (auth, acoplado al front
 // gestión-usuarios). Enums: VALUES intactos (RLS depende de role<>'CLIENT').
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../src/lib/generated/prisma"
 }
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // P7: la URL de conexión vive en prisma.config.ts (Migrate) y se pasa vía
+  // driver-adapter (@prisma/adapter-pg) al construir PrismaClient (runtime).
 }
 
 // ----------------------------- Enums -----------------------------

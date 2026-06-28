@@ -1,6 +1,6 @@
 import { Router, type Response } from 'express';
 import { z } from 'zod';
-import type { MemberRole } from '@prisma/client';
+import type { MemberRole } from '../lib/generated/prisma/client.js';
 import { prisma } from '../prisma.js';
 import { requireRole } from '../middleware/rbac.js';
 import type { AuthedRequest } from '../middleware/types.js';

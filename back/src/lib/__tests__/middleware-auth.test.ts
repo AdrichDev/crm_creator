@@ -8,7 +8,7 @@
 import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Response, NextFunction } from 'express';
-import type { MemberRole } from '@prisma/client';
+import type { MemberRole } from '../generated/prisma/client.js';
 
 type FakeMembership = { userId: string; businessId: string; role: MemberRole };
 type FakePrisma = { membership: { findMany(args: { where: { userId: string } }): Promise<FakeMembership[]> } };

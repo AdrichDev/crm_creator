@@ -1,5 +1,5 @@
 import type { Response, NextFunction } from 'express';
-import type { MemberRole } from '@prisma/client';
+import type { MemberRole } from '../lib/generated/prisma/client.js';
 import type { AuthedRequest } from './types.js';
 
 // Exige uno de los roles indicados sobre el tenant activo.

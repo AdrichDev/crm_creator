@@ -1,5 +1,5 @@
 import { prisma } from '../prisma.js';
-import { BookingStatus } from '@prisma/client';
+import { BookingStatus } from './generated/prisma/client.js';
 
 export interface AvailabilityParams {
   businessId: string;
