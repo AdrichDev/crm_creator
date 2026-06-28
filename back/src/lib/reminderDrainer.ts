@@ -4,17 +4,42 @@ import { sendEmail as defaultSendEmail, reminderTemplate } from './email.js';
 // ---------------------------------------------------------------------------
 // Drainer de recordatorios de citas.
 // Ejecuta cada REMINDER_DRAINER_INTERVAL_MS ms (default 60 s).
-// Consulta filas Notification con estado 'pending' y programadoEn <= ahora.
-// Por cada fila:
+//
+// Seguro para múltiples instancias: cada iteración RECLAMA filas de forma atómica
+// (estado 'pending' -> 'processing' con locked_at = now) usando
+// `FOR UPDATE SKIP LOCKED`. Dos instancias nunca reclaman la misma fila, así que
+// no hay doble envío. Si una instancia muere a mitad, su fila queda 'processing'
+// con locked_at viejo y otra instancia la vuelve a reclamar pasado el TTL de lock.
+//
+// Por cada fila reclamada:
 //   1. Verifica que el booking exista y no esté cancelado/eliminado.
 //   2. Envía el email de recordatorio (soft-fail).
-//   3. Actualiza el estado a 'sent', 'skipped' o 'failed'.
+//   3. Estado final: 'sent', 'skipped', o reintento con backoff / 'failed' al tope.
 // Nunca para el proceso (errores globales son capturados y logueados).
 // ---------------------------------------------------------------------------
 
 export const REMINDER_DRAINER_INTERVAL_MS = Number(
   process.env.REMINDER_DRAINER_INTERVAL_MS ?? 60_000,
 );
+
+/** Filas reclamadas por iteración. */
+const CLAIM_BATCH = Number(process.env.REMINDER_CLAIM_BATCH ?? 50);
+
+/** Reintentos de envío antes de marcar 'failed' (terminal). */
+const MAX_ATTEMPTS = Number(process.env.REMINDER_MAX_ATTEMPTS ?? 3);
+
+/** TTL del lock: una fila 'processing' con locked_at más viejo que esto se reclama de nuevo. */
+const LOCK_STALE_MS = Number(process.env.REMINDER_LOCK_STALE_MS ?? 5 * 60_000);
+
+/** Backoff exponencial entre reintentos (base y tope). */
+const BACKOFF_BASE_MS = Number(process.env.REMINDER_BACKOFF_BASE_MS ?? 5 * 60_000);
+const BACKOFF_MAX_MS = Number(process.env.REMINDER_BACKOFF_MAX_MS ?? 60 * 60_000);
+
+/** Retraso del próximo intento n (1-based): base * 2^(n-1), capado. */
+export function backoffMs(intento: number): number {
+  const exp = BACKOFF_BASE_MS * 2 ** Math.max(0, intento - 1);
+  return Math.min(exp, BACKOFF_MAX_MS);
+}
 
 // ---------------------------------------------------------------------------
 // Interfaces para inyección de dependencias (facilita testing sin DB real).
@@ -26,6 +51,7 @@ export interface NotificationRow {
   destino: string | null;
   payload: unknown;
   businessId: string;
+  intentos: number;
 }
 
 interface ReminderPayload {
@@ -41,10 +67,22 @@ function isReminderPayload(p: unknown): p is ReminderPayload {
   return typeof p === 'object' && p !== null && 'bookingId' in p && 'customerName' in p;
 }
 
+/** Campos actualizables de una notificación tras procesarla. */
+export interface NotificationUpdate {
+  estado: string;
+  enviadoEn?: Date;
+  /** null libera el lock; se setea en todo estado terminal o reintento. */
+  lockedAt?: Date | null;
+  intentos?: number;
+  /** Reprograma el próximo intento (backoff). */
+  programadoEn?: Date;
+}
+
 export interface DrainerDeps {
-  findPending: () => Promise<NotificationRow[]>;
+  /** Reclama atómicamente filas pendientes (y colgadas) marcándolas 'processing'. */
+  claimPending: () => Promise<NotificationRow[]>;
   findBooking: (bookingId: string) => Promise<{ id: string } | null>;
-  updateNotification: (id: string, data: { estado: string; enviadoEn?: Date }) => Promise<void>;
+  updateNotification: (id: string, data: NotificationUpdate) => Promise<void>;
   sendEmail: (opts: { to: string; subject: string; html: string }) => Promise<boolean>;
 }
 
@@ -56,7 +94,7 @@ export async function processRow(row: NotificationRow, deps: DrainerDeps): Promi
   const payload = row.payload;
   if (!isReminderPayload(payload)) {
     console.warn(`[drainer] fila ${row.id} payload inválido — skipped`);
-    await deps.updateNotification(row.id, { estado: 'skipped' });
+    await deps.updateNotification(row.id, { estado: 'skipped', lockedAt: null });
     return;
   }
 
@@ -65,13 +103,13 @@ export async function processRow(row: NotificationRow, deps: DrainerDeps): Promi
 
   if (!booking) {
     console.log(`[drainer] fila ${row.id} booking cancelado/eliminado/inexistente — skipped`);
-    await deps.updateNotification(row.id, { estado: 'skipped' });
+    await deps.updateNotification(row.id, { estado: 'skipped', lockedAt: null });
     return;
   }
 
   if (!row.destino) {
     console.log(`[drainer] fila ${row.id} sin destino email — skipped`);
-    await deps.updateNotification(row.id, { estado: 'skipped' });
+    await deps.updateNotification(row.id, { estado: 'skipped', lockedAt: null });
     return;
   }
 
@@ -91,25 +129,44 @@ export async function processRow(row: NotificationRow, deps: DrainerDeps): Promi
     ? `Recordatorio: tu cita de mañana — ${payload.serviceName}`
     : `Recordatorio: tu cita es en 2 horas — ${payload.serviceName}`;
 
-  const sent = await deps.sendEmail({ to: row.destino, subject, html });
+  // sendEmail es soft-fail por contrato (devuelve false), pero si lanza (error
+  // transitorio) lo tratamos igual que false: así la fila NO queda atascada en
+  // 'processing' y entra en el flujo acotado de reintentos/backoff.
+  let sent = false;
+  try {
+    sent = await deps.sendEmail({ to: row.destino, subject, html });
+  } catch (err) {
+    console.error(`[drainer] fila ${row.id} sendEmail lanzó:`, (err as Error).message);
+    sent = false;
+  }
 
   if (sent) {
-    await deps.updateNotification(row.id, { estado: 'sent', enviadoEn: new Date() });
+    await deps.updateNotification(row.id, { estado: 'sent', enviadoEn: new Date(), lockedAt: null });
+    return;
+  }
+
+  // Soft-fail: reintentar con backoff hasta MAX_ATTEMPTS; al tope -> 'failed'.
+  const intentos = row.intentos + 1;
+  if (intentos >= MAX_ATTEMPTS) {
+    await deps.updateNotification(row.id, { estado: 'failed', intentos, lockedAt: null });
+    console.error(`[drainer] fila ${row.id} email fallido tras ${intentos} intentos — failed`);
   } else {
-    await deps.updateNotification(row.id, { estado: 'failed' });
-    console.error(`[drainer] fila ${row.id} email fallido — failed (sin retry en MVP)`);
+    const programadoEn = new Date(Date.now() + backoffMs(intentos));
+    await deps.updateNotification(row.id, { estado: 'pending', intentos, lockedAt: null, programadoEn });
+    console.warn(`[drainer] fila ${row.id} email fallido — reintento ${intentos} en ~${Math.round(backoffMs(intentos) / 1000)}s`);
   }
 }
 
 async function drainWithDeps(deps: DrainerDeps): Promise<void> {
   try {
-    const pending = await deps.findPending();
-    for (const row of pending) {
+    const claimed = await deps.claimPending();
+    for (const row of claimed) {
       try {
         await processRow(row, deps);
       } catch (err) {
         console.error(`[drainer] error procesando fila ${row.id}:`, (err as Error).message);
-        // Nunca para el drainer; la fila queda en 'pending' para reintentar.
+        // No liberamos el lock aquí: la fila queda 'processing' y el TTL de lock
+        // la reclamará en una iteración futura. Evita un bucle de fallo inmediato.
       }
     }
   } catch (err) {
@@ -124,16 +181,35 @@ async function drainWithDeps(deps: DrainerDeps): Promise<void> {
 
 function buildProdDeps(): DrainerDeps {
   return {
-    findPending: () =>
-      defaultPrisma.notification.findMany({
-        where: { estado: 'pending', canal: 'email', programadoEn: { lte: new Date() } },
-        take: 50,
-      }),
+    // Claim atómico: marca 'processing' + locked_at las filas elegibles y las
+    // devuelve. Elegibles = 'pending' vencidas, o 'processing' con lock caducado
+    // (instancia muerta). FOR UPDATE SKIP LOCKED evita que dos instancias colisionen.
+    claimPending: async () => {
+      const now = new Date();
+      const staleBefore = new Date(now.getTime() - LOCK_STALE_MS);
+      return defaultPrisma.$queryRaw<NotificationRow[]>`
+        UPDATE crm.notificacion
+        SET estado = 'processing', locked_at = ${now}
+        WHERE id IN (
+          SELECT id FROM crm.notificacion
+          WHERE canal = 'email'
+            AND programado_en <= ${now}
+            AND (
+              estado = 'pending'
+              OR (estado = 'processing' AND locked_at < ${staleBefore})
+            )
+          ORDER BY programado_en
+          FOR UPDATE SKIP LOCKED
+          LIMIT ${CLAIM_BATCH}
+        )
+        RETURNING id, tipo, destino, payload, negocio_id AS "businessId", intentos
+      `;
+    },
     findBooking: (bookingId: string) =>
       defaultPrisma.booking.findFirst({
         where: { id: bookingId, status: { not: 'CANCELLED' }, eliminadoEn: null },
       }),
-    updateNotification: async (id: string, data: { estado: string; enviadoEn?: Date }) => {
+    updateNotification: async (id: string, data: NotificationUpdate) => {
       await defaultPrisma.notification.update({ where: { id }, data });
     },
     sendEmail: defaultSendEmail,

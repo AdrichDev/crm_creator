@@ -632,6 +632,8 @@ model Notification {
   programadoEn DateTime? @map("programado_en")
   enviadoEn   DateTime? @map("enviado_en")
   estado      String   @default("pending") @map("estado")
+  lockedAt    DateTime? @map("locked_at")  // claim del drainer: filas 'processing' bloqueadas (multi-instancia)
+  intentos    Int      @default(0) @map("intentos")  // reintentos de envío; tope -> 'failed'
   createdAt   DateTime @default(now()) @map("creado_en")
   @@unique([tipo, businessId, destino, programadoEn])  // idempotencia: evita recordatorios duplicados
   @@index([programadoEn, estado])

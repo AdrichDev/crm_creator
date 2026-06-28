@@ -57,8 +57,8 @@ afterEach(() => {
 
 // ─── roleFromMembership ──────────────────────────────────────────────────────
 describe('roleFromMembership', () => {
-  it('OWNER → admin', () => expect(roleFromMembership('OWNER')).toBe('admin'));
   it('ADMIN → admin', () => expect(roleFromMembership('ADMIN')).toBe('admin'));
+  it('MANAGER → trabajador', () => expect(roleFromMembership('MANAGER')).toBe('trabajador'));
   it('CLIENT → cliente', () => expect(roleFromMembership('CLIENT')).toBe('cliente'));
   it('EMPLOYEE → trabajador', () => expect(roleFromMembership('EMPLOYEE')).toBe('trabajador'));
   it('undefined → trabajador', () => expect(roleFromMembership(undefined)).toBe('trabajador'));

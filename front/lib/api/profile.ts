@@ -10,7 +10,7 @@ export interface AuthUserProfile {
   firstName: string;
   lastName: string | null;
   phone: string | null;
-  /** Rol de membresía en el negocio activo (OWNER, ADMIN, EMPLOYEE, CLIENT, …). */
+  /** Rol de membresía en el negocio activo (ADMIN, MANAGER, EMPLOYEE, CLIENT). */
   role?: string;
 }
 
