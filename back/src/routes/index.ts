@@ -11,6 +11,7 @@ import { dashboardRouter } from './dashboard.js';
 import { brandingRouter } from './branding.js';
 import { usersRouter } from './users.js';
 import { customersRouter } from './customers.js';
+import { invoicesRouter } from './invoices.js';
 import { tenantsRouter } from './tenants.js';
 import { projectsRouter } from './projects.js';
 import { employeesRouter } from './employees.js';
@@ -41,7 +42,7 @@ api.use('/employees', employeesRouter); // castellano + nombre combinado + rol
 api.use('/customers', customersRouter); // castellano + agregados (visitas/gastoTotal/segmento)
 api.use('/resources', crudRouter('resource', { fields: ['locationId', 'nombre', 'tipo', 'capacidad', 'estado', 'notaUbicacion', 'descripcion', 'metadatos'], fkFields: { locationId: 'location' } }));
 api.use('/sales', crudRouter('sale', { fields: ['customerId', 'cliente', 'fecha', 'metodo', 'total'], include: { lines: true }, fkFields: { customerId: 'customer' } }));
-api.use('/invoices', crudRouter('invoice', { fields: ['numero', 'cliente', 'servicio', 'fecha', 'total', 'estado', 'documentos'] }));
+api.use('/invoices', invoicesRouter); // POST auto-asigna numero correlativo por negocio
 api.use('/campaigns', crudRouter('campaign', { fields: ['nombre', 'canal', 'estado', 'enviados', 'aperturas'] }));
 api.use('/fichajes', crudRouter('fichaje', { fields: ['employeeId', 'empleado', 'fecha', 'entrada', 'salida', 'horas'], fkFields: { employeeId: 'employee' } }));
 api.use('/tags', crudRouter('tag', { fields: ['nombre', 'color'] }));
