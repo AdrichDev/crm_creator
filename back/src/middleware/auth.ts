@@ -1,7 +1,17 @@
+import { timingSafeEqual } from 'node:crypto';
 import type { Response, NextFunction } from 'express';
 import { prisma } from '../prisma.js';
+import { env } from '../env.js';
 import { verifySupabaseToken } from '../lib/auth.js';
 import type { AuthedRequest } from './types.js';
+
+/** Constant-time compare; length-guarded so it never throws on mismatched sizes. */
+function tokensMatch(a: string, b: string): boolean {
+  const ba = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ba.length !== bb.length) return false;
+  return timingSafeEqual(ba, bb);
+}
 
 // Verifies the Supabase access token (ES256 vía JWKS, Bearer), resolves the active tenant
 // via x-business-id header (validated against the user's Memberships), and attaches
@@ -12,6 +22,20 @@ export async function authenticate(req: AuthedRequest, res: Response, next: Next
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) {
     return res.status(401).json({ error: { code: 'no_token', message: 'Falta token' } });
+  }
+
+  // Service-token (ops-bot) bypass. Enabled only when CRM_SERVICE_TOKEN is set.
+  // A matching Bearer enters as ADMIN over the business named in x-business-id;
+  // NO Supabase/membership lookup. x-business-id is mandatory in this mode.
+  if (env.serviceToken && tokensMatch(header.slice(7), env.serviceToken)) {
+    const businessId = req.headers['x-business-id'] as string | undefined;
+    if (!businessId) {
+      return res.status(400).json({ error: { code: 'no_business', message: 'Falta x-business-id (modo servicio)' } });
+    }
+    req.userId = undefined;
+    req.businessId = businessId;
+    req.role = 'ADMIN';
+    return next();
   }
 
   // (a) Token verification failures are CLIENT errors → 401. Scoped to its own try

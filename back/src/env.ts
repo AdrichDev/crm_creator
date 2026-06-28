@@ -24,6 +24,11 @@ export const env = {
   // URL pública del front, base de los enlaces de invitación/reset que viajan por email.
   frontUrl: process.env.FRONT_URL ?? 'http://localhost:3002',
 
+  // Token de servicio máquina-a-máquina (ops-bot). Vacío = deshabilitado (no se
+  // acepta ningún bypass). Cuando se define, un Bearer igual a este token entra
+  // como rol ADMIN sobre el negocio indicado en la cabecera x-business-id.
+  serviceToken: process.env.CRM_SERVICE_TOKEN ?? '',
+
   // (n8n automation emit removed in Phase 6 — auth emails are sent by Supabase Auth.)
 
   // Supabase Auth — backend only. SERVICE_ROLE_KEY must NEVER reach the browser.
