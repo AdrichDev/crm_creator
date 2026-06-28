@@ -194,34 +194,13 @@ authRouter.post('/forgot-password', forgotLimiter, async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /auth/set-password
-// Called after the user clicks the invite link; token is the Supabase OTP.
-// The front exchanges the OTP via verifyOtp (type: 'invite') to get a session,
-// then calls this endpoint (authenticated) or updateUser directly via SDK.
-// For backwards compat: accepts { token, newPassword } and uses admin API.
+// POST /auth/set-password — deprecated stub (always 410).
+// The invite flow is handled entirely by the front via the Supabase SDK:
+// verifyOtp({ token_hash, type: 'invite' }) then updateUser({ password }).
+// This endpoint never sets a password, so it does not validate the body —
+// it just signals the migration, like /verify-email.
 // ---------------------------------------------------------------------------
-const setPasswordSchema = z.object({
-  token: z.string().min(1),
-  newPassword: z.string(),
-  repeatPassword: z.string(),
-});
-
-authRouter.post('/set-password', tokenLimiter, (req, res) => {
-  const parsed = setPasswordSchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(422).json({ error: { code: 'validation', message: 'Datos inválidos' } });
-  }
-  const { newPassword, repeatPassword } = parsed.data;
-  if (newPassword !== repeatPassword) {
-    return res.status(422).json({ error: { code: 'mismatch', message: 'Las contraseñas no coinciden' } });
-  }
-  const pwError = validatePassword(newPassword);
-  if (pwError) {
-    return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 10 caracteres, con mayúscula, minúscula, número y símbolo especial)' } });
-  }
-  // Supabase OTP tokens are opaque to the server. The front must use:
-  // supabaseClient.auth.verifyOtp({ token_hash, type: 'invite' }) to get a session,
-  // then supabase.auth.updateUser({ password: newPassword }).
+authRouter.post('/set-password', tokenLimiter, (_req, res) => {
   res.status(410).json({
     error: {
       code: 'use_sdk',
@@ -231,24 +210,11 @@ authRouter.post('/set-password', tokenLimiter, (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /auth/reset-password
-// Same as set-password for the reset flow. Front handles OTP via SDK.
+// POST /auth/reset-password — deprecated stub (always 410).
+// Recovery flow is handled by the front via the Supabase SDK:
+// verifyOtp({ token_hash, type: 'recovery' }) then updateUser({ password }).
 // ---------------------------------------------------------------------------
-authRouter.post('/reset-password', tokenLimiter, async (req, res) => {
-  const parsed = setPasswordSchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(422).json({ error: { code: 'validation', message: 'Datos inválidos' } });
-  }
-  const { newPassword, repeatPassword } = parsed.data;
-  if (newPassword !== repeatPassword) {
-    return res.status(422).json({ error: { code: 'mismatch', message: 'Las contraseñas no coinciden' } });
-  }
-  const pwError = validatePassword(newPassword);
-  if (pwError) {
-    return res.status(422).json({ error: { code: 'weak_password', message: 'La contraseña no cumple la política (mínimo 10 caracteres, con mayúscula, minúscula, número y símbolo especial)' } });
-  }
-  // Front must: supabaseClient.auth.verifyOtp({ token_hash, type: 'recovery' })
-  // then supabase.auth.updateUser({ password: newPassword }).
+authRouter.post('/reset-password', tokenLimiter, (_req, res) => {
   res.status(410).json({
     error: {
       code: 'use_sdk',

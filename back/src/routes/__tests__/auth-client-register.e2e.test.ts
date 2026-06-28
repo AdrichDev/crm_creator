@@ -113,7 +113,7 @@ test('register-client creates CLIENT + Customer (live only)', async (t) => {
   const ownerEmail = `owner_${uniq()}@test.local`;
   const bizR = await api('/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ businessName: `Biz ${uniq()}`, email: ownerEmail, password: 'owner-pass-1234', firstName: 'Owner' }),
+    body: JSON.stringify({ businessName: `Biz ${uniq()}`, email: ownerEmail, password: 'Owner-pass-1234', firstName: 'Owner' }),
   });
   assert.equal(bizR.status, 201, `register failed: ${JSON.stringify(bizR.body)}`);
   const businessId = (bizR.body!.business as { id: string }).id;
@@ -152,7 +152,7 @@ test('register-client with duplicate email responds neutral (live only)', async 
   const ownerEmail = `owner_${uniq()}@test.local`;
   const bizR = await api('/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ businessName: `Biz ${uniq()}`, email: ownerEmail, password: 'owner-pass-1234', firstName: 'Owner' }),
+    body: JSON.stringify({ businessName: `Biz ${uniq()}`, email: ownerEmail, password: 'Owner-pass-1234', firstName: 'Owner' }),
   });
   const businessId = (bizR.body!.business as { id: string }).id;
   created.businessIds.add(businessId);
@@ -196,7 +196,7 @@ test('POST /set-password returns 410 (use SDK)', async (t) => {
   if (!backUp) return t.skip('back down');
   const r = await api('/auth/set-password', {
     method: 'POST',
-    body: JSON.stringify({ token: 'any', newPassword: 'new-pass-12345', repeatPassword: 'new-pass-12345' }),
+    body: JSON.stringify({ token: 'any', newPassword: 'New-pass-12345', repeatPassword: 'New-pass-12345' }),
   });
   assert.equal(r.status, 410);
   assert.equal((r.body!.error as { code: string }).code, 'use_sdk');
@@ -209,7 +209,7 @@ test('POST /reset-password returns 410 (use SDK)', async (t) => {
   if (!backUp) return t.skip('back down');
   const r = await api('/auth/reset-password', {
     method: 'POST',
-    body: JSON.stringify({ token: 'any', newPassword: 'new-pass-12345', repeatPassword: 'new-pass-12345' }),
+    body: JSON.stringify({ token: 'any', newPassword: 'New-pass-12345', repeatPassword: 'New-pass-12345' }),
   });
   assert.equal(r.status, 410);
   assert.equal((r.body!.error as { code: string }).code, 'use_sdk');

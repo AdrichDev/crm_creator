@@ -10,14 +10,15 @@ import type { Role } from '@/lib/config/roles';
 
 export const BUSINESS_KEY = 'saas.business.id';
 
-export type MemberRole =
-  | 'OWNER' | 'ADMIN' | 'MANAGER' | 'EMPLOYEE' | 'RECEPTIONIST' | 'PROFESSIONAL' | 'ACCOUNTANT' | 'CLIENT';
+// El sistema tiene EXACTAMENTE 4 roles de membresía (espejo del enum del back:
+// crm.MemberRole). Sin roles legacy (OWNER/RECEPTIONIST/PROFESSIONAL/ACCOUNTANT).
+export type MemberRole = 'ADMIN' | 'MANAGER' | 'EMPLOYEE' | 'CLIENT';
 
-/** Maps a membership role to the UI role profile. */
+/** Maps a membership role to the UI role profile (admin | trabajador | cliente). */
 export function roleFromMembership(role?: MemberRole): Role {
-  if (role === 'OWNER' || role === 'ADMIN') return 'admin';
+  if (role === 'ADMIN') return 'admin';
   if (role === 'CLIENT') return 'cliente';
-  return 'trabajador';
+  return 'trabajador'; // MANAGER y EMPLOYEE → trabajador
 }
 
 export interface SessionUser {

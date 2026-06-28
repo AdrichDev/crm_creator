@@ -10,7 +10,7 @@
 // - GET /users: no passwordHash or status fields in response.
 //
 // Runner: node --import tsx --test
-import { test, before, after } from 'node:test';
+import { test, before, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
@@ -68,6 +68,14 @@ before(async () => {
     backUp = res.ok;
   } catch { backUp = false; }
   if (!backUp) { console.warn(`[e2e] back no responde en ${BASE} — tests saltados`); return; }
+  await fetch(`${BASE}/api/auth/__test__/reset-rate-limits`, { method: 'POST' }).catch(() => {});
+});
+
+// El register/login está limitado por IP (registerLimiter max 5/15min). Cada test
+// hace varios registros, así que reseteamos los buckets antes de cada caso para que
+// el límite no se filtre entre tests y produzca 429 espurios.
+beforeEach(async () => {
+  if (!backUp) return;
   await fetch(`${BASE}/api/auth/__test__/reset-rate-limits`, { method: 'POST' }).catch(() => {});
 });
 
@@ -150,7 +158,7 @@ test('POST /register creates user + business in Supabase (live only)', async (t)
   const email = `reg_${uniq()}@test.local`;
   const r = await api('/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ businessName: `Biz ${uniq()}`, email, password: 'register-pass-123', firstName: 'Reg' }),
+    body: JSON.stringify({ businessName: `Biz ${uniq()}`, email, password: 'Register-pass-123', firstName: 'Reg' }),
   });
   assert.equal(r.status, 201, `register failed: ${JSON.stringify(r.body)}`);
   // No token in response (front uses SDK signInWithPassword).
@@ -170,12 +178,12 @@ test('POST /users invite links an existing user (Case A — no SMTP)', async (t)
   if (!SUPABASE_LIVE) return t.skip('SUPABASE_SERVICE_ROLE_KEY is placeholder — skipping live Supabase test');
 
   // Owner of business B.
-  const owner = await registerAndToken(`inv_owner_${uniq()}@test.local`, 'inv-owner-pass-1234');
+  const owner = await registerAndToken(`inv_owner_${uniq()}@test.local`, 'Inv-owner-pass-1234');
   created.businessIds.add(owner.businessId); created.userIds.add(owner.userId);
 
   // Existing user C (already in crm.User via their own registration).
   const cEmail = `inv_c_${uniq()}@test.local`;
-  const c = await registerAndToken(cEmail, 'inv-c-pass-1234');
+  const c = await registerAndToken(cEmail, 'Inv-c-pass-1234');
   created.businessIds.add(c.businessId); created.userIds.add(c.userId);
 
   // Owner invites C to business B → Case A: links via Membership, no email sent.
@@ -196,7 +204,7 @@ test('GET /users never includes passwordHash or status fields', async (t) => {
   if (!backUp) return t.skip('back down');
   if (!SUPABASE_LIVE) return t.skip('needs live Supabase to get a valid token');
 
-  const owner = await registerAndToken(`users_${uniq()}@test.local`, 'users-list-pass-1234');
+  const owner = await registerAndToken(`users_${uniq()}@test.local`, 'Users-list-pass-1234');
   created.businessIds.add(owner.businessId); created.userIds.add(owner.userId);
 
   const r = await api('/users', {}, owner.token, owner.businessId);
@@ -219,7 +227,7 @@ test('sole admin cannot demote self (409 last_admin) nor delete self (403 self_d
   if (!backUp) return t.skip('back down');
   if (!SUPABASE_LIVE) return t.skip('needs live Supabase to get a valid token');
 
-  const admin = await registerAndToken(`lastadmin_${uniq()}@test.local`, 'lastadmin-pass-1234');
+  const admin = await registerAndToken(`lastadmin_${uniq()}@test.local`, 'Lastadmin-pass-1234');
   created.businessIds.add(admin.businessId); created.userIds.add(admin.userId);
 
   // Demoting the only admin would leave the business without admins → 409.
@@ -242,11 +250,11 @@ test('POST /users assigns MANAGER (Case A)', async (t) => {
   if (!backUp) return t.skip('back down');
   if (!SUPABASE_LIVE) return t.skip('needs live Supabase');
 
-  const admin = await registerAndToken(`mgr_admin_${uniq()}@test.local`, 'mgr-admin-pass-1234');
+  const admin = await registerAndToken(`mgr_admin_${uniq()}@test.local`, 'Mgr-admin-pass-1234');
   created.businessIds.add(admin.businessId); created.userIds.add(admin.userId);
 
   const mEmail = `mgr_c_${uniq()}@test.local`;
-  const c = await registerAndToken(mEmail, 'mgr-c-pass-1234');
+  const c = await registerAndToken(mEmail, 'Mgr-c-pass-1234');
   created.businessIds.add(c.businessId); created.userIds.add(c.userId);
 
   const r = await api('/users', {
@@ -271,7 +279,7 @@ test('register with duplicate email → 409 (live only)', async (t) => {
   const email = `dup_${uniq()}@test.local`;
   const r1 = await api('/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ businessName: `Biz ${uniq()}`, email, password: 'dup-pass-1234', firstName: 'Dup' }),
+    body: JSON.stringify({ businessName: `Biz ${uniq()}`, email, password: 'Dup-pass-1234', firstName: 'Dup' }),
   });
   assert.equal(r1.status, 201, `first register failed: ${JSON.stringify(r1.body)}`);
   created.businessIds.add((r1.body!.business as { id: string }).id);
@@ -279,7 +287,7 @@ test('register with duplicate email → 409 (live only)', async (t) => {
 
   const r2 = await api('/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ businessName: `Biz2 ${uniq()}`, email, password: 'dup-pass-1234', firstName: 'Dup2' }),
+    body: JSON.stringify({ businessName: `Biz2 ${uniq()}`, email, password: 'Dup-pass-1234', firstName: 'Dup2' }),
   });
   assert.equal(r2.status, 409, `Expected 409 on duplicate, got ${r2.status}`);
   assert.equal((r2.body!.error as { code: string }).code, 'email_taken');
