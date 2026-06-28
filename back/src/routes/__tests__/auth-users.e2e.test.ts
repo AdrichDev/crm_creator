@@ -13,11 +13,11 @@
 import { test, before, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../../prisma.js';
 import { createClient } from '@supabase/supabase-js';
 
 const BASE = process.env.TEST_API_URL ?? 'http://localhost:4001';
-const prisma = new PrismaClient();
+// prisma: singleton compartido (con adapter P7), importado arriba.
 
 // Supabase URL (normalized) + service-role key. The service-role key doubles as a
 // valid apikey for signInWithPassword, so the e2e can mint a REAL user access token

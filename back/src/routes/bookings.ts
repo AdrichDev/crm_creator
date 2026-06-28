@@ -2,7 +2,7 @@ import { Router, type Response } from 'express';
 import { prisma } from '../prisma.js';
 import { checkAvailability, daySlots } from '../lib/availability.js';
 import type { AuthedRequest } from '../middleware/types.js';
-import { BookingStatus } from '@prisma/client';
+import { BookingStatus } from '../lib/generated/prisma/client.js';
 import { assertFks, handleCrossTenant } from '../lib/tenant.js';
 import { joinNombre } from '../lib/nombre.js';
 import { sendEmail, confirmedTemplate, noShowTemplate } from '../lib/email.js';
