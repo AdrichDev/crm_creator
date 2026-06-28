@@ -52,14 +52,22 @@ function toProject(b: BusinessRow) {
 }
 
 // GET / → proyectos del usuario (vía Membership), no eliminados.
+// Modo servicio (ops-bot): lista TODOS los proyectos (no hay membership), con
+// filtro opcional ?tenantId para acotar a un cliente concreto.
 projectsRouter.get('/', async (req: AuthedRequest, res: Response) => {
-  const memberships = await prisma.membership.findMany({
-    where: { userId: req.userId },
-    select: { businessId: true },
-  });
-  const ids = memberships.map((m) => m.businessId);
+  let where: Record<string, unknown>;
+  if (req.isService) {
+    const tenantId = req.query.tenantId as string | undefined;
+    where = { eliminadoEn: null, ...(tenantId ? { tenantId } : {}) };
+  } else {
+    const memberships = await prisma.membership.findMany({
+      where: { userId: req.userId },
+      select: { businessId: true },
+    });
+    where = { id: { in: memberships.map((m) => m.businessId) }, eliminadoEn: null };
+  }
   const businesses = await prisma.business.findMany({
-    where: { id: { in: ids }, eliminadoEn: null },
+    where,
     select: {
       id: true, createdAt: true, nombre: true, vertical: true,
       marcaPrimario: true, marcaSecundario: true, logoUrl: true,
@@ -88,7 +96,7 @@ function mirrorColumns(config: Cfg) {
 async function reviveProject(
   tx: Tx,
   dupId: string,
-  userId: string,
+  userId: string | undefined,
   config: Cfg,
   mirror: ReturnType<typeof mirrorColumns>,
 ) {
@@ -96,23 +104,27 @@ async function reviveProject(
   const setting = await tx.businessSetting.findFirst({ where: { businessId: b.id, categoria: CONFIG_CATEGORY } });
   if (setting) await tx.businessSetting.update({ where: { id: setting.id }, data: { datos: config as Prisma.InputJsonValue } });
   else await tx.businessSetting.create({ data: { businessId: b.id, categoria: CONFIG_CATEGORY, datos: config as Prisma.InputJsonValue } });
-  const member = await tx.membership.findFirst({ where: { userId, businessId: b.id } });
-  if (!member) await tx.membership.create({ data: { userId, businessId: b.id, role: 'ADMIN' } });
+  // Service mode has no userId → no membership to ensure.
+  if (userId) {
+    const member = await tx.membership.findFirst({ where: { userId, businessId: b.id } });
+    if (!member) await tx.membership.create({ data: { userId, businessId: b.id, role: 'ADMIN' } });
+  }
   return b;
 }
 
 // Crea el proyecto desde cero: Business + sede + config + membership OWNER.
+// userId ausente (modo servicio) → se omite la membership (el bot autentica por token).
 async function createProject(
   tx: Tx,
   tenantId: string,
-  userId: string,
+  userId: string | undefined,
   config: Cfg,
   mirror: ReturnType<typeof mirrorColumns>,
 ) {
   const b = await tx.business.create({ data: { tenantId, ...mirror } });
   await tx.location.create({ data: { businessId: b.id, nombre: config.business?.name ?? 'Sede' } });
   await tx.businessSetting.create({ data: { businessId: b.id, categoria: CONFIG_CATEGORY, datos: config as Prisma.InputJsonValue } });
-  await tx.membership.create({ data: { userId, businessId: b.id, role: 'ADMIN' } });
+  if (userId) await tx.membership.create({ data: { userId, businessId: b.id, role: 'ADMIN' } });
   return b;
 }
 
@@ -137,8 +149,8 @@ projectsRouter.post('/', async (req: AuthedRequest, res: Response) => {
   try {
     const business = await prisma.$transaction((tx) =>
       dup
-        ? reviveProject(tx, dup.id, req.userId!, config, mirror)
-        : createProject(tx, tenantId, req.userId!, config, mirror),
+        ? reviveProject(tx, dup.id, req.userId, config, mirror)
+        : createProject(tx, tenantId, req.userId, config, mirror),
     );
     res.status(201).json({ id: business.id, config, createdAt: business.createdAt.toISOString() });
   } catch (e) {
@@ -153,8 +165,14 @@ projectsRouter.post('/', async (req: AuthedRequest, res: Response) => {
 // PATCH /:id → actualiza config (modo edición). Espeja a columnas + BusinessSetting.
 projectsRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
   const id = req.params.id;
-  const member = await prisma.membership.findFirst({ where: { userId: req.userId, businessId: id } });
-  if (!member) return res.status(404).json({ error: { code: 'not_found', message: 'Proyecto no encontrado' } });
+  // Service mode authorizes by token (no membership); validate the project exists.
+  if (req.isService) {
+    const exists = await prisma.business.findFirst({ where: { id, eliminadoEn: null }, select: { id: true } });
+    if (!exists) return res.status(404).json({ error: { code: 'not_found', message: 'Proyecto no encontrado' } });
+  } else {
+    const member = await prisma.membership.findFirst({ where: { userId: req.userId, businessId: id } });
+    if (!member) return res.status(404).json({ error: { code: 'not_found', message: 'Proyecto no encontrado' } });
+  }
   const config = (req.body?.config ?? {}) as Cfg;
 
   await prisma.$transaction(async (tx) => {
@@ -183,8 +201,13 @@ projectsRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
 // DELETE /:id → soft delete (eliminadoEn = now). Hard delete se hará en producción.
 projectsRouter.delete('/:id', async (req: AuthedRequest, res: Response) => {
   const id = req.params.id;
-  const member = await prisma.membership.findFirst({ where: { userId: req.userId, businessId: id } });
-  if (!member) return res.status(404).json({ error: { code: 'not_found', message: 'Proyecto no encontrado' } });
+  if (req.isService) {
+    const exists = await prisma.business.findFirst({ where: { id, eliminadoEn: null }, select: { id: true } });
+    if (!exists) return res.status(404).json({ error: { code: 'not_found', message: 'Proyecto no encontrado' } });
+  } else {
+    const member = await prisma.membership.findFirst({ where: { userId: req.userId, businessId: id } });
+    if (!member) return res.status(404).json({ error: { code: 'not_found', message: 'Proyecto no encontrado' } });
+  }
   await prisma.business.update({ where: { id }, data: { eliminadoEn: new Date() } });
   res.status(204).end();
 });

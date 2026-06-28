@@ -25,16 +25,19 @@ export async function authenticate(req: AuthedRequest, res: Response, next: Next
   }
 
   // Service-token (ops-bot) bypass. Enabled only when CRM_SERVICE_TOKEN is set.
-  // A matching Bearer enters as ADMIN over the business named in x-business-id;
-  // NO Supabase/membership lookup. x-business-id is mandatory in this mode.
+  // A matching Bearer enters as ADMIN; NO Supabase/membership lookup.
+  // x-business-id is REQUIRED for data routes (anti cross-tenant), but OPTIONAL
+  // for cross-business routes (/projects, /tenants) that list or create CRMs.
   if (env.serviceToken && tokensMatch(header.slice(7), env.serviceToken)) {
     const businessId = req.headers['x-business-id'] as string | undefined;
-    if (!businessId) {
+    const crossBusiness = req.path.startsWith('/projects') || req.path.startsWith('/tenants');
+    if (!businessId && !crossBusiness) {
       return res.status(400).json({ error: { code: 'no_business', message: 'Falta x-business-id (modo servicio)' } });
     }
     req.userId = undefined;
     req.businessId = businessId;
     req.role = 'ADMIN';
+    req.isService = true;
     return next();
   }
 
