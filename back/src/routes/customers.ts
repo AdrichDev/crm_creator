@@ -3,6 +3,7 @@ import { Prisma } from '../lib/generated/prisma/client.js';
 import { prisma } from '../prisma.js';
 import type { AuthedRequest } from '../middleware/types.js';
 import { splitNombre, joinNombre, pickFields } from '../lib/nombre.js';
+import { parsePagination } from '../lib/pagination.js';
 
 // Clientes (crm.cliente) en CASTELLANO, con agregados calculados (visitas,
 // gastoTotal, ultimaVisita, segmento). Sustituye al crudRouter genérico para
@@ -32,9 +33,33 @@ function buildData(body: Record<string, unknown>): Record<string, unknown> {
 
 customersRouter.get('/', async (req: AuthedRequest, res: Response) => {
   const businessId = req.businessId;
-  const customers = await prisma.customer.findMany({ where: { businessId, eliminadoEn: null }, orderBy: { createdAt: 'desc' } });
+  const { page, limit, search } = parsePagination(req.query as Record<string, unknown>);
+
+  // Búsqueda ILIKE sobre nombre, apellido y email.
+  const searchWhere = search ? {
+    OR: [
+      { nombre:   { contains: search, mode: 'insensitive' as const } },
+      { apellido: { contains: search, mode: 'insensitive' as const } },
+      { email:    { contains: search, mode: 'insensitive' as const } },
+    ],
+  } : {};
+
+  const where = { businessId, eliminadoEn: null, ...searchWhere };
+
+  // Dos queries paralelas: clientes de la página actual + total filtrado.
+  const [customers, total] = await Promise.all([
+    prisma.customer.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.customer.count({ where }),
+  ]);
+
   const ids = customers.map((c) => c.id);
 
+  // Agregados sobre los ids de la página actual (no de todo el negocio).
   const [bookingsAgg, salesAgg] = await Promise.all([
     prisma.booking.groupBy({
       by: ['customerId'],
@@ -51,7 +76,7 @@ customersRouter.get('/', async (req: AuthedRequest, res: Response) => {
   const bMap = new Map(bookingsAgg.map((b) => [b.customerId, b]));
   const sMap = new Map(salesAgg.map((s) => [s.customerId, s]));
 
-  const rows = customers.map((c) => {
+  const items = customers.map((c) => {
     const b = bMap.get(c.id);
     const s = sMap.get(c.id);
     const visitas = b?._count._all ?? 0;
@@ -70,7 +95,8 @@ customersRouter.get('/', async (req: AuthedRequest, res: Response) => {
       estado: c.estado,
     };
   });
-  res.json(rows);
+
+  res.json({ items, total, page, limit });
 });
 
 customersRouter.post('/', async (req: AuthedRequest, res: Response) => {

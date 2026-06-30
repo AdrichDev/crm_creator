@@ -1,6 +1,6 @@
 import { Router, type Response } from 'express';
-import { Prisma } from '../lib/generated/prisma/client.js';
 import { prisma } from '../prisma.js';
+import { Prisma } from '../lib/generated/prisma/client.js';
 import type { AuthedRequest } from '../middleware/types.js';
 
 // Proyectos = crm.Business (1-1 con aa.tenant vía tenant_id). La config del
@@ -83,24 +83,6 @@ function mirrorColumns(config: Cfg) {
   };
 }
 
-// Tenant con proyecto soft-deleted → REVIVIR (no se puede recrear por el unique).
-// Reusa la fila existente: limpia eliminadoEn, re-espeja config y asegura membership.
-async function reviveProject(
-  tx: Tx,
-  dupId: string,
-  userId: string,
-  config: Cfg,
-  mirror: ReturnType<typeof mirrorColumns>,
-) {
-  const b = await tx.business.update({ where: { id: dupId }, data: { ...mirror, eliminadoEn: null } });
-  const setting = await tx.businessSetting.findFirst({ where: { businessId: b.id, categoria: CONFIG_CATEGORY } });
-  if (setting) await tx.businessSetting.update({ where: { id: setting.id }, data: { datos: config as Prisma.InputJsonValue } });
-  else await tx.businessSetting.create({ data: { businessId: b.id, categoria: CONFIG_CATEGORY, datos: config as Prisma.InputJsonValue } });
-  const member = await tx.membership.findFirst({ where: { userId, businessId: b.id } });
-  if (!member) await tx.membership.create({ data: { userId, businessId: b.id, role: 'ADMIN' } });
-  return b;
-}
-
 // Crea el proyecto desde cero: Business + sede + config + membership OWNER.
 async function createProject(
   tx: Tx,
@@ -116,7 +98,7 @@ async function createProject(
   return b;
 }
 
-// POST / → crea proyecto. Exige tenant existente en AA (no proyecto sin cliente). 1-1.
+// POST / → crea proyecto. Exige tenant existente en AA. Un tenant puede tener N proyectos.
 projectsRouter.post('/', async (req: AuthedRequest, res: Response) => {
   const config = (req.body?.config ?? {}) as Cfg;
   const tenantId: string | undefined = req.body?.tenantId ?? config.business?.clienteId;
@@ -126,25 +108,15 @@ projectsRouter.post('/', async (req: AuthedRequest, res: Response) => {
   if (!(await tenantExists(tenantId))) {
     return res.status(422).json({ error: { code: 'tenant_not_found', message: 'El cliente (tenant) no existe en agents-agency' } });
   }
-  // 1-1 tenant↔Business. El tenant_id es @unique: una fila soft-deleted aún lo ocupa.
-  const dup = await prisma.business.findUnique({ where: { tenantId } });
-  if (dup && dup.eliminadoEn === null) {
-    return res.status(409).json({ error: { code: 'tenant_taken', message: 'Ese cliente ya tiene un proyecto' } });
-  }
 
   const mirror = mirrorColumns(config);
 
   try {
     const business = await prisma.$transaction((tx) =>
-      dup
-        ? reviveProject(tx, dup.id, req.userId!, config, mirror)
-        : createProject(tx, tenantId, req.userId!, config, mirror),
+      createProject(tx, tenantId, req.userId!, config, mirror),
     );
     res.status(201).json({ id: business.id, config, createdAt: business.createdAt.toISOString() });
   } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-      return res.status(409).json({ error: { code: 'tenant_taken', message: 'Ese cliente ya tiene un proyecto' } });
-    }
     console.error('[projects] create error:', e);
     return res.status(500).json({ error: { code: 'server_error', message: 'No se pudo crear el proyecto' } });
   }

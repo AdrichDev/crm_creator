@@ -3,6 +3,7 @@ import { prisma } from '../prisma.js';
 import type { AuthedRequest } from '../middleware/types.js';
 import { assertBelongsToBusiness, handleCrossTenant, type TenantModel } from './tenant.js';
 import { pickFields } from './nombre.js';
+import { parsePagination } from './pagination.js';
 
 type Delegate = {
   findMany: (args: unknown) => Promise<unknown[]>;
@@ -10,6 +11,7 @@ type Delegate = {
   create: (args: unknown) => Promise<unknown>;
   update: (args: unknown) => Promise<unknown>;
   delete: (args: unknown) => Promise<unknown>;
+  count: (args: unknown) => Promise<number>;
 };
 
 interface CrudOptions {
@@ -21,6 +23,8 @@ interface CrudOptions {
   orderBy?: Record<string, 'asc' | 'desc'>;
   /** FKs del body a validar contra el negocio activo (campo → modelo destino). */
   fkFields?: Record<string, TenantModel>;
+  /** Campos de texto para búsqueda ILIKE (OR). Si está vacío no se aplica filtro. */
+  searchFields?: string[];
 }
 
 // Valida cada FK presente en el body contra el negocio activo. Lanza CrossTenantError.
@@ -33,17 +37,33 @@ async function validateFks(body: Record<string, unknown>, businessId: string | u
 }
 
 // Router CRUD multi-tenant: todo se filtra/crea con el businessId del token.
+// GET / → devuelve { items, total, page, limit } paginado.
 export function crudRouter(model: string, opts: CrudOptions): Router {
   const router = Router();
   const delegate = (prisma as unknown as Record<string, Delegate>)[model];
 
   router.get('/', async (req: AuthedRequest, res: Response) => {
-    const rows = await delegate.findMany({
-      where: { businessId: req.businessId, eliminadoEn: null },
-      include: opts.include,
-      orderBy: opts.orderBy ?? { createdAt: 'desc' },
-    });
-    res.json(rows);
+    const { page, limit, search } = parsePagination(req.query as Record<string, unknown>);
+
+    // Filtro OR de texto (ILIKE via Prisma mode:'insensitive') solo si hay search y campos.
+    const searchWhere = (search && opts.searchFields?.length)
+      ? { OR: opts.searchFields.map((f) => ({ [f]: { contains: search, mode: 'insensitive' as const } })) }
+      : {};
+
+    const where = { businessId: req.businessId, eliminadoEn: null, ...searchWhere };
+
+    const [items, total] = await Promise.all([
+      delegate.findMany({
+        where,
+        include: opts.include,
+        orderBy: opts.orderBy ?? { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      delegate.count({ where }),
+    ]);
+
+    res.json({ items, total, page, limit });
   });
 
   router.get('/:id', async (req: AuthedRequest, res: Response) => {

@@ -6,6 +6,7 @@ import { BookingStatus } from '../lib/generated/prisma/client.js';
 import { assertFks, handleCrossTenant } from '../lib/tenant.js';
 import { joinNombre } from '../lib/nombre.js';
 import { sendEmail, confirmedTemplate, noShowTemplate } from '../lib/email.js';
+import { parsePagination } from '../lib/pagination.js';
 
 export const bookingsRouter = Router();
 
@@ -16,32 +17,58 @@ const ESTADO_LABEL: Record<string, string> = {
 };
 // GET / → citas en el shape castellano que consume el front (cliente/servicio/
 // empleado/fecha/hora/estado). Punto único: lo usan citas, panel, estadísticas.
+// Devuelve { items, total, page, limit } paginado.
 bookingsRouter.get('/', async (req: AuthedRequest, res: Response) => {
   const { from, to, status, employeeId } = req.query as Record<string, string | undefined>;
-  const rows = await prisma.booking.findMany({
-    where: {
-      businessId: req.businessId,
-      eliminadoEn: null,
-      ...(status ? { status: status as BookingStatus } : {}),
-      ...(employeeId ? { employeeId } : {}),
-      ...(from || to ? { startAt: { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) } } : {}),
-    },
-    include: { customer: true, service: true, employee: true },
-    orderBy: { startAt: 'asc' },
+  const { page, limit, search } = parsePagination(req.query as Record<string, unknown>);
+
+  // Búsqueda nested: nombre/apellido del cliente o nombre del servicio.
+  const searchWhere = search ? {
+    OR: [
+      { customer: { nombre:   { contains: search, mode: 'insensitive' as const } } },
+      { customer: { apellido: { contains: search, mode: 'insensitive' as const } } },
+      { service:  { nombre:   { contains: search, mode: 'insensitive' as const } } },
+    ],
+  } : {};
+
+  const where = {
+    businessId: req.businessId,
+    eliminadoEn: null,
+    ...searchWhere,
+    ...(status ? { status: status as BookingStatus } : {}),
+    ...(employeeId ? { employeeId } : {}),
+    ...(from || to ? { startAt: { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) } } : {}),
+  };
+
+  const [rows, total] = await Promise.all([
+    prisma.booking.findMany({
+      where,
+      include: { customer: true, service: true, employee: true },
+      orderBy: { startAt: 'asc' },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.booking.count({ where }),
+  ]);
+
+  res.json({
+    items: rows.map((b) => ({
+      id: b.id,
+      cliente: joinNombre(b.customer),
+      servicio: b.service?.nombre ?? '',
+      empleado: joinNombre(b.employee),
+      fecha: b.startAt.toISOString().slice(0, 10),
+      hora: b.startAt.toISOString().slice(11, 16),
+      estado: ESTADO_LABEL[b.status] ?? 'Pendiente',
+      customerId: b.customerId,
+      serviceId: b.serviceId,
+      employeeId: b.employeeId,
+      locationId: b.locationId,
+    })),
+    total,
+    page,
+    limit,
   });
-  res.json(rows.map((b) => ({
-    id: b.id,
-    cliente: joinNombre(b.customer),
-    servicio: b.service?.nombre ?? '',
-    empleado: joinNombre(b.employee),
-    fecha: b.startAt.toISOString().slice(0, 10),
-    hora: b.startAt.toISOString().slice(11, 16),
-    estado: ESTADO_LABEL[b.status] ?? 'Pendiente',
-    customerId: b.customerId,
-    serviceId: b.serviceId,
-    employeeId: b.employeeId,
-    locationId: b.locationId,
-  })));
 });
 
 bookingsRouter.get('/:id', async (req: AuthedRequest, res: Response) => {

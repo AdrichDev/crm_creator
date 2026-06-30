@@ -3,6 +3,7 @@ import { Prisma } from '../lib/generated/prisma/client.js';
 import { prisma } from '../prisma.js';
 import type { AuthedRequest } from '../middleware/types.js';
 import { splitNombre, joinNombre, pickFields } from '../lib/nombre.js';
+import { parsePagination } from '../lib/pagination.js';
 
 // Empleados (crm.empleado) en castellano. La página usa nombre COMBINADO
 // (nombre+apellido); aquí se combina al leer y se parte al escribir.
@@ -19,18 +20,45 @@ function buildData(body: Record<string, unknown>): Record<string, unknown> {
   return data;
 }
 
+// GET / → devuelve { items, total, page, limit } paginado con búsqueda ILIKE.
 employeesRouter.get('/', async (req: AuthedRequest, res: Response) => {
-  const rows = await prisma.employee.findMany({ where: { businessId: req.businessId }, orderBy: { createdAt: 'desc' } });
-  res.json(rows.map((e) => ({
-    id: e.id,
-    nombre: joinNombre(e),
-    rol: e.rol ?? '',
-    especialidad: e.especialidad ?? '',
-    email: e.email ?? '',
-    telefono: e.telefono ?? '',
-    estado: e.estado,
-    color: e.color,
-  })));
+  const { page, limit, search } = parsePagination(req.query as Record<string, unknown>);
+
+  const searchWhere = search ? {
+    OR: [
+      { nombre:   { contains: search, mode: 'insensitive' as const } },
+      { apellido: { contains: search, mode: 'insensitive' as const } },
+      { email:    { contains: search, mode: 'insensitive' as const } },
+    ],
+  } : {};
+
+  const where = { businessId: req.businessId, ...searchWhere };
+
+  const [rows, total] = await Promise.all([
+    prisma.employee.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.employee.count({ where }),
+  ]);
+
+  res.json({
+    items: rows.map((e) => ({
+      id: e.id,
+      nombre: joinNombre(e),
+      rol: e.rol ?? '',
+      especialidad: e.especialidad ?? '',
+      email: e.email ?? '',
+      telefono: e.telefono ?? '',
+      estado: e.estado,
+      color: e.color,
+    })),
+    total,
+    page,
+    limit,
+  });
 });
 
 employeesRouter.post('/', async (req: AuthedRequest, res: Response) => {

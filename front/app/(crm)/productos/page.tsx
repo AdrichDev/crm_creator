@@ -7,6 +7,21 @@ import { EntityModal, type Field } from '@/components/ui/entity-modal';
 import { useCollection } from '@/lib/data/use-collection';
 import { productos as seed, type Producto } from '@/lib/mock/data';
 import { PackagePlus } from 'lucide-react';
+import { isApiEnabled } from '@/lib/api/client';
+import { usePaginatedApi } from '@/lib/data/use-paginated-api';
+import { SearchInput } from '@/components/ui/search-input';
+import { Pagination } from '@/components/ui/pagination';
+
+// Shape que devuelve el back para /products paginado (crudRouter).
+type ProductoApiRow = {
+  id: string;
+  nombre: string;
+  categoria: string;
+  stock: number;
+  minimo: number;
+  precio: number;
+  proveedor: string;
+};
 
 const FIELDS: Field[] = [
   { name: 'nombre', label: 'Nombre', required: true },
@@ -19,33 +34,51 @@ const FIELDS: Field[] = [
 
 export default function Page() {
   const term = useTerm('productos', 'Productos');
-  const { items, create, update, remove } = useCollection<Producto>('productos', seed);
+  const apiEnabled = isApiEnabled();
+
+  // Modo generador: localStorage / mock.
+  const { items: collectionItems, create, update, remove } = useCollection<Producto>('productos', seed);
+
+  // Modo API: paginación server-side.
+  const paged = usePaginatedApi<ProductoApiRow>('/products', 20, apiEnabled);
+
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Producto | null>(null);
+
+  // Items de visualización.
+  const displayItems = (apiEnabled ? paged.items : collectionItems) as unknown as Producto[];
 
   function onSubmit(v: Record<string, string | number>) {
     if (editing) update(editing.id, v as Partial<Producto>); else create(v as unknown as Omit<Producto, 'id'>);
     setOpen(false);
+    if (apiEnabled) paged.refresh();
   }
 
-  const bajoStock = items.filter((p) => Number(p.stock) < Number(p.minimo));
+  const bajoStock = displayItems.filter((p) => Number(p.stock) < Number(p.minimo));
 
   return (
     <ModuleGuard module="productos">
       <PageHeader title={term} subtitle="Inventario: stock, categorías y proveedores."
         action={<Button onClick={() => { setEditing(null); setOpen(true); }}><PackagePlus className="h-4 w-4" /> Nuevo</Button>} />
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <Stat label="Referencias" value={items.length} />
-        <Stat label="Stock bajo" value={items.filter(p => Number(p.stock) < Number(p.minimo)).length} hint="por debajo del mínimo" />
-        <Stat label="Valor stock" value={'€' + items.reduce((a, p) => a + Number(p.stock) * Number(p.precio), 0).toFixed(0)} />
+        <Stat label="Referencias" value={apiEnabled ? paged.total : displayItems.length} />
+        <Stat label="Stock bajo" value={displayItems.filter(p => Number(p.stock) < Number(p.minimo)).length} hint="por debajo del mínimo" />
+        <Stat label="Valor stock" value={'€' + displayItems.reduce((a, p) => a + Number(p.stock) * Number(p.precio), 0).toFixed(0)} />
       </div>
       {bajoStock.length > 0 && (
         <div className="low-stock-alert">
           <strong>Alerta de stock:</strong> {bajoStock.length} producto(s) por debajo del mínimo — {bajoStock.map((p) => p.nombre).join(', ')}.
         </div>
       )}
+
+      {apiEnabled && (
+        <div className="mb-4">
+          <SearchInput value={paged.search} onChange={paged.setSearch} placeholder="Buscar producto..." />
+        </div>
+      )}
+
       <Table head={['Producto', 'Categoría', 'Stock', 'Mínimo', 'Precio', 'Proveedor', '']}>
-        {items.map((p) => (
+        {displayItems.map((p) => (
           <tr key={p.id}>
             <Td className="font-medium text-[var(--panel-text)]">{p.nombre}</Td>
             <Td><Badge>{p.categoria}</Badge></Td>
@@ -55,6 +88,11 @@ export default function Page() {
           </tr>
         ))}
       </Table>
+
+      {apiEnabled && (
+        <Pagination page={paged.page} totalPages={paged.totalPages} total={paged.total} limit={paged.limit} onChange={paged.setPage} />
+      )}
+
       <EntityModal open={open} title={editing ? 'Editar producto' : 'Nuevo producto'} fields={FIELDS}
         initial={editing as unknown as Record<string, string | number> | null} onSubmit={onSubmit} onClose={() => setOpen(false)} />
     </ModuleGuard>

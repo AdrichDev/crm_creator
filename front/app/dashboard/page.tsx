@@ -14,15 +14,20 @@ export default function Consola() {
   const { ready, projects, config, openProject, deleteProject, markGenerated } = useProjects();
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
 
-  // Build autónomo (single-tenant): no hay consola, el front ES el CRM del tenant.
-  // Sin landing y sin sesión → login; si no → directo al panel. En el repo fuente
-  // GENERATED_TENANT es null → la consola se muestra normal.
+  // Auth gate universal: tanto en build generado como en consola fuente se requiere sesión.
+  // Sin sesión → /login. Con sesión en build generado → /panel. Con sesión en fuente → consola.
   useEffect(() => {
-    if (!GENERATED_TENANT || !ready) return;
-    if (config.branding.designSource) { router.replace('/panel'); return; }
+    if (!ready) return;
     isAuthed().then((authed) => {
-      router.replace(authed ? '/panel' : '/login');
+      if (!authed) { router.replace('/login'); return; }
+      if (GENERATED_TENANT) {
+        if (config.branding.designSource) { router.replace('/panel'); return; }
+        router.replace('/panel');
+        return;
+      }
+      setAuthChecked(true);
     });
   }, [ready, config, router]);
 
@@ -49,7 +54,7 @@ export default function Consola() {
     </svg>
   );
 
-  if (!ready || GENERATED_TENANT) return <div className="grid min-h-screen place-items-center bg-ink text-gray-400">Cargando…</div>;
+  if (!ready || !authChecked) return <div className="grid min-h-screen place-items-center bg-ink text-gray-400">Cargando…</div>;
 
   return (
     <div className="crm-console">

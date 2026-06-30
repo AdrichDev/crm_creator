@@ -95,7 +95,15 @@ const apiBackend: DataBackend = {
       // servicios/productos (catálogo) y resto → flujo normal de abajo.
     }
     const path = API_PATH[key]; if (!path) return empty;
-    try { return (await apiFetch<typeof _seed>(path)) ?? empty; } catch { return empty; }
+    try {
+      // El back ahora devuelve { items, total, page, limit } en todos los endpoints.
+      // Manejamos también el formato array legacy por compatibilidad defensiva.
+      const raw = await apiFetch<unknown>(path);
+      if (raw && typeof raw === 'object' && !Array.isArray(raw) && 'items' in raw) {
+        return ((raw as { items: typeof _seed }).items) ?? empty;
+      }
+      return (raw as typeof _seed) ?? empty;
+    } catch { return empty; }
   },
   async create(key, item) {
     if (activeRole() === 'cliente') return; // el cliente no escribe datos de gestión.

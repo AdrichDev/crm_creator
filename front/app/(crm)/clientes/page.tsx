@@ -12,6 +12,24 @@ import { DocumentosPanel } from '@/components/ui/documentos-panel';
 import { useCollection } from '@/lib/data/use-collection';
 import { type Cliente, type Documento, facturas as facturasSeed, type Factura } from '@/lib/mock/data';
 import { UserPlus, Info, Euro, Pencil, Trash2 } from 'lucide-react';
+import { isApiEnabled } from '@/lib/api/client';
+import { usePaginatedApi } from '@/lib/data/use-paginated-api';
+import { SearchInput } from '@/components/ui/search-input';
+import { Pagination } from '@/components/ui/pagination';
+
+// Shape que devuelve el back para /customers paginado.
+type ClienteApiRow = {
+  id: string;
+  nombre: string;
+  email: string;
+  telefono: string;
+  direccion: string;
+  visitas: number;
+  gastoTotal: number;
+  ultimaVisita: string;
+  segmento: string;
+  estado: string;
+};
 
 const FIELDS: Field[] = [
   { name: 'nombre', label: 'Nombre', required: true },
@@ -35,15 +53,24 @@ export default function Page() {
   const puedeEditar = canWrite(role, 'clientes');
   const seed = useMemo(() => clientesMock(vertical), [vertical]);
   const extraFields = clienteExtraFields(vertical);
-  const { items, create, update, remove } = useCollection<Cliente>('clientes', seed);
+  const apiEnabled = isApiEnabled();
+
+  // Modo generador: localStorage / mock.
+  const { items: collectionItems, create, update, remove } = useCollection<Cliente>('clientes', seed);
   const { items: facturas } = useCollection<Factura>('facturas', facturasSeed);
   const conFactura = new Set(facturas.map((f) => f.cliente));
+
+  // Modo API: paginación server-side.
+  const paged = usePaginatedApi<ClienteApiRow>('/customers', 20, apiEnabled);
+
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Cliente | null>(null);
   const [info, setInfo] = useState<Cliente | null>(null);
   const tone = (s: string) => s === 'VIP' ? 'brand' : s === 'Nuevo' ? 'blue' : 'gray';
 
-  const actual = info ? items.find((c) => c.id === info.id) ?? info : null;
+  // Items de visualización (tabla).
+  const displayItems = (apiEnabled ? paged.items : collectionItems) as unknown as Cliente[];
+  const actual = info ? displayItems.find((c) => c.id === info.id) ?? info : null;
 
   function onNew() { setEditing(null); setOpen(true); }
   function onEdit(c: Cliente) { setEditing(c); setOpen(true); }
@@ -51,6 +78,7 @@ export default function Page() {
     if (editing) update(editing.id, v as Partial<Cliente>);
     else create({ documentos: [], ...v } as unknown as Omit<Cliente, 'id'>);
     setOpen(false);
+    if (apiEnabled) paged.refresh();
   }
   function addDoc(d: Documento) {
     if (!actual) return;
@@ -67,13 +95,19 @@ export default function Page() {
         action={<Button onClick={onNew}><UserPlus className="h-4 w-4" /> Nuevo</Button>} />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <Stat label="Total" value={items.length} accent />
-        <Stat label="VIP" value={items.filter((c) => c.segmento === 'VIP').length} />
-        <Stat label="Gasto medio" value={'€' + (items.length ? Math.round(items.reduce((a, c) => a + Number(c.gastoTotal), 0) / items.length) : 0)} />
+        <Stat label="Total" value={apiEnabled ? paged.total : displayItems.length} accent />
+        <Stat label="VIP" value={displayItems.filter((c) => c.segmento === 'VIP').length} />
+        <Stat label="Gasto medio" value={'€' + (displayItems.length ? Math.round(displayItems.reduce((a, c) => a + Number(c.gastoTotal), 0) / displayItems.length) : 0)} />
       </div>
 
+      {apiEnabled && (
+        <div className="mb-4">
+          <SearchInput value={paged.search} onChange={paged.setSearch} placeholder="Buscar cliente..." />
+        </div>
+      )}
+
       <Table head={['Nombre', 'Contacto', 'Visitas', 'Gasto', 'Segmento', 'Facturas', 'Acciones']}>
-        {items.map((c) => (
+        {displayItems.map((c) => (
           <tr key={c.id}>
             <Td className="font-medium text-white">{c.nombre}</Td>
             <Td><div>{c.email}</div><div className="text-xs text-[var(--panel-muted)]">{c.telefono}</div></Td>
@@ -114,6 +148,10 @@ export default function Page() {
         ))}
       </Table>
 
+      {apiEnabled && (
+        <Pagination page={paged.page} totalPages={paged.totalPages} total={paged.total} limit={paged.limit} onChange={paged.setPage} />
+      )}
+
       {/* Modal info: todos los datos + documentos */}
       <Modal open={!!actual} title={actual?.nombre ?? ''} onClose={() => setInfo(null)}
         footer={<Button variant="outline" onClick={() => setInfo(null)}>Cerrar</Button>}>
@@ -128,7 +166,6 @@ export default function Page() {
                   <p className="text-white">{String((actual as unknown as Record<string, unknown>)[k] ?? '—') || '—'}</p>
                 </div>
               ))}
-              {/* Campos extendidos propios del sector (especie/raza, nº historia, expediente…) */}
               {extraFields.map((f) => (
                 <div key={f.name}>
                   <span className="text-[var(--panel-muted)]">{f.label}</span>

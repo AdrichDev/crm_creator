@@ -45,6 +45,7 @@ function OnboardingInner() {
   // compartida) — sin proxy HTTP a AA. Requiere sesión Supabase.
   const [clients, setClients] = useState<ClientLite[]>([]);
   const [clientsError, setClientsError] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
   useEffect(() => {
     if (!isApiEnabled()) return; // modo demo sin back: sin tenants
     apiFetch<ClientLite[]>('/tenants')
@@ -98,16 +99,18 @@ function OnboardingInner() {
     }
     // En modo CRM hay que vincular un cliente (tenant) existente de agents-agency.
     if (isApiEnabled() && !cfg.business.clienteId) {
-      alert('Selecciona un cliente (tenant) en el paso "Tipo de negocio". No se puede crear un proyecto sin cliente.');
+      setErrorMsg('Selecciona un cliente en el paso "Tipo de negocio" antes de continuar.');
       setStep(0);
       return;
     }
+    setErrorMsg('');
     try {
       const id = await createProject(cfg);
       openProject(id);
       router.replace('/panel');
-    } catch {
-      alert('No se pudo crear el proyecto. Verifica que el cliente (tenant) existe y que has iniciado sesión.');
+    } catch (e) {
+      const msg = (e as { message?: string })?.message ?? '';
+      setErrorMsg(msg || 'No se pudo crear el proyecto. Verifica que tienes sesión activa y el backend responde.');
     }
   }
 
@@ -144,13 +147,12 @@ function OnboardingInner() {
 
         {step === 0 && (
           <div className="space-y-4">
-            <VerticalPicker value={draft.business.vertical} onChange={pickVertical} />
-
-            {/* Cliente: combobox que filtra la lista real (agents-agency); al elegir
-                uno se fija el nombre del negocio y se rellenan los Datos. */}
+            {/* Cliente primero: al elegirlo se pre-rellena nombre/email/teléfono/dirección. */}
             <Card><CardBody>
               <ClientCombobox clients={clients} selectedId={draft.business.clienteId} onPick={pickClient} error={clientsError} />
             </CardBody></Card>
+
+            <VerticalPicker value={draft.business.vertical} onChange={pickVertical} />
           </div>
         )}
 
@@ -193,13 +195,13 @@ function OnboardingInner() {
               {([['host', 'Host'], ['port', 'Puerto'], ['name', 'Base de datos'], ['user', 'Usuario']] as const).map(([k, label]) => (
                 <div key={k}>
                   <label className="text-xs font-medium text-gray-500">{label}</label>
-                  <input value={draft.database?.[k] ?? ''} onChange={(e) => db({ [k]: e.target.value } as Partial<NonNullable<typeof draft.database>>)}
+                  <input autoComplete="off" value={draft.database?.[k] ?? ''} onChange={(e) => db({ [k]: e.target.value } as Partial<NonNullable<typeof draft.database>>)}
                     className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" />
                 </div>
               ))}
               <div>
                 <label className="text-xs font-medium text-gray-500">Contraseña</label>
-                <input type="password" value={draft.database?.password ?? ''} onChange={(e) => db({ password: e.target.value })}
+                <input type="password" autoComplete="new-password" value={draft.database?.password ?? ''} onChange={(e) => db({ password: e.target.value })}
                   className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" />
               </div>
             </div>
@@ -228,6 +230,12 @@ function OnboardingInner() {
               <p>Módulos activos: {activeCount}</p>
             </div>
           </CardBody></Card>
+        )}
+
+        {errorMsg && (
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {errorMsg}
+          </div>
         )}
 
         <div className="mt-8 flex items-center justify-between">

@@ -20,11 +20,12 @@ export function NuevaCitaModal({ open, onClose, onCreated }: { open: boolean; on
   useEffect(() => {
     if (!open) return;
     setError(''); setForm({ customerId: '', serviceId: '', employeeId: '', fecha: '', hora: '' });
+    // Los endpoints devuelven { items, total, page, limit } tras añadir paginación server-side.
     Promise.all([
-      apiFetch<Opt[]>('/customers').catch(() => [] as Opt[]),
-      apiFetch<Opt[]>('/services').catch(() => [] as Opt[]),
-      apiFetch<Opt[]>('/employees').catch(() => [] as Opt[]),
-      apiFetch<{ id: string }[]>('/locations').catch(() => [] as { id: string }[]),
+      apiFetch<{ items: Opt[] }>('/customers').then(r => r.items ?? []).catch(() => [] as Opt[]),
+      apiFetch<{ items: Opt[] }>('/services').then(r => r.items ?? []).catch(() => [] as Opt[]),
+      apiFetch<{ items: Opt[] }>('/employees').then(r => r.items ?? []).catch(() => [] as Opt[]),
+      apiFetch<{ items: { id: string }[] }>('/locations').then(r => r.items ?? []).catch(() => [] as { id: string }[]),
     ]).then(([c, s, e, l]) => { setCustomers(c); setServices(s); setEmployees(e); setLocationId(l[0]?.id ?? ''); });
   }, [open]);
 

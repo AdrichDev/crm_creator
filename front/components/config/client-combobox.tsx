@@ -9,6 +9,7 @@ import { prepareClientOptions, type ClientLite } from '@/lib/clients/picker';
  * vinculado se marca con un check dentro del propio select. El input filtra la
  * lista real (agents-agency). La flecha es un botón integrado a la derecha
  * (cursor pointer, sin caja ni hueco). Hereda el tema vía el scope .onboarding.
+ * El dropdown se abre ARRIBA si no hay espacio suficiente abajo (evita scroll de página).
  */
 export function ClientCombobox({ clients, selectedId, onPick, error }:
   { clients: ClientLite[]; selectedId?: string; onPick: (c: ClientLite) => void; error?: string }) {
@@ -16,6 +17,7 @@ export function ClientCombobox({ clients, selectedId, onPick, error }:
   const [query, setQuery] = useState(selected?.nombre ?? '');
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  const [dropUp, setDropUp] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -24,6 +26,13 @@ export function ClientCombobox({ clients, selectedId, onPick, error }:
   useEffect(() => { setQuery(selected?.nombre ?? ''); }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const opts = useMemo(() => prepareClientOptions(clients, query).ordenados, [clients, query]);
+
+  // Al abrir: calcular si hay espacio abajo; si no, abrir arriba.
+  useEffect(() => {
+    if (!open || !inputRef.current) return;
+    const rect = inputRef.current.getBoundingClientRect();
+    setDropUp(window.innerHeight - rect.bottom < 280);
+  }, [open]);
 
   // Cerrar al pulsar fuera del combobox.
   useEffect(() => {
@@ -63,7 +72,15 @@ export function ClientCombobox({ clients, selectedId, onPick, error }:
   }
 
   return (
-    <div ref={rootRef} className="relative">
+    <>
+      {open && (
+        <div
+          className="fixed inset-0 z-20 backdrop-blur-[2px]"
+          aria-hidden="true"
+          onMouseDown={() => setOpen(false)}
+        />
+      )}
+    <div ref={rootRef} className="relative z-30">
       <label className="text-xs font-medium text-gray-500">Cliente</label>
       <div className="relative mt-1">
         <input
@@ -95,7 +112,7 @@ export function ClientCombobox({ clients, selectedId, onPick, error }:
 
         {open && (
           <ul id="client-listbox" ref={listRef} role="listbox"
-            className="theme-scroll absolute left-0 right-0 top-full z-30 mt-1 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+            className={`theme-scroll absolute left-0 right-0 z-30 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
             {opts.length === 0 ? (
               <li className="px-3 py-2 text-sm text-gray-400">Sin clientes.</li>
             ) : opts.map((c, i) => {
@@ -115,7 +132,7 @@ export function ClientCombobox({ clients, selectedId, onPick, error }:
         )}
       </div>
       {error && <p className="mt-2 text-xs text-amber-600">{error}</p>}
-      <p className="mt-1 text-[11px] text-gray-400">{opts.length} cliente(s). Flechas para navegar · Intro o clic para elegir. Al elegir se fija el nombre y se rellenan los Datos.</p>
     </div>
+    </>
   );
 }

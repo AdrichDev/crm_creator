@@ -111,7 +111,7 @@ model Business {
   // FK cross-schema → aa.tenant.id (el "cliente general" que contrata la plataforma).
   // 1:1 con Tenant. La constraint FK se aplica por SQL (Prisma no modela relaciones
   // cross-schema sin multiSchema; ver migración add-tenant-fk.sql).
-  tenantId        String?  @unique @map("tenant_id")
+  tenantId        String?  @map("tenant_id")
   nombre          String   @map("nombre")
   razonSocial     String?  @map("razon_social")
   nif             String?  @map("nif")
