@@ -43,10 +43,9 @@ export function ModuleToggleGrid({ modules, onToggle, terminology = {}, vertical
                 <div key={m.id}
                   title={blocked ? 'Requiere vista Trabajador' : undefined}
                   className={cn('flex items-start gap-3 rounded-2xl border p-4 transition',
-                    on ? 'border-[#2563eb]/50' : 'border-gray-200 bg-gray-50',
+                    on ? 'border-[var(--gold)]/50' : 'border-gray-200 bg-gray-50',
                     blocked && 'opacity-40 cursor-not-allowed')}
-                  // Seleccionada → tinte azul translúcido que deja transpirar el fondo del tema.
-                  style={on ? { backgroundColor: 'rgba(37,99,235,0.10)' } : undefined}>
+                  style={on ? { backgroundColor: 'color-mix(in srgb, var(--gold) 12%, transparent)' } : undefined}>
                   {/* Icono coloreado por categoría. Con vertical activo → emoji del sector. */}
                   <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl"
                     style={{ backgroundColor: `color-mix(in srgb, ${color} 16%, transparent)`, color }}>

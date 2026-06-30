@@ -1,10 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { Project } from '@/lib/tenant-config-context';
 import { VERTICAL_MAP } from '@/lib/config/verticals';
-import { Table, Td } from '@/components/ui/primitives';
+import { apiFetch, isApiEnabled } from '@/lib/api/client';
+import type { ClientLite } from '@/lib/clients/picker';
 import type { BuildFormat } from '@/lib/export/use-export-stream';
+import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 
 const FORMAT_LABEL: Record<BuildFormat, string> = {
   'web-zip': 'Web ZIP',
@@ -15,21 +17,35 @@ const FORMAT_LABEL: Record<BuildFormat, string> = {
 
 const ALL_FORMATS: BuildFormat[] = ['web-zip', 'exe', 'apk', 'ipa'];
 
+type SortCol = 'name' | 'client' | 'vertical';
+
 interface ExportTableProps {
   projects: Project[];
+  codeMap: Record<string, string>;
   isRunning: boolean;
   onExport: (projectId: string, formats: BuildFormat[], outputDir: string) => void;
 }
 
-export function ExportTable({ projects, isRunning, onExport }: ExportTableProps) {
+export function ExportTable({ projects, codeMap, isRunning, onExport }: ExportTableProps) {
   const [filter, setFilter] = useState('');
-  const [outputDir, setOutputDir] = useState('./exports');
-  // Per-row format selection: projectId → selected formats
   const [selected, setSelected] = useState<Record<string, Set<BuildFormat>>>({});
+  const [tenantMap, setTenantMap] = useState<Record<string, string>>({});
+  const [sortCol, setSortCol] = useState<SortCol | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [pickingFor, setPickingFor] = useState<string | null>(null);
 
-  // Detect Windows to disable .ipa (requires macOS toolchain)
   const isWindows =
     typeof navigator !== 'undefined' && /Win/i.test(navigator.platform);
+
+  useEffect(() => {
+    if (!isApiEnabled()) return;
+    apiFetch<ClientLite[]>('/tenants')
+      .then((data) => {
+        if (!Array.isArray(data)) return;
+        setTenantMap(Object.fromEntries(data.map((c) => [c.id, c.nombre])));
+      })
+      .catch(() => {});
+  }, []);
 
   function getFormats(id: string): Set<BuildFormat> {
     return selected[id] ?? new Set<BuildFormat>();
@@ -38,134 +54,189 @@ export function ExportTable({ projects, isRunning, onExport }: ExportTableProps)
   function toggleFormat(id: string, fmt: BuildFormat) {
     setSelected((prev) => {
       const cur = new Set(prev[id] ?? []);
-      if (cur.has(fmt)) cur.delete(fmt);
-      else cur.add(fmt);
+      if (cur.has(fmt)) cur.delete(fmt); else cur.add(fmt);
       return { ...prev, [id]: cur };
     });
   }
 
+  function handleSort(col: SortCol) {
+    if (sortCol === col) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortCol(col); setSortDir('asc'); }
+  }
+
+  async function handleExportRow(projectId: string, fmts: Set<BuildFormat>) {
+    if (fmts.size === 0 || isRunning || pickingFor) return;
+    let dir = './exports';
+    if (isApiEnabled()) {
+      setPickingFor(projectId);
+      try {
+        const res = await apiFetch<{ path: string }>('/exports/pick-folder');
+        if (res.path) dir = res.path;
+      } catch {
+        // Cancelado o sin GUI — exportar al directorio por defecto
+      } finally {
+        setPickingFor(null);
+      }
+    }
+    onExport(projectId, Array.from(fmts), dir);
+  }
+
   const filtered = projects.filter((p) => {
     const q = filter.toLowerCase();
+    const clientName = tenantMap[p.config.business.clienteId ?? ''] ?? '';
     return (
       p.config.business.name.toLowerCase().includes(q) ||
       (p.config.business.vertical ?? '').toLowerCase().includes(q) ||
-      (p.config.business.clienteId ?? '').toLowerCase().includes(q)
+      clientName.toLowerCase().includes(q)
     );
   });
 
+  const sorted = [...filtered].sort((a, b) => {
+    if (!sortCol) return 0;
+    let va = '';
+    let vb = '';
+    if (sortCol === 'name') { va = a.config.business.name; vb = b.config.business.name; }
+    if (sortCol === 'client') {
+      va = tenantMap[a.config.business.clienteId ?? ''] ?? '';
+      vb = tenantMap[b.config.business.clienteId ?? ''] ?? '';
+    }
+    if (sortCol === 'vertical') { va = a.config.business.vertical; vb = b.config.business.vertical; }
+    const cmp = va.localeCompare(vb, 'es', { sensitivity: 'base' });
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
+
+  function SortIcon({ col }: { col: SortCol }) {
+    if (sortCol !== col) return <ChevronsUpDown className="inline h-3.5 w-3.5 ml-1 opacity-30" />;
+    return sortDir === 'asc'
+      ? <ChevronUp className="inline h-3.5 w-3.5 ml-1 opacity-50" />
+      : <ChevronDown className="inline h-3.5 w-3.5 ml-1 opacity-50" />;
+  }
+
   return (
     <div className="space-y-4">
-      {/* Toolbar: filter + output dir */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <input
-          type="text"
-          placeholder="Filtrar proyectos…"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          className="flex-1 rounded-xl border border-[var(--line)] bg-transparent px-3 py-2 text-sm text-[var(--panel-text)] placeholder:text-[var(--panel-muted)] outline-none focus:border-[var(--acc)]"
-        />
-        <div className="flex items-center gap-2">
-          <label className="text-xs whitespace-nowrap" style={{ color: 'var(--panel-muted)' }}>
-            Carpeta destino:
-          </label>
-          <input
-            type="text"
-            placeholder="./exports"
-            value={outputDir}
-            onChange={(e) => setOutputDir(e.target.value)}
-            className="w-44 rounded-xl border border-[var(--line)] bg-transparent px-3 py-2 text-sm text-[var(--panel-text)] placeholder:text-[var(--panel-muted)] outline-none focus:border-[var(--acc)]"
-          />
-        </div>
-      </div>
+      <input
+        type="text"
+        placeholder="Filtrar proyectos…"
+        value={filter}
+        onChange={(e) => setFilter(e.target.value)}
+        className="w-full rounded-xl border border-[var(--line)] bg-transparent px-3 py-2 text-sm text-[var(--panel-text)] placeholder:text-[var(--panel-muted)] outline-none focus:border-[var(--panel-muted)]"
+      />
 
-      {/* Table or empty state */}
-      {filtered.length === 0 ? (
-        <div
-          className="py-12 text-center text-sm"
-          style={{ color: 'var(--panel-muted)' }}
-        >
+      {sorted.length === 0 ? (
+        <div className="py-12 text-center text-sm text-[var(--panel-muted)]">
           No hay proyectos que coincidan con el filtro.
         </div>
       ) : (
-        <Table head={['Proyecto', 'Cliente', 'Tipo de negocio', 'Formatos', 'Exportar']}>
-          {filtered.map((p) => {
-            const v = VERTICAL_MAP[p.config.business.vertical];
-            const fmts = getFormats(p.id);
-            const canExport = fmts.size > 0 && !isRunning;
-
-            return (
-              <tr key={p.id}>
-                <Td>
-                  <span
-                    className="font-medium text-sm"
-                    style={{ color: 'var(--panel-text)' }}
+        <div className="panel export-panel">
+          <div className="overflow-x-auto">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th
+                    role="columnheader"
+                    aria-sort={sortCol === 'name' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                    className={sortCol === 'name' ? 'sorted' : ''}
+                    onClick={() => handleSort('name')}
                   >
-                    {p.config.business.name}
-                  </span>
-                </Td>
+                    Proyecto <SortIcon col="name" />
+                  </th>
+                  <th
+                    role="columnheader"
+                    aria-sort={sortCol === 'client' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                    className={sortCol === 'client' ? 'sorted' : ''}
+                    onClick={() => handleSort('client')}
+                  >
+                    Cliente <SortIcon col="client" />
+                  </th>
+                  <th
+                    role="columnheader"
+                    aria-sort={sortCol === 'vertical' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                    className={sortCol === 'vertical' ? 'sorted' : ''}
+                    onClick={() => handleSort('vertical')}
+                  >
+                    Tipo <SortIcon col="vertical" />
+                  </th>
+                  <th>Formatos</th>
+                  <th>Exportar</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((p) => {
+                  const v = VERTICAL_MAP[p.config.business.vertical];
+                  const clientName = tenantMap[p.config.business.clienteId ?? ''] ?? '—';
+                  const fmts = getFormats(p.id);
+                  const isPicking = pickingFor === p.id;
+                  const canExport = fmts.size > 0 && !isRunning && !pickingFor;
 
-                <Td>
-                  <span className="text-sm" style={{ color: 'var(--panel-muted)' }}>
-                    {p.config.business.clienteId ?? '—'}
-                  </span>
-                </Td>
+                  return (
+                    <tr key={p.id}>
+                      {/* Columna Proyecto: solo el código crm-XX */}
+                      <td>
+                        <p className="font-mono text-sm font-medium text-[var(--panel-text)]">
+                          {codeMap[p.id] ?? p.id.slice(0, 8)}
+                        </p>
+                      </td>
 
-                <Td>
-                  <span className="text-sm" style={{ color: 'var(--panel-text)' }}>
-                    {v ? `${v.emoji} ${v.label}` : p.config.business.vertical}
-                  </span>
-                </Td>
+                      <td className="text-sm text-[var(--panel-muted)]">
+                        {clientName}
+                      </td>
 
-                <Td>
-                  <div className="flex flex-wrap gap-2">
-                    {ALL_FORMATS.map((fmt) => {
-                      const disabled = fmt === 'ipa' && isWindows;
-                      return (
-                        <label
-                          key={fmt}
-                          title={disabled ? 'Requiere macOS' : undefined}
-                          className="flex items-center gap-1 text-xs cursor-pointer select-none"
-                          style={{
-                            color: 'var(--panel-text)',
-                            opacity: disabled ? 0.4 : 1,
-                            cursor: disabled ? 'not-allowed' : 'pointer',
-                          }}
+                      <td className="text-sm text-[var(--panel-muted)]">
+                        {v?.label ?? p.config.business.vertical}
+                      </td>
+
+                      <td>
+                        <div className="flex flex-wrap gap-2">
+                          {ALL_FORMATS.map((fmt) => {
+                            const disabled = fmt === 'ipa' && isWindows;
+                            return (
+                              <label
+                                key={fmt}
+                                title={disabled ? 'Requiere macOS' : undefined}
+                                className="flex items-center gap-1.5 text-xs select-none"
+                                style={{
+                                  color: fmts.has(fmt) ? 'var(--gold)' : 'var(--panel-muted)',
+                                  opacity: disabled ? 0.35 : 1,
+                                  cursor: disabled ? 'not-allowed' : 'pointer',
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  disabled={disabled}
+                                  checked={fmts.has(fmt)}
+                                  onChange={() => toggleFormat(p.id, fmt)}
+                                  className="rounded accent-[#c5a028]"
+                                />
+                                {FORMAT_LABEL[fmt]}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </td>
+
+                      <td>
+                        <button
+                          type="button"
+                          disabled={!canExport && !isPicking}
+                          onClick={() => void handleExportRow(p.id, fmts)}
+                          className={
+                            isPicking
+                              ? 'rounded-lg border border-[var(--line)] px-3 py-1.5 text-xs font-medium text-[var(--panel-muted)] cursor-wait transition'
+                              : canExport
+                              ? 'rounded-lg border border-[var(--panel-muted)] px-3 py-1.5 text-xs font-medium text-[var(--panel-muted)] transition hover:border-[var(--gold)] hover:text-[var(--gold)]'
+                              : 'rounded-lg border border-transparent px-3 py-1.5 text-xs font-medium text-[var(--panel-muted)] opacity-25 cursor-not-allowed'
+                          }
                         >
-                          <input
-                            type="checkbox"
-                            disabled={disabled}
-                            checked={fmts.has(fmt)}
-                            onChange={() => toggleFormat(p.id, fmt)}
-                            className="rounded accent-[var(--acc)]"
-                          />
-                          {FORMAT_LABEL[fmt]}
-                        </label>
-                      );
-                    })}
-                  </div>
-                </Td>
-
-                <Td>
-                  <button
-                    type="button"
-                    disabled={!canExport}
-                    onClick={() => {
-                      if (canExport) onExport(p.id, Array.from(fmts), outputDir);
-                    }}
-                    className="rounded-xl px-3 py-1.5 text-xs font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed"
-                    style={
-                      canExport
-                        ? { background: 'var(--acc)', color: '#0a0a0a' }
-                        : { background: 'rgba(255,255,255,0.1)', color: 'var(--panel-muted)' }
-                    }
-                  >
-                    Exportar
-                  </button>
-                </Td>
-              </tr>
-            );
-          })}
-        </Table>
+                          {isPicking ? 'Eligiendo…' : 'Exportar'}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
     </div>
   );

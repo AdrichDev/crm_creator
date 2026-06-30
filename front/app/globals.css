@@ -25,8 +25,13 @@
   --panel-card: #141414;
   --panel-text: #fdfdfd;
   --panel-muted: #8e8e8e;
+  /* Jerarquía visual consola dashboard (fondo → sheet → card)
+     Escala de grises pura — sin tintes azules ni morados */
+  --sheet-bg: #1b1b1b;        /* hoja: gris muy oscuro neutro */
+  --sheet-card: #252525;       /* tarjeta: un paso más claro */
+  --sheet-card-hover: #2e2e2e; /* hover de tarjeta: diferencia perceptible */
   /* Rejilla sutil — solo para la consola principal (no para los proyectos) */
-  --grid-color: rgba(255, 255, 255, 0.05);
+  --grid-color: rgba(255, 255, 255, 0.04);
 
   --heading-font: 'Playfair Display', Georgia, serif;
   --brand-font: 'Cinzel', serif;
@@ -54,8 +59,11 @@ body {
   color: var(--panel-text);
 }
 .crm-console-card {
-  background: var(--panel-card);
+  background: var(--sheet-card);
   border: 1px solid var(--line);
+}
+.crm-console-card:hover {
+  background: var(--sheet-card-hover);
 }
 
 /* ── Onboarding (app/onboarding) ──────────────────────────────────────────
@@ -93,24 +101,40 @@ body {
 .onboarding input::placeholder,
 .onboarding textarea::placeholder { color: var(--panel-muted); }
 
-/* Botones (Atrás/Siguiente/Volver) siempre azul fijo en onboarding.
+/* Botones (Atrás/Siguiente/Volver) usan la paleta dorada de la plataforma.
    --brand-primary/secondary los inyecta el wrapper con inline style para el stepper. */
-.onboarding { --acc: #2563eb; --acc-light: #3b82f6; }
+.onboarding { --acc: var(--gold); --acc-light: var(--gold-light); }
 .onboarding .btn-ghost { color: var(--acc); }
 .onboarding .btn-ghost:hover { background: transparent; }
 
-/* ── Modo claro (sigue el SO o el toggle; data-theme="light" en <html>) ── */
+/* Modo claro: el dorado claro (#e5c158) sobre fondo casi blanco pierde contraste.
+   Usamos un dorado más oscuro de acento y forzamos texto negro en hover relleno. */
+:root[data-theme="light"] .onboarding { --acc: #8a6516; --acc-light: #c5a028; }
+:root[data-theme="light"] .onboarding .btn-primary:hover,
+:root[data-theme="light"] .onboarding .btn-outline:hover { color: #0a0a0a; }
+/* Texto blanco hardcodeado en componentes de configuración → texto del tema en claro */
+:root[data-theme="light"] .onboarding .text-white { color: var(--panel-text); }
+
+/* ── Modo claro — pasteles cálidos, sin blancos puros ─────────────────────
+   Sistema lino/crema: coherente con la identidad dorada de la plataforma.
+   Ningún valor es blanco puro (#fff). */
 :root[data-theme="light"] {
-  --ink: #eef0f4;
-  --ink-2: #ffffff;
-  --line: rgba(0, 0, 0, 0.10);
-  --surface: #eef0f4;
-  --panel-bg: #f4f5f7;
-  --panel-card: #ffffff;
-  --panel-text: #14151a;
-  --panel-muted: #5b6472;
-  --grid-color: rgba(15, 23, 42, 0.06);
+  --ink: #ede9e2;
+  --ink-2: #f0ebe3;
+  --line: rgba(110, 95, 75, 0.18);      /* borde cálido, no azul-gris */
+  --surface: #ede9e2;
+  --panel-bg: #ede9e2;                   /* fondo base: lino cálido */
+  --panel-card: #f5f1ea;                 /* paneles/cards: crema suave */
+  --panel-text: #1a1914;                 /* texto: casi negro cálido */
+  --panel-muted: #6b6456;               /* muted: marrón grisáceo */
+  --grid-color: rgba(110, 95, 75, 0.06);
+  --sheet-bg: #e7e2d9;                   /* hoja: un paso más oscuro que bg */
+  --sheet-card: #ede8df;                 /* tarjetas de hoja: crema media */
+  --sheet-card-hover: #ddd7cc;          /* hover visible: ~8% más oscuro */
 }
+/* Panel base en modo claro: borde cálido */
+:root[data-theme="light"] .panel { border-color: rgba(110,95,75,0.15); }
+
 /* Superficies/controles con valores oscuros fijos → re-tema en claro */
 :root[data-theme="light"] .opera-header { background: rgba(255, 255, 255, 0.9); }
 :root[data-theme="light"] .opera-brand-title { color: #14151a; }
@@ -137,6 +161,43 @@ body {
    garantizando ratio AA (>= 4.5:1) sin perder el color de marca de cada estado.
    --acc es variable por tenant y puede quedar pálido en claro, así que gold/amber
    usan un dorado oscuro fijo en vez de var(--acc). */
+/* Fixes consola dashboard modo claro */
+:root[data-theme="light"] .crm-console .text-gray-400 { color: var(--panel-muted); }
+:root[data-theme="light"] .crm-console header.bg-ink { background-color: var(--panel-card); border-bottom: 1px solid var(--line); }
+/* Data-table en modo claro: headers oscuros, bordes cálidos */
+:root[data-theme="light"] .data-table td { border-bottom-color: rgba(110,95,75,0.12); }
+:root[data-theme="light"] .data-table tr:hover td { background: rgba(110,95,75,0.05); }
+:root[data-theme="light"] .data-table th {
+  color: var(--panel-text);
+  border-bottom-color: rgba(110,95,75,0.22);
+}
+:root[data-theme="light"] .data-table th[role="columnheader"]:hover { color: #8a6516; }
+:root[data-theme="light"] .data-table th.sorted,
+:root[data-theme="light"] .data-table th[aria-sort="ascending"],
+:root[data-theme="light"] .data-table th[aria-sort="descending"] {
+  color: #8a6516;
+  border-bottom-color: var(--line);
+}
+
+/* Tabla de exportar: paleta neutra (negro/gris/blanco) en modo oscuro.
+   El dorado de acento es para el panel del CRM generado, no para la consola de exportación. */
+.export-panel .data-table th {
+  color: var(--panel-text);
+  font-family: 'Outfit', ui-sans-serif, sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--line);
+}
+.export-panel .data-table th[role="columnheader"]:hover { color: var(--gold); cursor: pointer; }
+.export-panel .data-table th.sorted,
+.export-panel .data-table th[aria-sort="ascending"],
+.export-panel .data-table th[aria-sort="descending"] {
+  color: var(--gold);
+  border-bottom-color: var(--line);
+}
+
 :root[data-theme="light"] .tone-gold  { background: #f6ecca; color: #8a6516; }
 :root[data-theme="light"] .tone-green { background: #dcf5e6; color: #0f7a3d; }
 :root[data-theme="light"] .tone-amber { background: #fcecd0; color: #9a5b07; }

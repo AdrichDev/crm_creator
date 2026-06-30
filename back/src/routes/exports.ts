@@ -11,8 +11,12 @@
  */
 
 import * as path from 'node:path';
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
 import { Router } from 'express';
 import type { Response } from 'express';
+
+const execAsync = promisify(exec);
 import { prisma } from '../prisma.js';
 import { acquireLock, releaseLock, startWatchdog } from '../lib/export-lock.js';
 import { buildWebZip } from '../lib/export-builders/web-zip.js';
@@ -23,6 +27,34 @@ import type { TenantConfig } from '../../../shared/generate/tenant-types.js';
 import type { AuthedRequest } from '../middleware/types.js';
 
 export const exportsRouter = Router();
+
+// ---------------------------------------------------------------------------
+// GET /pick-folder — opens a native OS folder picker dialog, returns the path.
+// Works only when the back runs locally (same machine as the user's display).
+// ---------------------------------------------------------------------------
+
+exportsRouter.get('/pick-folder', async (_req, res) => {
+  try {
+    let command: string;
+    if (process.platform === 'win32') {
+      command = [
+        'powershell -sta -NoProfile -Command "',
+        'Add-Type -AssemblyName System.Windows.Forms;',
+        '$d = New-Object System.Windows.Forms.FolderBrowserDialog;',
+        "$d.Description = 'Selecciona carpeta de destino';",
+        "if ($d.ShowDialog() -eq 'OK') { $d.SelectedPath } else { '' }\"",
+      ].join(' ');
+    } else if (process.platform === 'darwin') {
+      command = `osascript -e 'POSIX path of (choose folder with prompt "Selecciona carpeta de destino")'`;
+    } else {
+      return res.json({ path: '' });
+    }
+    const { stdout } = await execAsync(command, { timeout: 60_000 });
+    return res.json({ path: stdout.trim() });
+  } catch {
+    return res.json({ path: '' });
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Types

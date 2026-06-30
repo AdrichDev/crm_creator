@@ -6,7 +6,6 @@ import { isAuthed, logout } from '@/lib/auth/session';
 import { useProjects } from '@/lib/tenant-config-context';
 import { ThemeToggle } from '@/components/layout/theme-toggle';
 import { DashboardTabs } from '@/components/dashboard/dashboard-tabs';
-import { Plus } from 'lucide-react';
 
 export default function Consola() {
   const { ready, projects, config, openProject, deleteProject } = useProjects();
@@ -64,13 +63,9 @@ export default function Consola() {
             </div>
             <div className="flex items-center gap-3">
               <ThemeToggle />
-              <button onClick={nuevo}
-                className="inline-flex items-center gap-2 rounded-xl gold-gradient px-4 py-2.5 text-sm font-semibold text-ink shadow-md transition hover:opacity-90">
-                <Plus className="h-4 w-4" /> Nuevo proyecto
-              </button>
               <button onClick={cerrarSesion} title="Cerrar sesión" aria-label="Cerrar sesión"
-                className="inline-flex items-center gap-2 rounded-xl border border-[var(--line)] px-4 py-2.5 text-sm font-medium text-[var(--panel-muted)] transition hover:border-[var(--acc)] hover:text-[var(--acc)]">
-                <LogoutIcon /> Salir
+                className="inline-flex items-center gap-2 rounded-xl border border-[var(--line)] px-3 py-2 text-sm font-medium text-[var(--panel-muted)] transition hover:border-red-500 hover:text-red-500">
+                <LogoutIcon className="h-4 w-4" />
               </button>
             </div>
           </div>
