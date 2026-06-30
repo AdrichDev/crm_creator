@@ -12,6 +12,7 @@ import { isApiEnabled } from '@/lib/api/client';
 import { usePaginatedApi } from '@/lib/data/use-paginated-api';
 import { SearchInput } from '@/components/ui/search-input';
 import { Pagination } from '@/components/ui/pagination';
+import { ImageCell } from '@/components/ui/image-cell';
 
 // Shape que devuelve el back para /services paginado (crudRouter).
 type ServicioApiRow = {
@@ -20,6 +21,7 @@ type ServicioApiRow = {
   categoria: string;
   duracion: number;
   precio: number;
+  imagenUrl?: string | null;
 };
 
 const FIELDS: Field[] = [
@@ -43,6 +45,7 @@ export default function Page() {
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Servicio | null>(null);
+  const [imgOverrides, setImgOverrides] = useState<Record<string, string>>({});
 
   // Items de visualización.
   const displayItems = (apiEnabled ? paged.items : collectionItems) as unknown as Servicio[];
@@ -73,7 +76,18 @@ export default function Page() {
       <Table head={['Servicio', 'Categoría', 'Duración', 'Precio', '']}>
         {displayItems.map((s) => (
           <tr key={s.id}>
-            <Td className="font-medium text-[var(--panel-text)]">{s.nombre}</Td>
+            <Td className="font-medium text-[var(--panel-text)]">
+              <div className="flex items-center gap-3">
+                <ImageCell
+                  kind="service"
+                  id={String(s.id)}
+                  imagenUrl={imgOverrides[String(s.id)] ?? (s as unknown as { imagenUrl?: string | null }).imagenUrl}
+                  enabled={apiEnabled}
+                  onUploaded={(url) => setImgOverrides((m) => ({ ...m, [String(s.id)]: url }))}
+                />
+                <span>{s.nombre}</span>
+              </div>
+            </Td>
             <Td><Badge>{s.categoria}</Badge></Td><Td>{s.duracion} min</Td><Td>€{s.precio}</Td>
             <Td><RowActions onEdit={() => { setEditing(s); setOpen(true); }} onDelete={() => { if (confirm('¿Eliminar?')) remove(s.id); }} /></Td>
           </tr>

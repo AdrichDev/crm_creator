@@ -1,9 +1,11 @@
 import express from 'express';
 import cors from 'cors';
+import swaggerUi from 'swagger-ui-express';
 import { env, assertConfig } from './env.js';
 import { api } from './routes/index.js';
 import { notFound, errorHandler } from './middleware/error.js';
 import { startReminderDrainer } from './lib/reminderDrainer.js';
+import { swaggerSpec } from './lib/swagger.js';
 
 // Fail-closed: no arrancar con config Supabase incompleta/placeholder.
 assertConfig();
@@ -16,6 +18,13 @@ app.use(cors({ origin: env.corsOrigin === '*' ? true : env.corsOrigin.split(',')
 app.use(express.json({ limit: '2mb' }));
 
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'operaos-backend' }));
+
+// Documentación interactiva OpenAPI. Solo fuera de producción para no exponerla.
+if (process.env.NODE_ENV !== 'production') {
+  app.get('/api/docs/swagger.json', (_req, res) => res.json(swaggerSpec));
+  app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+}
+
 app.use('/api', api);
 app.use(notFound);
 app.use(errorHandler);

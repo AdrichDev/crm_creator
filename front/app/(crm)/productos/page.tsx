@@ -11,6 +11,7 @@ import { isApiEnabled } from '@/lib/api/client';
 import { usePaginatedApi } from '@/lib/data/use-paginated-api';
 import { SearchInput } from '@/components/ui/search-input';
 import { Pagination } from '@/components/ui/pagination';
+import { ImageCell } from '@/components/ui/image-cell';
 
 // Shape que devuelve el back para /products paginado (crudRouter).
 type ProductoApiRow = {
@@ -21,6 +22,7 @@ type ProductoApiRow = {
   minimo: number;
   precio: number;
   proveedor: string;
+  imagenUrl?: string | null;
 };
 
 const FIELDS: Field[] = [
@@ -44,6 +46,7 @@ export default function Page() {
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Producto | null>(null);
+  const [imgOverrides, setImgOverrides] = useState<Record<string, string>>({});
 
   // Items de visualización.
   const displayItems = (apiEnabled ? paged.items : collectionItems) as unknown as Producto[];
@@ -80,7 +83,18 @@ export default function Page() {
       <Table head={['Producto', 'Categoría', 'Stock', 'Mínimo', 'Precio', 'Proveedor', '']}>
         {displayItems.map((p) => (
           <tr key={p.id}>
-            <Td className="font-medium text-[var(--panel-text)]">{p.nombre}</Td>
+            <Td className="font-medium text-[var(--panel-text)]">
+              <div className="flex items-center gap-3">
+                <ImageCell
+                  kind="product"
+                  id={String(p.id)}
+                  imagenUrl={imgOverrides[String(p.id)] ?? (p as unknown as { imagenUrl?: string | null }).imagenUrl}
+                  enabled={apiEnabled}
+                  onUploaded={(url) => setImgOverrides((m) => ({ ...m, [String(p.id)]: url }))}
+                />
+                <span>{p.nombre}</span>
+              </div>
+            </Td>
             <Td><Badge>{p.categoria}</Badge></Td>
             <Td><span className={Number(p.stock) < Number(p.minimo) ? 'font-semibold text-red-600' : ''}>{p.stock}</span></Td>
             <Td>{p.minimo}</Td><Td>€{p.precio}</Td><Td>{p.proveedor}</Td>

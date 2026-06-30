@@ -4,7 +4,7 @@
 // (sin React) para poder testearlas sin montar el wizard.
 
 import type { TenantConfig } from '@/lib/config/tenant-config';
-import { emptyModules } from '@/lib/config/tenant-config';
+import { emptyModules, DEFAULT_VIEWS } from '@/lib/config/tenant-config';
 import { emptyWorkerChips } from '@/lib/config/worker-chips';
 
 /**
@@ -24,6 +24,7 @@ export function draftForEdit(config: TenantConfig): TenantConfig {
   return {
     ...clone,
     modules: { ...emptyModules(), ...clone.modules },
+    views: { ...DEFAULT_VIEWS, ...clone.views },
     workerChips: { ...emptyWorkerChips(), ...clone.workerChips },
   };
 }

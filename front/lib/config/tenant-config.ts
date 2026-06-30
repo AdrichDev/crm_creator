@@ -24,6 +24,16 @@ export interface DesignTokens {
   shape?: { radius?: string; shadow?: string };
 }
 
+/** Vistas/accesos que incluye la app del negocio. Admin va siempre implícita. */
+export interface BusinessViews {
+  /** Vista de empleados/trabajadores (módulos de personas). */
+  worker: boolean;
+  /** Vista de cliente final (reservas, facturas). */
+  client: boolean;
+}
+
+export const DEFAULT_VIEWS: BusinessViews = { worker: true, client: false };
+
 export interface TenantConfig {
   business: {
     name: string;
@@ -35,6 +45,8 @@ export interface TenantConfig {
     clienteId?: string;
   };
   modules: Record<ModuleId, boolean>;
+  /** Accesos de la app: Trabajador y Cliente (Admin siempre activa). */
+  views?: BusinessViews;
   /** Chips activos del dashboard del trabajador (patrón `modules`). */
   workerChips: Record<WorkerChipId, boolean>;
   /**
@@ -104,6 +116,7 @@ export function configFromVertical(vertical: VerticalId, name = ''): TenantConfi
   return {
     business: { name: name || v.label, vertical },
     modules,
+    views: { ...DEFAULT_VIEWS },
     workerChips: emptyWorkerChips(),
     terminology: { ...v.terminology },
     branding: { primary: v.branding.primary, secondary: v.branding.secondary, logoText: (name || v.label).slice(0, 2).toUpperCase() },
@@ -127,7 +140,8 @@ export function deserialize(raw: string | null): TenantConfig | null {
     // Asegura que módulos/chips nuevos del catálogo existan en configs antiguas.
     const merged = { ...emptyModules(), ...parsed.modules };
     const mergedChips = { ...emptyWorkerChips(), ...parsed.workerChips };
-    return { ...parsed, modules: merged, workerChips: mergedChips };
+    const mergedViews = { ...DEFAULT_VIEWS, ...parsed.views };
+    return { ...parsed, modules: merged, workerChips: mergedChips, views: mergedViews };
   } catch {
     return null;
   }

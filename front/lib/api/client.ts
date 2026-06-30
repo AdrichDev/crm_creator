@@ -35,3 +35,23 @@ export async function apiFetch<T = unknown>(path: string, init: RequestInit = {}
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
+
+// Subida multipart (FormData). No fija Content-Type: el navegador añade el
+// boundary correcto. Mantiene Authorization + x-business-id como apiFetch.
+export async function apiUpload<T = unknown>(path: string, formData: FormData): Promise<T> {
+  const base = apiBaseUrl();
+  if (!base) throw new Error('API no configurada');
+
+  const headers: Record<string, string> = {};
+  const t = await getAccessToken();
+  if (t) headers.Authorization = `Bearer ${t}`;
+  const b = getActiveBusinessId();
+  if (b) headers['x-business-id'] = b;
+
+  const res = await fetch(`${base}/api${path}`, { method: 'POST', body: formData, headers });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.error?.message ?? `Error ${res.status}`);
+  }
+  return res.json() as Promise<T>;
+}

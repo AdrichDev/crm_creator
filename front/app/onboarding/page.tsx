@@ -10,8 +10,9 @@ import { draftForEdit } from '@/lib/onboarding/edit-mode';
 import type { VerticalId } from '@/lib/config/verticals';
 import { VERTICAL_MAP } from '@/lib/config/verticals';
 import type { ModuleId } from '@/lib/config/modules';
-import { MODULE_MAP } from '@/lib/config/modules';
-import type { DesignTokens } from '@/lib/config/tenant-config';
+import { MODULE_MAP, MODULES } from '@/lib/config/modules';
+import type { DesignTokens, BusinessViews } from '@/lib/config/tenant-config';
+import { DEFAULT_VIEWS } from '@/lib/config/tenant-config';
 import { VerticalPicker } from '@/components/config/vertical-picker';
 import { ModuleToggleGrid } from '@/components/config/module-toggle-grid';
 import { BrandingForm } from '@/components/config/branding-form';
@@ -78,6 +79,16 @@ function OnboardingInner() {
   function toggle(id: ModuleId, on: boolean) {
     if (MODULE_MAP[id]?.mandatory) return;
     setDraft({ ...draft, modules: { ...draft.modules, [id]: on } });
+  }
+  function changeViews(v: BusinessViews) {
+    setDraft((d) => {
+      const modules = { ...d.modules };
+      // Al apagar "Trabajador", los módulos de personas se auto-desactivan.
+      if (!v.worker) {
+        for (const m of MODULES) if (m.requiresWorkerView) modules[m.id] = false;
+      }
+      return { ...d, modules, views: v };
+    });
   }
   function brand(patch: Partial<{ primary: string; secondary: string; logoText: string; logoImage: string; designSource: string; tokens: DesignTokens }>) {
     setDraft({ ...draft, branding: { ...draft.branding, ...patch } });
@@ -161,6 +172,7 @@ function OnboardingInner() {
             <p className="mb-3 text-sm text-gray-500">{activeCount} módulos activos. Activa o desactiva lo que necesites.{isEdit ? ' Al desactivar un apartado se oculta; sus datos se conservan.' : ''}</p>
             <ModuleToggleGrid modules={draft.modules} onToggle={toggle} terminology={draft.terminology}
               vertical={draft.business.vertical} emojis={draft.moduleEmojis}
+              views={draft.views ?? DEFAULT_VIEWS} onViewsChange={changeViews}
               onSetEmoji={(id, emoji) => setDraft((d) => {
                 const next = { ...(d.moduleEmojis ?? {}) };
                 if (emoji && emoji.trim()) next[id] = emoji.trim(); else delete next[id];

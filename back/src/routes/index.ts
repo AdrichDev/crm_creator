@@ -14,6 +14,7 @@ import { customersRouter } from './customers.js';
 import { tenantsRouter } from './tenants.js';
 import { projectsRouter } from './projects.js';
 import { employeesRouter } from './employees.js';
+import { uploadRouter } from './upload.js';
 
 export const api = Router();
 
@@ -30,8 +31,8 @@ api.use('/me', meRouter);
 
 // Catálogo: lectura para cualquier miembro (incl. CLIENT, para reservar); escritura solo staff.
 api.use('/locations', staffOrClient, crudRouter('location', { fields: ['nombre', 'direccion', 'zonaHoraria', 'moneda', 'telefono', 'email', 'reservaOnline', 'activo'], searchFields: ['nombre'] }));
-api.use('/services', staffOrClient, crudRouter('service', { fields: ['nombre', 'descripcion', 'categoria', 'duracion', 'precio', 'impuesto', 'requiereRecurso', 'tipoRecurso', 'requiereProfesional', 'reservableOnline', 'color', 'margenAntes', 'margenDespues', 'requiereConsentimiento', 'requiereBono', 'activo'], searchFields: ['nombre', 'categoria'] }));
-api.use('/products', staffOrClient, crudRouter('product', { fields: ['nombre', 'categoria', 'stock', 'minimo', 'precio', 'proveedor'], searchFields: ['nombre', 'categoria'] }));
+api.use('/services', staffOrClient, crudRouter('service', { fields: ['nombre', 'descripcion', 'categoria', 'duracion', 'precio', 'impuesto', 'requiereRecurso', 'tipoRecurso', 'requiereProfesional', 'reservableOnline', 'color', 'margenAntes', 'margenDespues', 'requiereConsentimiento', 'requiereBono', 'imagenUrl', 'activo'], searchFields: ['nombre', 'categoria'] }));
+api.use('/products', staffOrClient, crudRouter('product', { fields: ['nombre', 'categoria', 'stock', 'minimo', 'precio', 'proveedor', 'imagenUrl'], searchFields: ['nombre', 'categoria'] }));
 
 // A partir de aquí, SOLO staff (empleo). El rol CLIENT recibe 403 en todo lo de gestión.
 // Cierra el hallazgo CRÍTICO F1/F2 de sec-review.md (crud/dashboard/bookings/packages sin guard).
@@ -45,6 +46,7 @@ api.use('/invoices', crudRouter('invoice', { fields: ['numero', 'cliente', 'serv
 api.use('/campaigns', crudRouter('campaign', { fields: ['nombre', 'canal', 'estado', 'enviados', 'aperturas'] }));
 api.use('/fichajes', crudRouter('fichaje', { fields: ['employeeId', 'empleado', 'fecha', 'entrada', 'salida', 'horas'], fkFields: { employeeId: 'employee' } }));
 api.use('/tags', crudRouter('tag', { fields: ['nombre', 'color'], searchFields: ['nombre'] }));
+api.use('/upload', uploadRouter);
 
 // Custom
 api.use('/tenants', tenantsRouter); // clientes de AA (aa.tenant, raw cross-schema) → FK de proyectos
