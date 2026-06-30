@@ -17,6 +17,7 @@ const DEFAULT_EMOJI: Record<ModuleId, string> = {
   facturas: '💶',
   marketing: '📣',
   estadisticas: '📈',
+  categorias: '🏟️',
   configuracion: '⚙️',
   'mi-cuenta': '👤',
 };
@@ -32,6 +33,20 @@ const BY_VERTICAL: Partial<Record<VerticalId, Partial<Record<ModuleId, string>>>
   escalada: { servicios: '🧗', empleados: '🧗‍♂️', citas: '🎟️' },
   veterinario: { servicios: '🐾', empleados: '🧑‍⚕️', productos: '💊', clientes: '🐶' },
   hosteleria: { servicios: '🍽️', empleados: '🧑‍🍳', productos: '🍷', citas: '🪑', ventas: '🧾' },
+  'centro-deportivo': {
+    clientes: '🏅',
+    empleados: '👨‍🏫',
+    citas: '🏃',
+    servicios: '🎫',
+    fichaje: '🕐',
+    vacaciones: '🌴',
+    productos: '⚽',
+    ventas: '💰',
+    facturas: '🧾',
+    marketing: '📢',
+    estadisticas: '📊',
+    categorias: '🏟️',
+  },
 };
 
 export function moduleEmoji(vertical: VerticalId, moduleId: ModuleId): string {

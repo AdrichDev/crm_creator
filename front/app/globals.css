@@ -93,11 +93,11 @@ body {
 .onboarding input::placeholder,
 .onboarding textarea::placeholder { color: var(--panel-muted); }
 
-/* El asistente usa SIEMPRE acento azul (independiente del brand del tenant):
-   botón "Siguiente"/"Crear" (btn-primary → var(--acc)), progreso del stepper
-   (var(--brand-primary)) y botón "Atrás" (btn-ghost). */
-.onboarding { --acc: #2563eb; --acc-light: #3b82f6; --brand-primary: #2563eb; --brand-secondary: #3b82f6; }
+/* Botones (Atrás/Siguiente/Volver) siempre azul fijo en onboarding.
+   --brand-primary/secondary los inyecta el wrapper con inline style para el stepper. */
+.onboarding { --acc: #2563eb; --acc-light: #3b82f6; }
 .onboarding .btn-ghost { color: var(--acc); }
+.onboarding .btn-ghost:hover { background: transparent; }
 
 /* ── Modo claro (sigue el SO o el toggle; data-theme="light" en <html>) ── */
 :root[data-theme="light"] {
@@ -266,6 +266,12 @@ body {
   text-align: left; padding: .9rem 1rem; color: var(--acc);
   border-bottom: 2px solid rgba(255,255,255,0.1); font-family: var(--heading-font); font-size: 1rem;
 }
+/* Columna activa en ordenación: color secundario + borde inferior en secundario. */
+.data-table th.sorted,
+.data-table th[aria-sort="ascending"],
+.data-table th[aria-sort="descending"] { color: var(--acc-light); border-bottom-color: var(--acc-light); }
+/* Cabeceras clicables: cursor pointer + hover en secundario. */
+.data-table th[role="columnheader"]:hover { color: var(--acc-light); cursor: pointer; }
 .data-table td { padding: .9rem 1rem; border-bottom: 1px solid rgba(255,255,255,0.05); color: var(--panel-text); }
 .data-table tr:hover td { background: rgba(255,255,255,0.02); }
 
@@ -286,13 +292,13 @@ body {
 }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 .btn-primary { background: transparent; color: var(--acc); border-color: var(--acc); }
-.btn-primary:hover { background: color-mix(in srgb, var(--acc) 8%, transparent); transform: translateY(-1px); box-shadow: 0 4px 10px color-mix(in srgb, var(--acc) 18%, transparent); }
+/* Hover: rellena con el secundario del vertical para darle presencia. */
+.btn-primary:hover { background: var(--acc-light); color: var(--panel-bg); border-color: var(--acc-light); transform: translateY(-1px); box-shadow: 0 4px 10px color-mix(in srgb, var(--acc-light) 30%, transparent); }
 .btn-outline { background: transparent; color: var(--panel-muted); border-color: rgba(255,255,255,0.12); }
-.btn-outline:hover { color: var(--acc); border-color: var(--acc); background: color-mix(in srgb, var(--acc) 6%, transparent); }
+.btn-outline:hover { color: var(--acc-light); border-color: var(--acc-light); background: color-mix(in srgb, var(--acc-light) 8%, transparent); }
 .btn-ghost { background: transparent; color: var(--panel-muted); }
-/* Hover del botón "Atrás": usa el acento (mismo color que el texto de "Siguiente",
-   btn-primary) en vez de #fff fijo — que en modo claro era invisible. */
-.btn-ghost:hover { color: var(--acc); background: color-mix(in srgb, var(--acc) 8%, transparent); }
+/* Hover ghost: solo cambia letras al color secundario, sin relleno. */
+.btn-ghost:hover { color: var(--acc-light); background: transparent; }
 .btn-sm { padding: .35rem .7rem; font-size: .8rem; }
 .btn-block-lg { width: 100%; padding: 1rem; font-size: 1.1rem; }
 

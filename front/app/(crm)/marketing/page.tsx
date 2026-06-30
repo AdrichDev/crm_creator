@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { useDialog } from '@/components/ui/dialog-provider';
 import { ModuleGuard } from '@/components/layout/module-guard';
 import { useTerm, useTenantConfig } from '@/lib/tenant-config-context';
 import { PageHeader, Stat, Table, Td, Badge, Button, RowActions } from '@/components/ui/primitives';
@@ -24,6 +25,7 @@ export default function Page() {
   const term = useTerm('marketing', 'Marketing');
   const { config } = useTenantConfig();
   const clienteId = config.business.clienteId ?? null;
+  const dialog = useDialog();
   const { items, create, update, remove } = useCollection<Campana>('marketing', seed);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Campana | null>(null);
@@ -77,7 +79,7 @@ export default function Page() {
             <Td><Badge>{c.canal}</Badge></Td>
             <Td><Badge tone={tone(c.estado)}>{c.estado}</Badge></Td>
             <Td>{c.enviados}</Td><Td>{c.aperturas}</Td>
-            <Td><RowActions onEdit={() => { setEditing(c); setOpen(true); }} onDelete={() => { if (confirm('¿Eliminar?')) remove(c.id); }} /></Td>
+            <Td><RowActions onEdit={() => { setEditing(c); setOpen(true); }} onDelete={() => { void dialog.confirm({ message: '¿Eliminar?', danger: true }).then((ok) => { if (ok) remove(c.id); }); }} /></Td>
           </tr>
         ))}
       </Table>

@@ -47,10 +47,12 @@ export function ModuleToggleGrid({ modules, onToggle, terminology = {}, vertical
                     blocked && 'opacity-40 cursor-not-allowed')}
                   // Seleccionada → tinte azul translúcido que deja transpirar el fondo del tema.
                   style={on ? { backgroundColor: 'rgba(37,99,235,0.10)' } : undefined}>
-                  {/* Icono coloreado por categoría (tinte de fondo + trazo del mismo tono). */}
+                  {/* Icono coloreado por categoría. Con vertical activo → emoji del sector. */}
                   <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl"
                     style={{ backgroundColor: `color-mix(in srgb, ${color} 16%, transparent)`, color }}>
-                    <Icon name={m.icon} className="h-4 w-4" />
+                    {vertical
+                      ? <span className="text-base leading-none">{resolveModuleEmoji(vertical, m.id, emojis)}</span>
+                      : <Icon name={m.icon} className="h-4 w-4" />}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">

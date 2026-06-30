@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { useDialog } from '@/components/ui/dialog-provider';
 import { Modal } from './modal';
 import { Button } from './primitives';
 
@@ -24,6 +25,7 @@ export function EntityModal({ open, title, fields, initial, onSubmit, onClose }:
   onSubmit: (values: Values) => void;
   onClose: () => void;
 }) {
+  const dialog = useDialog();
   const [values, setValues] = useState<Values>({});
 
   useEffect(() => {
@@ -37,10 +39,10 @@ export function EntityModal({ open, title, fields, initial, onSubmit, onClose }:
     setValues((v) => ({ ...v, [name]: type === 'number' ? (raw === '' ? '' : Number(raw)) : raw }));
   }
 
-  function submit() {
+  async function submit() {
     for (const f of fields) {
       if (f.required && (values[f.name] === '' || values[f.name] === undefined)) {
-        alert(`Completa el campo "${f.label}"`);
+        await dialog.alert(`Completa el campo "${f.label}"`);
         return;
       }
     }
@@ -51,7 +53,7 @@ export function EntityModal({ open, title, fields, initial, onSubmit, onClose }:
     <Modal open={open} title={title} onClose={onClose}
       footer={<>
         <Button variant="outline" onClick={onClose}>Cancelar</Button>
-        <Button onClick={submit}>Guardar</Button>
+        <Button onClick={() => void submit()}>Guardar</Button>
       </>}>
       <div className="space-y-3">
         {fields.map((f) => (

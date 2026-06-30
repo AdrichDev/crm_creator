@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { useDialog } from '@/components/ui/dialog-provider';
 import { Button } from '@/components/ui/primitives';
 import { StructuredContent } from '@/components/stats/structured-content';
 import { patchSection, regenerateSection, type StudySection } from '@/lib/api/market-studies';
@@ -19,6 +20,7 @@ export function StudySectionEditorRemote({
   onUpdate: (key: string, markdown: string) => void;
   embedded?: boolean;
 }) {
+  const dialog = useDialog();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(section.markdown);
   const [preview, setPreview] = useState(false);
@@ -38,7 +40,8 @@ export function StudySectionEditorRemote({
   }
 
   async function regenerate() {
-    if (!confirm(`¿Regenerar la sección "${section.title}"? El contenido actual se reemplazará.`)) return;
+    const ok = await dialog.confirm({ message: `¿Regenerar la sección "${section.title}"? El contenido actual se reemplazará.`, danger: true });
+    if (!ok) return;
     setRegen(true);
     try {
       const result = await regenerateSection(studyId, section.key);
@@ -46,7 +49,7 @@ export function StudySectionEditorRemote({
       onUpdate(section.key, result.section.markdown);
       setEditing(false);
     } catch {
-      alert('Error al regenerar la sección');
+      await dialog.alert('Error al regenerar la sección');
     } finally {
       setRegen(false);
     }

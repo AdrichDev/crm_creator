@@ -40,7 +40,7 @@ export function EmojiPickerButton({ value, fallback, onPick, label }:
           onMouseDown={() => setOpen(false)}
         />
       )}
-      <span className="relative z-30 inline-block">
+      <span className={`relative inline-block ${open ? 'z-[999]' : 'z-[1]'}`}>
         <button
           ref={btnRef}
           type="button"
@@ -51,12 +51,13 @@ export function EmojiPickerButton({ value, fallback, onPick, label }:
           {value && value.trim() ? value : fallback}
         </button>
         {open && (
-          <div className={`absolute left-0 z-30 ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
+          <div className={`absolute left-0 z-30 overflow-hidden rounded-xl bg-white shadow-xl ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
             <Picker
               data={data}
               onEmojiSelect={handleSelect}
               locale="es"
               previewPosition="none"
+              theme="light"
             />
           </div>
         )}

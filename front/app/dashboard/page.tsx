@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { useDialog } from '@/components/ui/dialog-provider';
 import { useRouter } from 'next/navigation';
 import { GENERATED_TENANT } from '@/lib/config/generated-tenant';
 import { isAuthed, logout } from '@/lib/auth/session';
@@ -13,6 +14,7 @@ import { Plus, Download, Pencil, Trash2, FolderOpen, Loader2 } from 'lucide-reac
 export default function Consola() {
   const { ready, projects, config, openProject, deleteProject, markGenerated } = useProjects();
   const router = useRouter();
+  const dialog = useDialog();
   const [busy, setBusy] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
 
@@ -130,7 +132,7 @@ export default function Consola() {
                     <button onClick={() => generar(p.id)} disabled={busy === p.id} className="inline-flex items-center gap-1.5 rounded-lg gold-gradient px-3 py-1.5 text-xs font-semibold text-ink transition hover:opacity-90 disabled:opacity-50">
                       {busy === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} Generar
                     </button>
-                    <button onClick={() => { if (confirm('¿Eliminar proyecto?')) deleteProject(p.id); }} className="ml-auto inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /></button>
+                    <button onClick={() => { void dialog.confirm({ message: '¿Eliminar proyecto?', danger: true }).then((ok) => { if (ok) deleteProject(p.id); }); }} className="ml-auto inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /></button>
                   </div>
                 </div>
               );

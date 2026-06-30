@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { useDialog } from '@/components/ui/dialog-provider';
 import { Card, CardBody, Button, Badge } from '@/components/ui/primitives';
 import { Modal } from '@/components/ui/modal';
 import { isApiEnabled } from '@/lib/api/client';
@@ -11,6 +12,7 @@ import {
 // Panel de gestión de usuarios del negocio (solo admin). Look del panel (--panel-*).
 export function UsersPanel() {
   const apiOn = isApiEnabled();
+  const dialog = useDialog();
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +54,8 @@ export function UsersPanel() {
   }
 
   async function onDelete(u: ManagedUser) {
-    if (!confirm(`¿Eliminar a ${u.firstName} (${u.email}) de este negocio?`)) return;
+    const ok = await dialog.confirm({ message: `¿Eliminar a ${u.firstName} (${u.email}) de este negocio?`, danger: true });
+    if (!ok) return;
     setBusyId(u.id); setError(null);
     try { await deleteUser(u.id); await refresh(); }
     catch (e) { setError(e instanceof Error ? e.message : 'No se pudo eliminar'); }

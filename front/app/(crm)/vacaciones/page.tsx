@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { useDialog } from '@/components/ui/dialog-provider';
 import { ModuleGuard } from '@/components/layout/module-guard';
 import { useTerm, useRole } from '@/lib/tenant-config-context';
 import { canManage } from '@/lib/config/roles';
@@ -21,6 +22,7 @@ export default function Page() {
   const term = useTerm('vacaciones', 'Vacaciones');
   const { role } = useRole();
   const gestiona = canManage(role); // solo admin aprueba/rechaza/elimina
+  const dialog = useDialog();
   const { items, create, update, remove } = useCollection<Vacacion>('vacaciones', seed);
   const [open, setOpen] = useState(false);
   const tone = (s: string) => s === 'Aprobada' ? 'green' : s === 'Pendiente' ? 'amber' : 'red';
@@ -53,7 +55,7 @@ export default function Page() {
                     <button onClick={() => update(v.id, { estado: 'Rechazada' })} className="row-action danger">Rechazar</button>
                   </div>
                 ) : (
-                  <div className="flex justify-end"><button onClick={() => { if (confirm('¿Eliminar?')) remove(v.id); }} className="row-action edit">Eliminar</button></div>
+                  <div className="flex justify-end"><button onClick={() => { void dialog.confirm({ message: '¿Eliminar?', danger: true }).then((ok) => { if (ok) remove(v.id); }); }} className="row-action edit">Eliminar</button></div>
                 )}
               </Td>
             )}

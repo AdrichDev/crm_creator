@@ -1,5 +1,6 @@
 'use client';
 import { useMemo, useState } from 'react';
+import { useDialog } from '@/components/ui/dialog-provider';
 import { useRouter } from 'next/navigation';
 import { ModuleGuard } from '@/components/layout/module-guard';
 import { useTerm, useRole, useTenantConfig } from '@/lib/tenant-config-context';
@@ -63,6 +64,7 @@ export default function Page() {
   // Modo API: paginación server-side.
   const paged = usePaginatedApi<ClienteApiRow>('/customers', 20, apiEnabled);
 
+  const dialog = useDialog();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Cliente | null>(null);
   const [info, setInfo] = useState<Cliente | null>(null);
@@ -137,7 +139,7 @@ export default function Page() {
                       <Pencil className="h-4 w-4" />
                     </IconButton>
                     <IconButton danger title="Eliminar"
-                      onClick={() => { if (confirm('¿Eliminar cliente?')) remove(c.id); }}>
+                      onClick={() => { void dialog.confirm({ message: '¿Eliminar cliente?', danger: true }).then((ok) => { if (ok) remove(c.id); }); }}>
                       <Trash2 className="h-4 w-4" />
                     </IconButton>
                   </>

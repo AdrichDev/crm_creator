@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { useDialog } from '@/components/ui/dialog-provider';
 import { Button } from '@/components/ui/primitives';
 import { patchStudy, generateStudy, type MarketStudyInputs } from '@/lib/api/market-studies';
 
@@ -22,6 +23,7 @@ interface Props {
 }
 
 export function StudyIterationPanel({ studyId, inputs, placesConfigured, hasSections = true, onRegenerated }: Props) {
+  const dialog = useDialog();
   const [open, setOpen] = useState(!hasSections);
 
   const [zone, setZone] = useState(inputs.zone ?? '');
@@ -73,8 +75,9 @@ export function StudyIterationPanel({ studyId, inputs, placesConfigured, hasSect
     e.preventDefault();
     if (!validate()) return;
 
-    if (hasSections && !confirm('Las secciones del estudio se reescribirán. Tus ediciones manuales se incorporan como contexto, pero el contenido puede cambiar. ¿Regenerar el estudio?')) {
-      return;
+    if (hasSections) {
+      const ok = await dialog.confirm({ message: 'Las secciones del estudio se reescribirán. Tus ediciones manuales se incorporan como contexto, pero el contenido puede cambiar. ¿Regenerar el estudio?' });
+      if (!ok) return;
     }
 
     setLoading(true);
@@ -100,7 +103,8 @@ export function StudyIterationPanel({ studyId, inputs, placesConfigured, hasSect
 
   async function handleGeneratePrompt() {
     if (!validate()) return;
-    if (!confirm('Se generará el prompt óptimo con IA (según tu selección y nuestro core de negocio) y se regenerará el estudio al instante. ¿Continuar?')) return;
+    const ok = await dialog.confirm({ message: 'Se generará el prompt óptimo con IA (según tu selección y nuestro core de negocio) y se regenerará el estudio al instante. ¿Continuar?' });
+    if (!ok) return;
 
     setPromptLoading(true);
     setErrors({});

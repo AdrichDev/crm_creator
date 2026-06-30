@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { useDialog } from '@/components/ui/dialog-provider';
 import { useTenantConfig, useRole } from '@/lib/tenant-config-context';
 import { ModuleGuard } from '@/components/layout/module-guard';
 import { VERTICAL_MAP } from '@/lib/config/verticals';
@@ -20,6 +21,7 @@ export default function ConfiguracionPage() {
   const { config, update, reset, toggleModule, setModuleEmoji, toggleWorkerChip } = useTenantConfig();
   const { role } = useRole();
   const isAdmin = role === 'admin';
+  const dialog = useDialog();
 
   // El tab "Usuarios" (gestión de cuentas + cambio de contraseña) es solo para admin.
   // "Mi Cuenta" es accesible para todos los roles.
@@ -135,7 +137,7 @@ export default function ConfiguracionPage() {
           <p className="text-xs text-[var(--panel-muted)]">Tipo: {VERTICAL_MAP[config.business.vertical].label}</p>
           {isAdmin && (
             <div className="border-t border-white/10 pt-4">
-              <Button variant="outline" onClick={() => { if (confirm('¿Reiniciar toda la configuración?')) reset(); }}>Reiniciar configuración</Button>
+              <Button variant="outline" onClick={() => { void dialog.confirm({ message: '¿Reiniciar toda la configuración?', danger: true }).then((ok) => { if (ok) reset(); }); }}>Reiniciar configuración</Button>
             </div>
           )}
         </CardBody></Card>

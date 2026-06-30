@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { useDialog } from '@/components/ui/dialog-provider';
 import { ModuleGuard } from '@/components/layout/module-guard';
 import { useTerm } from '@/lib/tenant-config-context';
 import { PageHeader, Stat, Table, Td, Badge, Button, RowActions } from '@/components/ui/primitives';
@@ -47,6 +48,7 @@ export default function Page() {
   // Modo API: paginación server-side.
   const paged = usePaginatedApi<CitaApiRow>('/bookings', 20, apiEnabled);
 
+  const dialog = useDialog();
   const [open, setOpen] = useState(false);
   const [openNueva, setOpenNueva] = useState(false);
   const [editing, setEditing] = useState<Cita | null>(null);
@@ -85,7 +87,7 @@ export default function Page() {
             <Td className="font-medium text-[var(--panel-text)]">{c.cliente}</Td>
             <Td>{c.servicio}</Td><Td>{c.empleado}</Td><Td>{c.fecha}</Td><Td>{c.hora}</Td>
             <Td><Badge tone={tone(c.estado)}>{c.estado}</Badge></Td>
-            <Td><RowActions onEdit={() => { setEditing(c); setOpen(true); }} onDelete={() => { if (confirm('¿Eliminar?')) remove(c.id); }} /></Td>
+            <Td><RowActions onEdit={() => { setEditing(c); setOpen(true); }} onDelete={() => { void dialog.confirm({ message: '¿Eliminar?', danger: true }).then((ok) => { if (ok) remove(c.id); }); }} /></Td>
           </tr>
         ))}
       </Table>

@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { useDialog } from '@/components/ui/dialog-provider';
 import { ModuleGuard } from '@/components/layout/module-guard';
 import { useTerm, useRole } from '@/lib/tenant-config-context';
 import { canWrite } from '@/lib/config/roles';
@@ -17,6 +18,7 @@ export default function Page() {
   const termProd = useTerm('productos', 'Productos');
   const { role } = useRole();
   const puedeCobrar = canWrite(role, 'ventas');
+  const dialog = useDialog();
   const { items, create, remove } = useCollection<Venta>('ventas', seedVentas);
   const { items: productos } = useCollection<Producto>('productos', seedProductos);
 
@@ -105,7 +107,7 @@ export default function Page() {
             <Td>{v.fecha}</Td><Td>{v.cliente}</Td><Td>{v.items}</Td>
             <Td><Badge tone={tone(v.metodo)}>{v.metodo}</Badge></Td>
             <Td className="font-medium">€{Number(v.total).toFixed(2)}</Td>
-            <Td><RowActions onDelete={() => { if (confirm('¿Anular ticket?')) remove(v.id); }} /></Td>
+            <Td><RowActions onDelete={() => { void dialog.confirm({ message: '¿Anular ticket?', danger: true }).then((ok) => { if (ok) remove(v.id); }); }} /></Td>
           </tr>
         ))}
       </Table>

@@ -1,5 +1,6 @@
 'use client';
 import { useMemo, useState } from 'react';
+import { useDialog } from '@/components/ui/dialog-provider';
 import { ModuleGuard } from '@/components/layout/module-guard';
 import { useTerm, useTenantConfig } from '@/lib/tenant-config-context';
 import { serviciosMock } from '@/lib/config/sector-data';
@@ -43,6 +44,7 @@ export default function Page() {
   // Modo API: paginación server-side.
   const paged = usePaginatedApi<ServicioApiRow>('/services', 20, apiEnabled);
 
+  const dialog = useDialog();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Servicio | null>(null);
   const [imgOverrides, setImgOverrides] = useState<Record<string, string>>({});
@@ -89,7 +91,7 @@ export default function Page() {
               </div>
             </Td>
             <Td><Badge>{s.categoria}</Badge></Td><Td>{s.duracion} min</Td><Td>€{s.precio}</Td>
-            <Td><RowActions onEdit={() => { setEditing(s); setOpen(true); }} onDelete={() => { if (confirm('¿Eliminar?')) remove(s.id); }} /></Td>
+            <Td><RowActions onEdit={() => { setEditing(s); setOpen(true); }} onDelete={() => { void dialog.confirm({ message: '¿Eliminar?', danger: true }).then((ok) => { if (ok) remove(s.id); }); }} /></Td>
           </tr>
         ))}
       </Table>

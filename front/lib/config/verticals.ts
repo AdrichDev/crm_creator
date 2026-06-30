@@ -4,7 +4,8 @@ import type { Terminology } from './terminology';
 export type VerticalId =
   | 'peluqueria' | 'estetica' | 'hosteleria'
   | 'fitness' | 'escalada' | 'clinica'
-  | 'taller' | 'veterinario' | 'abogados' | 'custom';
+  | 'taller' | 'veterinario' | 'abogados'
+  | 'centro-deportivo' | 'comerciales' | 'custom';
 
 export interface VerticalDef {
   id: VerticalId;
@@ -81,6 +82,20 @@ export const VERTICALS: VerticalDef[] = [
     defaultModules: ['clientes', 'citas', 'servicios', ...BASE_PERSONAS, 'fichaje', 'ventas', 'facturas', 'marketing', 'estadisticas'],
     terminology: { citas: 'Citas', empleados: 'Abogados', servicios: 'Tarifas', clientes: 'Clientes', ventas: 'Facturación' },
     branding: { primary: '#1e3a5f', secondary: '#c0a062' },
+  },
+  {
+    id: 'centro-deportivo', label: 'Centro / Club deportivo', emoji: '🏟️',
+    tagline: 'Fútbol, baloncesto, natación, halterofilia y más',
+    defaultModules: ['clientes', 'citas', 'servicios', 'empleados', 'fichaje', 'vacaciones', 'productos', 'ventas', 'facturas', 'marketing', 'estadisticas', 'categorias'],
+    terminology: { citas: 'Entrenamientos', empleados: 'Entrenadores', servicios: 'Cuotas y abonos', clientes: 'Socios', productos: 'Material deportivo' },
+    branding: { primary: '#064e3b', secondary: '#34d399' },
+  },
+  {
+    id: 'comerciales', label: 'Equipo comercial', emoji: '💼',
+    tagline: 'Gestión de equipos de ventas, leads y pipeline comercial',
+    defaultModules: ['clientes', 'citas', 'servicios', 'empleados', 'fichaje', 'vacaciones', 'ventas', 'facturas', 'marketing', 'estadisticas'],
+    terminology: { citas: 'Reuniones', empleados: 'Comerciales', servicios: 'Productos y tarifas', clientes: 'Cuentas', ventas: 'Pipeline' },
+    branding: { primary: '#1e3a5f', secondary: '#3b82f6' },
   },
   {
     id: 'custom', label: 'Personalizado', emoji: '⚙️',

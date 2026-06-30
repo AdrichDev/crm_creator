@@ -1,5 +1,6 @@
 'use client';
-import { Suspense, useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
+import { useDialog } from '@/components/ui/dialog-provider';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useProjects } from '@/lib/tenant-config-context';
 import type { ClientLite } from '@/lib/clients/picker';
@@ -27,6 +28,7 @@ function OnboardingInner() {
   const { createProject, openProject, setConfig, projects } = useProjects();
   const router = useRouter();
   const params = useSearchParams();
+  const dialog = useDialog();
 
   // UC-1: con `?projectId=` el onboarding entra en MODO EDICIÓN (pre-cargado).
   // Sin él → modo alta (comportamiento de siempre, intacto).
@@ -40,6 +42,11 @@ function OnboardingInner() {
   const [step, setStep] = useState(minStep);
   const [draft, setDraft] = useState(() =>
     editing ? draftForEdit(editing.config) : configFromVertical('peluqueria', ''));
+  // Visual del picker: null = ninguna card seleccionada. Separado de draft.business.vertical
+  // (que cae a 'custom' cuando el usuario deselecciona) para poder mostrar estado vacío.
+  const [pickedVertical, setPickedVertical] = useState<VerticalId | null>(
+    editing ? (editing.config.business.vertical ?? null) : 'peluqueria',
+  );
 
   // Tenants reales de agents-agency (aa.tenant) para vincular el proyecto.
   // Se leen del back creador_CRM (/tenants, raw cross-schema sobre la Supabase
@@ -68,13 +75,25 @@ function OnboardingInner() {
     }));
   }
 
-  function pickVertical(v: VerticalId) {
-    if (v === draft.business.vertical) return;
+  async function pickVertical(v: VerticalId): Promise<void> {
+    // Datos de contacto del negocio a preservar siempre al cambiar vertical.
+    const { clienteId, name, email, phone, address } = draft.business;
+    // Toggle: clicar la card ya seleccionada → deseleccionar (vuelve a 'custom' visualmente limpio).
+    if (v === pickedVertical) {
+      setPickedVertical(null);
+      const preset = configFromVertical('custom', name);
+      setDraft({ ...preset, business: { ...preset.business, name, clienteId, email, phone, address } });
+      return;
+    }
     // En edición, cambiar de vertical MACHACA módulos/marca/terminología con el preset.
-    // Avisar y confirmar para no perder la configuración existente sin querer.
-    if (isEdit && !confirm('Cambiar de sector reemplaza módulos, marca y terminología por el preset del nuevo sector. ¿Continuar?')) return;
-    const preset = configFromVertical(v, draft.business.name);
-    setDraft({ ...preset, business: { ...preset.business, name: draft.business.name } });
+    if (isEdit) {
+      const ok = await dialog.confirm({ message: 'Cambiar de sector reemplaza módulos, marca y terminología por el preset del nuevo sector. ¿Continuar?' });
+      if (!ok) return;
+    }
+    setPickedVertical(v);
+    const preset = configFromVertical(v, name);
+    // Conservar todos los datos de contacto del cliente al cambiar de vertical.
+    setDraft({ ...preset, business: { ...preset.business, name, clienteId, email, phone, address } });
   }
   function toggle(id: ModuleId, on: boolean) {
     if (MODULE_MAP[id]?.mandatory) return;
@@ -131,12 +150,12 @@ function OnboardingInner() {
     // Onboarding hereda el tema (claro/oscuro) vía .crm-console: rejilla de fondo
     // en todo el main + tokens --panel-* que voltean con data-theme. Los grises
     // fijos del diseño se remapean a tokens en globals.css (scope .onboarding).
-    <div className="crm-console onboarding min-h-screen">
+    <div className="crm-console onboarding min-h-screen"
+      style={{ '--brand-primary': draft.branding.primary, '--brand-secondary': draft.branding.secondary } as React.CSSProperties}>
       <div className="mx-auto max-w-4xl px-5 py-10">
-        <button onClick={() => router.push('/dashboard')}
-          className="mb-6 inline-flex items-center gap-1.5 rounded-lg border border-[var(--acc)]/40 px-3 py-1.5 text-sm font-medium text-[var(--acc)] transition hover:border-[var(--acc)] hover:bg-[color-mix(in_srgb,var(--acc)_8%,transparent)]">
+        <Button variant="ghost" onClick={() => router.push('/dashboard')} className="mb-6">
           <ChevronLeft className="h-4 w-4" /> Volver a proyectos
-        </button>
+        </Button>
         <div className="mb-2 text-center">
           <h1 className="font-display text-3xl font-semibold text-gray-900">{isEdit ? 'Editar el negocio' : 'Configura el negocio'}</h1>
           <p className="mt-1 text-sm text-gray-500">{isEdit ? 'Ajusta apartados, marca y datos. Los cambios se guardan sobre este proyecto.' : 'Elige qué incluye la plataforma. Podrás cambiarlo cuando quieras.'}</p>
@@ -163,7 +182,7 @@ function OnboardingInner() {
               <ClientCombobox clients={clients} selectedId={draft.business.clienteId} onPick={pickClient} error={clientsError} />
             </CardBody></Card>
 
-            <VerticalPicker value={draft.business.vertical} onChange={pickVertical} />
+            <VerticalPicker value={pickedVertical} onChange={pickVertical} />
           </div>
         )}
 

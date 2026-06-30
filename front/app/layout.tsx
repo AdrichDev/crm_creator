@@ -4,6 +4,7 @@ import { TenantConfigProvider } from '@/lib/tenant-config-context';
 import { BrandingStyle } from '@/components/layout/branding-style';
 import { BrandingHead } from '@/components/layout/branding-head';
 import { CrmThemeProvider } from '@/components/layout/theme-provider';
+import { DialogProvider } from '@/components/ui/dialog-provider';
 
 export const metadata: Metadata = {
   title: 'SaaS Multi-Negocio',
@@ -27,10 +28,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="font-sans antialiased" suppressHydrationWarning>
         <TenantConfigProvider>
-          <BrandingStyle />
-          <BrandingHead />
-          <CrmThemeProvider />
-          {children}
+          <DialogProvider>
+            <BrandingStyle />
+            <BrandingHead />
+            <CrmThemeProvider />
+            {children}
+          </DialogProvider>
         </TenantConfigProvider>
       </body>
     </html>

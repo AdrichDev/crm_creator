@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { useDialog } from '@/components/ui/dialog-provider';
 import { ModuleGuard } from '@/components/layout/module-guard';
 import { useTerm } from '@/lib/tenant-config-context';
 import { PageHeader, Stat, Table, Td, Badge, Button, RowActions } from '@/components/ui/primitives';
@@ -44,6 +45,7 @@ export default function Page() {
   // Modo API: paginación server-side.
   const paged = usePaginatedApi<ProductoApiRow>('/products', 20, apiEnabled);
 
+  const dialog = useDialog();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Producto | null>(null);
   const [imgOverrides, setImgOverrides] = useState<Record<string, string>>({});
@@ -98,7 +100,7 @@ export default function Page() {
             <Td><Badge>{p.categoria}</Badge></Td>
             <Td><span className={Number(p.stock) < Number(p.minimo) ? 'font-semibold text-red-600' : ''}>{p.stock}</span></Td>
             <Td>{p.minimo}</Td><Td>€{p.precio}</Td><Td>{p.proveedor}</Td>
-            <Td><RowActions onEdit={() => { setEditing(p); setOpen(true); }} onDelete={() => { if (confirm('¿Eliminar?')) remove(p.id); }} /></Td>
+            <Td><RowActions onEdit={() => { setEditing(p); setOpen(true); }} onDelete={() => { void dialog.confirm({ message: '¿Eliminar?', danger: true }).then((ok) => { if (ok) remove(p.id); }); }} /></Td>
           </tr>
         ))}
       </Table>

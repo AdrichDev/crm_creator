@@ -29,7 +29,9 @@ export function ModuleGridPanel({ modules, onToggle, terminology = {}, vertical,
                 <Card key={m.id} className={cn('transition', on && 'border-[var(--acc)]/40')}>
                   <CardBody className="flex items-start gap-3 p-4">
                     <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/5 text-[var(--acc)]">
-                      <Icon name={m.icon} className="h-4 w-4" />
+                      {vertical
+                        ? <span className="text-base leading-none">{resolveModuleEmoji(vertical, m.id, emojis)}</span>
+                        : <Icon name={m.icon} className="h-4 w-4" />}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">

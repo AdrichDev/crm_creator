@@ -2,7 +2,7 @@
 import { VERTICALS, type VerticalId } from '@/lib/config/verticals';
 import { cn } from '@/lib/utils';
 
-export function VerticalPicker({ value, onChange }: { value: VerticalId; onChange: (v: VerticalId) => void }) {
+export function VerticalPicker({ value, onChange }: { value: VerticalId | null; onChange: (v: VerticalId) => void }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       {VERTICALS.map((v) => {

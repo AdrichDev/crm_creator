@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
+import { useDialog } from '@/components/ui/dialog-provider';
 import { useTenantConfig, useTerm, useRole } from '@/lib/tenant-config-context';
 import { moduleAllowedForRole, DEMO_USERS } from '@/lib/config/roles';
 import { Stat, Table, Td, Badge } from '@/components/ui/primitives';
@@ -151,6 +152,7 @@ function ClienteDashboard() {
   const termCitas = useTerm('citas', 'Citas');
   const { items, update } = useCollection<Cita>('citas', seedCitas);
   const yo = DEMO_USERS.cliente.nombre;
+  const dialog = useDialog();
 
   const mias = items
     .filter((c) => c.cliente === yo)
@@ -161,8 +163,9 @@ function ClienteDashboard() {
   const tone = (s: string) =>
     s === 'Confirmada' ? 'blue' : s === 'Completada' ? 'green' : s === 'Cancelada' ? 'red' : 'amber';
 
-  function anular(c: Cita) {
-    if (confirm('¿Anular esta reserva?')) update(c.id, { estado: 'Cancelada' });
+  async function anular(c: Cita) {
+    const ok = await dialog.confirm({ message: '¿Anular esta reserva?', danger: true });
+    if (ok) update(c.id, { estado: 'Cancelada' });
   }
 
   return (
@@ -197,7 +200,7 @@ function ClienteDashboard() {
                   <Td>
                     <div className="flex justify-end">
                       {cancelable && (
-                        <button className="row-action danger" onClick={() => anular(c)}>Anular</button>
+                        <button className="row-action danger" onClick={() => void anular(c)}>Anular</button>
                       )}
                     </div>
                   </Td>

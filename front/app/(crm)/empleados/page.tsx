@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { useDialog } from '@/components/ui/dialog-provider';
 import { ModuleGuard } from '@/components/layout/module-guard';
 import { useTerm, useRole } from '@/lib/tenant-config-context';
 import { canWrite } from '@/lib/config/roles';
@@ -47,6 +48,7 @@ export default function Page() {
   // Modo API: paginación server-side.
   const paged = usePaginatedApi<EmpleadoApiRow>('/employees', 20, apiEnabled);
 
+  const dialog = useDialog();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Empleado | null>(null);
 
@@ -87,7 +89,7 @@ export default function Page() {
             {puedeEditar && (
               <div className="equipo-actions">
                 <button className="btn btn-outline btn-sm" onClick={() => { setEditing(e); setOpen(true); }}>Editar</button>
-                <button className="btn btn-outline btn-sm" onClick={() => { if (confirm('¿Eliminar miembro?')) remove(e.id); }}>Eliminar</button>
+                <button className="btn btn-outline btn-sm" onClick={() => { void dialog.confirm({ message: '¿Eliminar miembro?', danger: true }).then((ok) => { if (ok) remove(e.id); }); }}>Eliminar</button>
               </div>
             )}
           </div>

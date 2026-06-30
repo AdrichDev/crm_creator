@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useDialog } from '@/components/ui/dialog-provider';
 import { ModuleGuard } from '@/components/layout/module-guard';
 import { Button } from '@/components/ui/primitives';
 import { StarRating } from '@/components/stats/star-rating';
@@ -19,6 +20,7 @@ export default function EstudioDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
 
+  const dialog = useDialog();
   const [study, setStudy] = useState<Study | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -56,7 +58,7 @@ export default function EstudioDetailPage() {
       const updated = await patchStudy(id, { successScore: score });
       setStudy((prev) => (prev ? { ...prev, successScore: updated.successScore } : prev));
     } catch {
-      alert('Error al guardar la valoración');
+      await dialog.alert('Error al guardar la valoración');
     } finally {
       setSavingScore(false);
     }

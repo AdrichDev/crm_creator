@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { useDialog } from '@/components/ui/dialog-provider';
 import { Table, Td } from '@/components/ui/primitives';
 import { StarRating } from '@/components/stats/star-rating';
 import { StudyWebStatusBadge } from '@/components/stats/study-web-status-badge';
@@ -36,6 +37,7 @@ export function StudyProspectsTable({
   prospects: Prospect[];
   onUpdate: (p: Prospect[]) => void;
 }) {
+  const dialog = useDialog();
   const [prospects, setProspects] = useState<Prospect[]>(initial);
   const [searching, setSearching] = useState(false);
   const [purging, setPurging] = useState(false);
@@ -45,7 +47,8 @@ export function StudyProspectsTable({
   const outOfRadiusCount = prospects.filter((p) => p.outOfRadius).length;
 
   async function purge() {
-    if (!confirm(`Se eliminarán ${outOfRadiusCount} prospecto(s) fuera del radio actual (los contactados se conservan). ¿Continuar?`)) return;
+    const ok = await dialog.confirm({ message: `Se eliminarán ${outOfRadiusCount} prospecto(s) fuera del radio actual (los contactados se conservan). ¿Continuar?`, danger: true });
+    if (!ok) return;
     setPurging(true);
     try {
       const result = await purgeOutOfRadius(studyId);
@@ -80,7 +83,7 @@ export function StudyProspectsTable({
       setProspects(updated);
       onUpdate(updated);
     } catch {
-      alert('Error al actualizar el estado');
+      await dialog.alert('Error al actualizar el estado');
     }
   }
 
