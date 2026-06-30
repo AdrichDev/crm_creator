@@ -15,6 +15,7 @@ import { tenantsRouter } from './tenants.js';
 import { projectsRouter } from './projects.js';
 import { employeesRouter } from './employees.js';
 import { uploadRouter } from './upload.js';
+import { exportsRouter } from './exports.js';
 
 export const api = Router();
 
@@ -33,7 +34,6 @@ api.use('/me', meRouter);
 api.use('/locations', staffOrClient, crudRouter('location', { fields: ['nombre', 'direccion', 'zonaHoraria', 'moneda', 'telefono', 'email', 'reservaOnline', 'activo'], searchFields: ['nombre'] }));
 api.use('/services', staffOrClient, crudRouter('service', { fields: ['nombre', 'descripcion', 'categoria', 'duracion', 'precio', 'impuesto', 'requiereRecurso', 'tipoRecurso', 'requiereProfesional', 'reservableOnline', 'color', 'margenAntes', 'margenDespues', 'requiereConsentimiento', 'requiereBono', 'imagenUrl', 'activo'], searchFields: ['nombre', 'categoria'] }));
 api.use('/products', staffOrClient, crudRouter('product', { fields: ['nombre', 'categoria', 'stock', 'minimo', 'precio', 'proveedor', 'imagenUrl'], searchFields: ['nombre', 'categoria'] }));
-
 // A partir de aquí, SOLO staff (empleo). El rol CLIENT recibe 403 en todo lo de gestión.
 // Cierra el hallazgo CRÍTICO F1/F2 de sec-review.md (crud/dashboard/bookings/packages sin guard).
 api.use(staffOnly);
@@ -56,3 +56,4 @@ api.use('/bookings', bookingsRouter);
 api.use('/time-off', timeOffRouter);
 api.use('/packages', packagesRouter);
 api.use('/dashboard', dashboardRouter);
+api.use('/exports', exportsRouter);
