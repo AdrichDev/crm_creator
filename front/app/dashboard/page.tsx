@@ -115,9 +115,11 @@ export default function Consola() {
               return (
                 <div key={p.id} className="crm-console-card group rounded-2xl p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
                   <div className="flex items-start gap-3">
-                    <div className="grid h-12 w-12 place-items-center rounded-xl text-sm font-bold text-white shadow"
+                    <div className="grid h-12 w-12 place-items-center overflow-hidden rounded-xl text-sm font-bold text-white shadow"
                       style={{ background: `linear-gradient(135deg, ${p.config.branding.secondary}, ${p.config.branding.primary})` }}>
-                      {p.config.branding.logoText}
+                      {p.config.branding.logoImage
+                        ? <img src={p.config.branding.logoImage} alt="logo" className="h-full w-full object-cover" />
+                        : p.config.branding.logoText}
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-display text-lg font-semibold text-[var(--panel-text)]">{p.config.business.name}</p>

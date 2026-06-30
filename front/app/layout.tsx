@@ -2,13 +2,13 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { TenantConfigProvider } from '@/lib/tenant-config-context';
 import { BrandingStyle } from '@/components/layout/branding-style';
-import { BrandingHead } from '@/components/layout/branding-head';
 import { CrmThemeProvider } from '@/components/layout/theme-provider';
 import { DialogProvider } from '@/components/ui/dialog-provider';
 
 export const metadata: Metadata = {
-  title: 'SaaS Multi-Negocio',
+  title: 'OperaOS · Consola',
   description: 'Plantilla SaaS modular y configurable por tipo de negocio.',
+  icons: { icon: '/favicon.svg' },
 };
 
 // Resuelve el tema antes de pintar: evita el flash y fija data-theme en <html>
@@ -30,7 +30,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <TenantConfigProvider>
           <DialogProvider>
             <BrandingStyle />
-            <BrandingHead />
             <CrmThemeProvider />
             {children}
           </DialogProvider>

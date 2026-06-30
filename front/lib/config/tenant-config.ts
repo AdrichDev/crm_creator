@@ -128,6 +128,22 @@ export const DEFAULT_CONFIG: TenantConfig = configFromVertical('peluqueria', 'Mi
 
 export const STORAGE_KEY = 'saas-negocios.config.v1';
 
+/**
+ * Config baked in at build time via NEXT_PUBLIC_TENANT_JSON env var.
+ * Used by the exported standalone app to load its tenant config without localStorage.
+ * null when the env var is absent (normal dev/prod CRM flow).
+ */
+export const BAKED_TENANT_CONFIG: TenantConfig | null =
+  typeof process !== 'undefined' && process.env.NEXT_PUBLIC_TENANT_JSON
+    ? (() => {
+        try {
+          return JSON.parse(process.env.NEXT_PUBLIC_TENANT_JSON!) as TenantConfig;
+        } catch {
+          return null;
+        }
+      })()
+    : null;
+
 export function serialize(cfg: TenantConfig): string {
   return JSON.stringify(cfg);
 }
