@@ -31,6 +31,7 @@ export type ModuleId =
   | 'marketing'
   | 'estadisticas'
   | 'categorias'
+  | 'comercial'
   | 'configuracion'
   | 'mi-cuenta';
 
@@ -189,6 +190,7 @@ export const MODULES: ModuleDef[] = [
   { id: 'marketing',     termKey: 'marketing',     defaultLabel: 'Marketing',      description: 'Campañas, fidelización y notificaciones.',         category: 'marketing', icon: 'Megaphone',       href: '/marketing',     recommends: ['clientes'] },
   { id: 'estadisticas',  termKey: 'estadisticas',  defaultLabel: 'Estadísticas',   description: 'Estudios de mercado e informes con IA.',           category: 'marketing', icon: 'BarChart3',       href: '/estadisticas',  recommends: ['clientes'] },
   { id: 'categorias',    termKey: 'categorias',    defaultLabel: 'Categorías',     description: 'Equipos y staff del club deportivo',               category: 'personas',  icon: 'Trophy',          href: '/categorias' },
+  { id: 'comercial',     termKey: 'comercial',     defaultLabel: 'Comercial de campo', description: 'Mapa geolocalizado, visitas, estados y rutas para comerciales de calle.', category: 'operativa', icon: 'MapPinned',   href: '/comercial',     recommends: ['clientes'] },
   { id: 'configuracion', termKey: 'configuracion', defaultLabel: 'Configuración',  description: 'Módulos, branding y terminología.',               category: 'core',      icon: 'Settings',        href: '/configuracion', mandatory: true },
   { id: 'mi-cuenta',     termKey: 'mi-cuenta',     defaultLabel: 'Mi Cuenta',      description: 'Perfil personal y contraseña.',                   category: 'core',      icon: 'UserCircle',      href: '/cuenta',        mandatory: true },
 ];

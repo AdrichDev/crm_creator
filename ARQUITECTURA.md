@@ -71,6 +71,7 @@ Cada módulo es **activable/desactivable** por negocio. `dashboard` y
 | `ventas` | Ventas / TPV | retail | Tickets, métodos de pago, caja | `productos` (recom.) |
 | `web` | Web pública + Landing | marketing | Landing configurable, galería, reseñas, reserva online | — |
 | `marketing` | Marketing / Comms | marketing | Campañas, fidelización, notificaciones | `clientes` |
+| `comercial` | Comercial de campo | operativa | Mapa geolocalizado (Leaflet+OSM), estados de visita por color, categoría ABC, notas, visitas, recordatorios, prospectos, ruta a Google Maps. Activable; on por defecto en vertical `comerciales` | `clientes` |
 | `configuracion` | Configuración | core | Edita módulos, branding, terminología (siempre activo) | — |
 
 > Las **dependencias** son "recomendadas", no estrictas, para no bloquear al
