@@ -6,8 +6,7 @@ import { Sidebar } from './sidebar';
 import { useProjects } from '@/lib/tenant-config-context';
 import { GENERATED_TENANT } from '@/lib/config/generated-tenant';
 import { isAuthed } from '@/lib/auth/session';
-import { ArrowLeft, Download } from 'lucide-react';
-import { generateAndDownload } from '@/lib/generate/build';
+import { ArrowLeft } from 'lucide-react';
 import { ROLES, type Role } from '@/lib/config/roles';
 import { ThemeToggle } from './theme-toggle';
 
@@ -62,12 +61,6 @@ export function AppShell({ children }: { children: ReactNode }) {
                 {ROLES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
               </select>
             </label>
-
-            {role === 'admin' && (
-              <button onClick={() => generateAndDownload(config)} className="btn btn-primary btn-sm">
-                <Download className="h-4 w-4" /> Generar paquete
-              </button>
-            )}
           </div>
         </header>
         <main className="opera-main dark-scroll">

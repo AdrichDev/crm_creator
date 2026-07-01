@@ -5,6 +5,7 @@ import {
 } from 'react';
 import { MODULE_MAP, type ModuleId } from './config/modules';
 import type { WorkerChipId } from './config/worker-chips';
+import { MAX_DASHBOARD_WIDGETS, type WidgetId } from './config/dashboard-widgets';
 import {
   type TenantConfig, DEFAULT_CONFIG, configFromVertical, deserialize,
 } from './config/tenant-config';
@@ -58,6 +59,7 @@ interface Ctx {
   toggleModule: (id: ModuleId, on: boolean) => void;
   setModuleEmoji: (id: ModuleId, emoji: string) => void;
   toggleWorkerChip: (id: WorkerChipId, on: boolean) => void;
+  toggleDashboardWidget: (id: WidgetId, on: boolean) => void;
   applyVertical: (vertical: VerticalId, name?: string) => void;
   reset: () => void;
 }
@@ -270,6 +272,17 @@ export function TenantConfigProvider({ children }: { children: ReactNode }) {
   const toggleWorkerChip = useCallback((id: WorkerChipId, on: boolean) => {
     mutateActive((c) => ({ ...c, workerChips: { ...c.workerChips, [id]: on } }));
   }, [mutateActive]);
+  const toggleDashboardWidget = useCallback((id: WidgetId, on: boolean) => {
+    mutateActive((c) => {
+      const current = c.dashboardWidgets ?? [];
+      if (on) {
+        // Defensa en profundidad: el límite también se aplica aquí, no solo en la UI.
+        if (current.includes(id) || current.length >= MAX_DASHBOARD_WIDGETS) return c;
+        return { ...c, dashboardWidgets: [...current, id] };
+      }
+      return { ...c, dashboardWidgets: current.filter((w) => w !== id) };
+    });
+  }, [mutateActive]);
   const applyVertical = useCallback((vertical: VerticalId, name?: string) => {
     mutateActive((c) => ({ ...configFromVertical(vertical, name ?? c.business.name), setupComplete: true }));
   }, [mutateActive]);
@@ -278,9 +291,9 @@ export function TenantConfigProvider({ children }: { children: ReactNode }) {
   const value = useMemo<Ctx>(() => ({
     ready, projects, activeId, hasActive: !!active, config, role, setRole,
     createProject, openProject, closeProject, deleteProject, markGenerated,
-    setConfig, update, toggleModule, setModuleEmoji, toggleWorkerChip, applyVertical, reset,
+    setConfig, update, toggleModule, setModuleEmoji, toggleWorkerChip, toggleDashboardWidget, applyVertical, reset,
   }), [ready, projects, activeId, active, config, role, setRole, createProject, openProject, closeProject,
-       deleteProject, markGenerated, setConfig, update, toggleModule, setModuleEmoji, toggleWorkerChip, applyVertical, reset]);
+       deleteProject, markGenerated, setConfig, update, toggleModule, setModuleEmoji, toggleWorkerChip, toggleDashboardWidget, applyVertical, reset]);
 
   return <C.Provider value={value}>{children}</C.Provider>;
 }

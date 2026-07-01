@@ -217,8 +217,10 @@ body {
 .border-line { border-color: var(--line); }
 .gold-gradient { background-image: linear-gradient(135deg, var(--gold-light), var(--gold)); }
 
-.dark-scroll::-webkit-scrollbar { width: 8px; }
+.dark-scroll::-webkit-scrollbar { width: 8px; background: transparent; }
+.dark-scroll::-webkit-scrollbar-track { background: transparent; }
 .dark-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 8px; }
+.dark-scroll { scrollbar-color: rgba(255,255,255,.12) transparent; }
 
 /* Scrollbar que sigue la gama del tema (claro/oscuro) vía --panel-muted.
    Para listas que viven sobre --panel-card (p. ej. el combobox de cliente). */
@@ -290,12 +292,16 @@ body {
   display: flex; align-items: center; gap: .75rem; padding: .7rem 1rem;
   border-radius: 6px; transition: .25s; border-left: 3px solid transparent; margin-bottom: 2px;
 }
-.opera-sidebar-links a:hover {
-  background: color-mix(in srgb, var(--acc) 10%, transparent); color: var(--acc);
-}
 .opera-sidebar-links a.active {
   background: color-mix(in srgb, var(--acc) 14%, transparent); color: var(--acc);
   border-left-color: var(--acc); font-weight: 600;
+}
+/* :hover DESPUÉS de .active en el cascade (misma especificidad) para que el
+   hover gane incluso sobre el enlace activo — si no, pasar el ratón por la
+   página en la que ya estás no se notaba (bug encontrado al verificar). */
+.opera-sidebar-links a:hover {
+  background: color-mix(in srgb, var(--brand-secondary, var(--acc)) 14%, transparent);
+  color: var(--brand-secondary, var(--acc));
 }
 .opera-sidebar-foot { border-top: 1px solid var(--line); padding: .75rem; }
 
@@ -390,9 +396,13 @@ body {
 .calendar-container { background: var(--panel-bg); border-radius: 8px; padding: 1.5rem; border: 1px solid rgba(255,255,255,0.05); }
 .calendar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; }
 .calendar-header h3 { color: var(--acc); font-family: var(--brand-font); text-transform: uppercase; font-size: 1.05rem; margin: 0; }
-.calendar-grid-header { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; font-weight: 700; color: var(--panel-muted); margin-bottom: .5rem; font-size: .8rem; }
-.calendar-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: .5rem; }
-.calendar-day { aspect-ratio: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(255,255,255,0.03); border-radius: 4px; cursor: pointer; transition: .25s; position: relative; border: 1px solid transparent; color: var(--panel-text); }
+.calendar-grid-header { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; font-weight: 700; color: var(--panel-muted); margin-bottom: .5rem; font-size: .8rem; flex: 0 0 auto; }
+/* flex:3 + min-height:0 → la rejilla de MES ocupa el espacio disponible del
+   widget y sus 5-6 filas se reparten esa altura (sin aspect-ratio fijo): así
+   siempre se ve entera, con celdas más pequeñas si hace falta, sin scroll. */
+.calendar-days { display: grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: minmax(0, 1fr); gap: .35rem; min-height: 0; }
+.calendar-days-mes { flex: 3; }
+.calendar-day { display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(255,255,255,0.03); border-radius: 4px; cursor: pointer; transition: .25s; position: relative; border: 1px solid transparent; color: var(--panel-text); min-height: 0; height: 100%; }
 .calendar-day:hover { background: color-mix(in srgb, var(--acc) 10%, transparent); border-color: color-mix(in srgb, var(--acc) 30%, transparent); }
 .calendar-day.empty { background: transparent; cursor: default; }
 .calendar-day.active { background: color-mix(in srgb, var(--acc) 20%, transparent); border-color: var(--acc); font-weight: 700; color: var(--acc); }
@@ -401,10 +411,87 @@ body {
 .day-appointments-panel { background: var(--panel-bg); border-radius: 8px; padding: 1.5rem; border: 1px solid var(--acc); }
 .day-appointments-panel h3 { margin: 0 0 1.25rem; color: var(--panel-text); border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: .5rem; }
 .appointments-list { display: flex; flex-direction: column; gap: 1rem; }
-.appointment-card { background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 6px; border-left: 3px solid var(--acc); }
+.appointment-card { background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 6px; border-left: 3px solid var(--acc); cursor: pointer; transition: .2s; }
+.appointment-card:hover { background: color-mix(in srgb, var(--acc) 12%, rgba(255,255,255,0.05)); }
 .appointment-card .time { color: var(--acc); font-weight: 700; font-size: 1.05rem; }
 .appointment-card .client { color: var(--panel-text); }
 .appointment-card .meta { font-size: .85rem; color: var(--panel-muted); }
+
+/* Widget Agenda (panel/widgets/agenda-widget.tsx): cabecera + grid/lista compactas.
+   flex column de altura 100% del tile: cabecera fija, rejilla flexible (3),
+   lista del día flexible más pequeña (1) — entre las dos absorben el alto del
+   widget sin que la rejilla de mes necesite scroll propio. */
+.agenda-widget { display: flex; flex-direction: column; gap: .5rem; height: 100%; min-height: 0; }
+.agenda-widget-head { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; flex: 0 0 auto; }
+/* Nav (flechas + periodo) y el selector Mes/Semana/Día viven en la MISMA fila,
+   el selector justo al lado del periodo — si no, queda pegado a la esquina y
+   se solapa con el icono "abrir módulo" del tile. */
+.agenda-widget-nav { display: flex; align-items: center; gap: .5rem; font-weight: 600; color: var(--panel-text); font-size: .9rem; flex-wrap: wrap; }
+.agenda-widget-views { display: flex; gap: .35rem; margin-left: .35rem; }
+.agenda-widget-day-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: .5rem; }
+.agenda-widget-day-label { font-size: .85rem; font-weight: 600; color: var(--panel-muted); margin: 0; }
+
+/* Vista semana: columnas altas con los eventos del día dentro (no solo el
+   número de día) — la letra puede achicarse, pero todas las citas deben
+   entrar; scroll propio por columna si un día tiene muchas. */
+.agenda-week-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(7, 1fr); gap: .35rem; }
+.agenda-week-col {
+  display: flex; flex-direction: column; min-height: 0; min-width: 0; border-radius: 6px;
+  background: rgba(255,255,255,0.03); border: 1px solid transparent; cursor: pointer; transition: .2s;
+}
+.agenda-week-col:hover { border-color: color-mix(in srgb, var(--acc) 30%, transparent); }
+.agenda-week-col.active { border-color: var(--acc); background: color-mix(in srgb, var(--acc) 8%, transparent); }
+.agenda-week-col.today .d { color: var(--acc); font-weight: 700; }
+.agenda-week-col-head { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; padding: .35rem 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.agenda-week-col-head .dow { font-size: .65rem; color: var(--panel-muted); text-transform: uppercase; }
+.agenda-week-col-head .d { font-size: .95rem; color: var(--panel-text); }
+.agenda-week-col-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: .25rem; padding: .3rem; }
+.agenda-week-col-body .appointment-card-compact { padding: .3rem .4rem; }
+.agenda-week-col-body .appointment-card-compact .time { font-size: .68rem; }
+.agenda-week-col-body .appointment-card-compact .client { font-size: .68rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Vista día: franja horaria tipo calendario normal (07–22h, ampliable). Esta
+   es la única vista con scroll vertical propio — un día con muchas horas no
+   cabe entero, igual que cualquier agenda real; mes/semana sí caben enteros. */
+.agenda-hour-grid { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+.agenda-hour-row { display: flex; gap: .75rem; border-top: 1px solid rgba(255,255,255,0.06); padding: .35rem 0; min-height: 2.5rem; }
+.agenda-hour-row:first-child { border-top: none; }
+.agenda-hour-label { flex: 0 0 3.2rem; font-size: .72rem; color: var(--panel-muted); padding-top: .15rem; }
+.agenda-hour-slot { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .35rem; }
+.appointment-card-compact { padding: .4rem .65rem; }
+.appointment-card-compact .time { font-size: .85rem; }
+
+/* Mosaico de widgets del inicio (panel/widget-grid.tsx) — gramática tipo widget
+   de móvil: esquinas más redondeadas que el resto del chrome, tamaños fijos
+   por catálogo, alto repartido (1fr) para rellenar el viewport disponible. */
+.widget-grid { display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: minmax(0, 1fr); gap: 1rem; flex: 1; min-height: 0; }
+.widget-tile {
+  background: var(--panel-card); border: 1px solid rgba(255,255,255,0.06); border-radius: 22px;
+  padding: 1.1rem; overflow: hidden; position: relative; display: flex; flex-direction: column; min-height: 0;
+}
+/* Barra superior que combina el color principal y el secundario elegidos por el tenant. */
+.widget-tile::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--acc), var(--brand-secondary, var(--acc)));
+}
+.widget-tile-open {
+  position: absolute; top: .6rem; right: .6rem; z-index: 1;
+  display: grid; place-items: center; height: 1.6rem; width: 1.6rem; border-radius: 8px;
+  color: var(--panel-muted); background: color-mix(in srgb, var(--panel-text) 6%, transparent); transition: .2s;
+}
+.widget-tile-open:hover { color: #fff; background: color-mix(in srgb, var(--acc) 30%, transparent); }
+.widget-sm { grid-column: span 1; grid-row: span 1; }
+.widget-md { grid-column: span 2; grid-row: span 1; }
+.widget-lg { grid-column: span 2; grid-row: span 2; }
+.widget-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .5rem; padding: 3rem 1.5rem; border: 1px dashed rgba(255,255,255,0.12); border-radius: 22px; text-align: center; flex: 1; }
+@media (max-width: 768px) {
+  .widget-grid { grid-template-columns: repeat(2, 1fr); grid-auto-rows: minmax(160px, 1fr); }
+}
+
+/* Página de inicio: ocupa el alto disponible de .opera-main para que el
+   mosaico de widgets rellene el viewport en vez de quedar arriba con hueco. */
+.panel-fill { display: flex; flex-direction: column; height: 100%; min-height: 0; gap: 1.5rem; }
+.panel-fill > .panel-header { flex: 0 0 auto; }
 
 /* =========================== EQUIPO (CARDS) =========================== */
 .equipo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1.5rem; }

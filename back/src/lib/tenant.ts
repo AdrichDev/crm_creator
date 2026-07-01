@@ -14,7 +14,7 @@ export class CrossTenantError extends Error {
 }
 
 // Modelos que pueden ser destino de un FK validable (todos con businessId + eliminadoEn).
-export type TenantModel = 'customer' | 'service' | 'employee' | 'location' | 'resource' | 'package';
+export type TenantModel = 'customer' | 'service' | 'employee' | 'location' | 'resource' | 'package' | 'team';
 
 /** Comprobación de pertenencia. Inyectable en tests (DI), igual que el middleware de auth. */
 export type BelongsCheck = (model: TenantModel, id: string, businessId: string | undefined) => Promise<boolean>;

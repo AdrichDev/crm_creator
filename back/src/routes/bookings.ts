@@ -43,7 +43,7 @@ bookingsRouter.get('/', async (req: AuthedRequest, res: Response) => {
   const [rows, total] = await Promise.all([
     prisma.booking.findMany({
       where,
-      include: { customer: true, service: true, employee: true },
+      include: { customer: true, service: true, employee: true, team: true, resources: true },
       orderBy: { startAt: 'asc' },
       skip: (page - 1) * limit,
       take: limit,
@@ -54,16 +54,21 @@ bookingsRouter.get('/', async (req: AuthedRequest, res: Response) => {
   res.json({
     items: rows.map((b) => ({
       id: b.id,
-      cliente: joinNombre(b.customer),
+      // Si es una reserva de equipo (entrenamiento), "cliente" muestra el nombre del equipo.
+      cliente: b.team ? b.team.nombre : joinNombre(b.customer),
       servicio: b.service?.nombre ?? '',
       empleado: joinNombre(b.employee),
       fecha: b.startAt.toISOString().slice(0, 10),
       hora: b.startAt.toISOString().slice(11, 16),
       estado: ESTADO_LABEL[b.status] ?? 'Pendiente',
       customerId: b.customerId,
+      teamId: b.teamId,
       serviceId: b.serviceId,
       employeeId: b.employeeId,
       locationId: b.locationId,
+      recurso: b.resources[0]?.nombre ?? null,
+      aforo: b.resources[0]?.capacidad ?? null,
+      notes: b.notes ?? null,
     })),
     total,
     page,
@@ -72,7 +77,7 @@ bookingsRouter.get('/', async (req: AuthedRequest, res: Response) => {
 });
 
 bookingsRouter.get('/:id', async (req: AuthedRequest, res: Response) => {
-  const row = await prisma.booking.findFirst({ where: { id: req.params.id, businessId: req.businessId }, include: { customer: true, service: true, employee: true, resources: true, history: true } });
+  const row = await prisma.booking.findFirst({ where: { id: req.params.id, businessId: req.businessId }, include: { customer: true, service: true, employee: true, resources: true, history: true, team: true } });
   if (!row) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
   res.json(row);
 });
@@ -93,8 +98,10 @@ bookingsRouter.post('/check-availability', async (req: AuthedRequest, res: Respo
 });
 
 bookingsRouter.post('/', async (req: AuthedRequest, res: Response) => {
-  const { locationId, serviceId, customerId, employeeId, resourceIds = [], start, channel = 'MANUAL', notes } = req.body ?? {};
+  const { locationId, serviceId, customerId, teamId, employeeId, resourceIds = [], start, channel = 'MANUAL', notes } = req.body ?? {};
   if (!locationId || !serviceId || !start) return res.status(422).json({ error: { code: 'validation', message: 'locationId, serviceId y start requeridos' } });
+  // XOR: una reserva es de un cliente O de un equipo (entrenamiento), nunca ambos.
+  if (customerId && teamId) return res.status(400).json({ error: { code: 'XOR_REQUIRED', message: 'Solo uno de customerId o teamId' } });
 
   // Gate tenancy: ningún FK puede apuntar a otro negocio.
   try {
@@ -102,6 +109,7 @@ bookingsRouter.post('/', async (req: AuthedRequest, res: Response) => {
       { model: 'location', id: locationId, field: 'locationId' },
       { model: 'service', id: serviceId, field: 'serviceId' },
       { model: 'customer', id: customerId, field: 'customerId' },
+      { model: 'team', id: teamId, field: 'teamId' },
       { model: 'employee', id: employeeId, field: 'employeeId' },
       ...(resourceIds as string[]).map((id) => ({ model: 'resource' as const, id, field: 'resourceIds' })),
     ]);
@@ -116,11 +124,12 @@ bookingsRouter.post('/', async (req: AuthedRequest, res: Response) => {
     const booking = await prisma.booking.create({
       data: {
         businessId: req.businessId!, locationId, serviceId, customerId: customerId ?? null,
+        teamId: teamId ?? null,
         employeeId: employeeId ?? null, startAt: avail.startAt!, endAt: avail.endAt!,
         status: 'PENDING', channel, notes, createdById: req.userId,
         resources: resourceIds.length ? { connect: resourceIds.map((id: string) => ({ id })) } : undefined,
       },
-      include: { service: true, customer: true, employee: true, resources: true },
+      include: { service: true, customer: true, employee: true, resources: true, team: true },
     });
     await prisma.bookingStatusHistory.create({ data: { bookingId: booking.id, estadoNuevo: 'PENDING', cambiadoPor: req.userId } });
     return { booking };

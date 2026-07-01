@@ -16,6 +16,7 @@ import { projectsRouter } from './projects.js';
 import { employeesRouter } from './employees.js';
 import { uploadRouter } from './upload.js';
 import { exportsRouter } from './exports.js';
+import { categoriesRouter } from './categories.js';
 
 export const api = Router();
 
@@ -47,6 +48,7 @@ api.use('/campaigns', crudRouter('campaign', { fields: ['nombre', 'canal', 'esta
 api.use('/fichajes', crudRouter('fichaje', { fields: ['employeeId', 'empleado', 'fecha', 'entrada', 'salida', 'horas'], fkFields: { employeeId: 'employee' } }));
 api.use('/tags', crudRouter('tag', { fields: ['nombre', 'color'], searchFields: ['nombre'] }));
 api.use('/upload', uploadRouter);
+api.use('/categories', categoriesRouter); // equipos deportivos (crm.equipo + crm.miembro_equipo)
 
 // Custom
 api.use('/tenants', tenantsRouter); // clientes de AA (aa.tenant, raw cross-schema) → FK de proyectos

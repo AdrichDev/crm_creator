@@ -103,7 +103,7 @@ export function Toggle({ checked, onChange, disabled }: { checked: boolean; onCh
   return (
     <button type="button" disabled={disabled} onClick={() => onChange(!checked)}
       className={cn('relative h-6 w-11 rounded-full transition', disabled && 'opacity-50')}
-      style={{ background: checked ? 'var(--acc)' : 'rgba(255,255,255,0.2)' }}
+      style={{ background: checked ? 'var(--acc)' : 'color-mix(in srgb, var(--panel-text) 22%, transparent)' }}
       aria-pressed={checked}>
       <span className={cn('absolute top-0.5 h-5 w-5 rounded-full bg-white transition', checked ? 'left-[22px]' : 'left-0.5')} />
     </button>

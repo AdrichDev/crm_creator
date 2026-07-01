@@ -1,6 +1,7 @@
 import { MODULES, type ModuleId } from './modules';
 import { emptyWorkerChips, type WorkerChipId } from './worker-chips';
 import { VERTICAL_MAP, type VerticalId } from './verticals';
+import { defaultDashboardWidgets, MAX_DASHBOARD_WIDGETS, type WidgetId } from './dashboard-widgets';
 import type { Terminology } from './terminology';
 
 /** Tarjeta favorita del dashboard (máx. 6). */
@@ -49,6 +50,8 @@ export interface TenantConfig {
   views?: BusinessViews;
   /** Chips activos del dashboard del trabajador (patrón `modules`). */
   workerChips: Record<WorkerChipId, boolean>;
+  /** Widgets favoritos del inicio (admin/trabajador), máx. MAX_DASHBOARD_WIDGETS. */
+  dashboardWidgets: WidgetId[];
   /**
    * Emoji elegido por el negocio para cada módulo del menú. Sobrescribe el
    * emoji por defecto/por sector (lib/config/icons.ts). Ej.: clínica dental →
@@ -118,6 +121,7 @@ export function configFromVertical(vertical: VerticalId, name = ''): TenantConfi
     modules,
     views: { ...DEFAULT_VIEWS },
     workerChips: emptyWorkerChips(),
+    dashboardWidgets: defaultDashboardWidgets(vertical),
     terminology: { ...v.terminology },
     branding: { primary: v.branding.primary, secondary: v.branding.secondary, logoText: (name || v.label).slice(0, 2).toUpperCase() },
     setupComplete: false,
@@ -157,7 +161,9 @@ export function deserialize(raw: string | null): TenantConfig | null {
     const merged = { ...emptyModules(), ...parsed.modules };
     const mergedChips = { ...emptyWorkerChips(), ...parsed.workerChips };
     const mergedViews = { ...DEFAULT_VIEWS, ...parsed.views };
-    return { ...parsed, modules: merged, workerChips: mergedChips, views: mergedViews };
+    const mergedWidgets = (parsed.dashboardWidgets ?? defaultDashboardWidgets(parsed.business.vertical))
+      .slice(0, MAX_DASHBOARD_WIDGETS);
+    return { ...parsed, modules: merged, workerChips: mergedChips, views: mergedViews, dashboardWidgets: mergedWidgets };
   } catch {
     return null;
   }

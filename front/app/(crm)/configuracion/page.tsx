@@ -7,18 +7,19 @@ import { VERTICAL_MAP } from '@/lib/config/verticals';
 import { BrandingForm } from '@/components/config/branding-form';
 import { ModuleGridPanel } from '@/components/config/module-grid-panel';
 import { WorkerChipsGrid } from '@/components/config/worker-chips-grid';
+import { DashboardWidgetsGrid } from '@/components/config/dashboard-widgets-grid';
 import { UsersPanel } from '@/components/config/users-panel';
 import { ChangePasswordForm } from '@/components/config/change-password-form';
 import { MyAccountPanel } from '@/components/config/my-account-panel';
 import { PageHeader, Card, CardBody, Button, Badge, Toggle } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 
-type Tab = 'estado' | 'modulos' | 'trabajador' | 'usuarios' | 'marca' | 'negocio' | 'cuenta';
-const TAB_LABEL: Record<Tab, string> = { estado: 'Estado', modulos: 'Módulos', trabajador: 'Trabajador', usuarios: 'Usuarios', marca: 'Marca', negocio: 'Negocio', cuenta: 'Mi Cuenta' };
-const BASE_TABS: Tab[] = ['estado', 'modulos', 'trabajador', 'marca', 'negocio', 'cuenta'];
+type Tab = 'estado' | 'modulos' | 'trabajador' | 'inicio' | 'usuarios' | 'marca' | 'negocio' | 'cuenta';
+const TAB_LABEL: Record<Tab, string> = { estado: 'Estado', modulos: 'Módulos', trabajador: 'Trabajador', inicio: 'Widgets del inicio', usuarios: 'Usuarios', marca: 'Marca', negocio: 'Negocio', cuenta: 'Mi Cuenta' };
+const BASE_TABS: Tab[] = ['estado', 'modulos', 'trabajador', 'inicio', 'marca', 'negocio', 'cuenta'];
 
 export default function ConfiguracionPage() {
-  const { config, update, reset, toggleModule, setModuleEmoji, toggleWorkerChip } = useTenantConfig();
+  const { config, update, reset, toggleModule, setModuleEmoji, toggleWorkerChip, toggleDashboardWidget } = useTenantConfig();
   const { role } = useRole();
   const isAdmin = role === 'admin';
   const dialog = useDialog();
@@ -26,7 +27,7 @@ export default function ConfiguracionPage() {
   // El tab "Usuarios" (gestión de cuentas + cambio de contraseña) es solo para admin.
   // "Mi Cuenta" es accesible para todos los roles.
   const TABS: Tab[] = isAdmin
-    ? ['estado', 'modulos', 'trabajador', 'usuarios', 'marca', 'negocio', 'cuenta']
+    ? ['estado', 'modulos', 'trabajador', 'inicio', 'usuarios', 'marca', 'negocio', 'cuenta']
     : BASE_TABS;
 
   const [tab, setTab] = useState<Tab>('estado');
@@ -98,6 +99,20 @@ export default function ConfiguracionPage() {
             Un chip cuyo módulo dependiente esté apagado no se puede activar.
           </p>
           <WorkerChipsGrid chips={config.workerChips} modules={config.modules} onToggle={toggleWorkerChip} />
+        </CardBody></Card>
+      )}
+
+      {/* Inicio: hasta 6 widgets favoritos del dashboard (admin/trabajador) */}
+      {tab === 'inicio' && (
+        <Card><CardBody className="space-y-4">
+          <p className="text-sm text-[var(--panel-muted)]">
+            Elige hasta 6 widgets para el inicio. Un widget sin módulo activo no se puede elegir.
+          </p>
+          <DashboardWidgetsGrid
+            selected={config.dashboardWidgets}
+            modules={config.modules}
+            onToggle={toggleDashboardWidget}
+          />
         </CardBody></Card>
       )}
 

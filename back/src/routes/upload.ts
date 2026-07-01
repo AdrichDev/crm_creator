@@ -41,7 +41,15 @@ function parseImage(req: AuthedRequest, res: Response, next: NextFunction) {
   });
 }
 
-type Kind = 'service' | 'product';
+type Kind = 'service' | 'product' | 'employee' | 'customer';
+
+// Modelo Prisma por kind: findFirst (ownership) y update (persistir imagenUrl).
+const MODEL = {
+  service: prisma.service,
+  product: prisma.product,
+  employee: prisma.employee,
+  customer: prisma.customer,
+} satisfies Record<Kind, { findFirst: (...a: never[]) => unknown; update: (...a: never[]) => unknown }>;
 
 function handler(kind: Kind) {
   return async (req: AuthedRequest, res: Response) => {
@@ -53,9 +61,9 @@ function handler(kind: Kind) {
     const id = req.params.id;
 
     // Ownership: el recurso debe pertenecer al negocio activo y no estar borrado.
-    const existing = kind === 'service'
-      ? await prisma.service.findFirst({ where: { id, businessId, eliminadoEn: null } })
-      : await prisma.product.findFirst({ where: { id, businessId, eliminadoEn: null } });
+    const existing = await (MODEL[kind].findFirst as (args: unknown) => Promise<unknown>)({
+      where: { id, businessId, eliminadoEn: null },
+    });
     if (!existing) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
 
     const path = `${businessId}/${kind}s/${id}.${ext}`;
@@ -72,8 +80,10 @@ function handler(kind: Kind) {
     const { data: pub } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path);
     const url = `${pub.publicUrl}?v=${Date.now()}`;
 
-    if (kind === 'service') await prisma.service.update({ where: { id }, data: { imagenUrl: url } });
-    else await prisma.product.update({ where: { id }, data: { imagenUrl: url } });
+    await (MODEL[kind].update as (args: unknown) => Promise<unknown>)({
+      where: { id },
+      data: { imagenUrl: url },
+    });
 
     res.json({ url });
   };
@@ -82,3 +92,5 @@ function handler(kind: Kind) {
 export const uploadRouter = Router();
 uploadRouter.post('/service/:id', parseImage, handler('service'));
 uploadRouter.post('/product/:id', parseImage, handler('product'));
+uploadRouter.post('/employee/:id', parseImage, handler('employee'));
+uploadRouter.post('/customer/:id', parseImage, handler('customer'));
