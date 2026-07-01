@@ -18,6 +18,7 @@ const DEFAULT_EMOJI: Record<ModuleId, string> = {
   marketing: '📣',
   estadisticas: '📈',
   categorias: '🏟️',
+  comercial: '🗺️',
   configuracion: '⚙️',
   'mi-cuenta': '👤',
 };

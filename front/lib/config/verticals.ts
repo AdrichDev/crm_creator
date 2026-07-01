@@ -93,8 +93,8 @@ export const VERTICALS: VerticalDef[] = [
   {
     id: 'comerciales', label: 'Equipo comercial', emoji: '💼',
     tagline: 'Gestión de equipos de ventas, leads y pipeline comercial',
-    defaultModules: ['clientes', 'citas', 'servicios', 'empleados', 'fichaje', 'vacaciones', 'ventas', 'facturas', 'marketing', 'estadisticas'],
-    terminology: { citas: 'Reuniones', empleados: 'Comerciales', servicios: 'Productos y tarifas', clientes: 'Cuentas', ventas: 'Pipeline' },
+    defaultModules: ['clientes', 'comercial', 'citas', 'servicios', 'empleados', 'fichaje', 'vacaciones', 'ventas', 'facturas', 'marketing', 'estadisticas'],
+    terminology: { citas: 'Reuniones', empleados: 'Comerciales', servicios: 'Productos y tarifas', clientes: 'Cuentas', ventas: 'Pipeline', comercial: 'Ruta comercial' },
     branding: { primary: '#1e3a5f', secondary: '#3b82f6' },
   },
   {

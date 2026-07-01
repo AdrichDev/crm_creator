@@ -1,5 +1,6 @@
 import { prisma } from './prisma.js';
 import { supabaseAdmin } from './lib/auth.js';
+import { seedVisitStates } from './lib/comercial/visit-states.js';
 
 // Siembra una empresa demo completa. Ejecutar: npm run seed
 // Note: User.id is now the Supabase auth.users UUID. The seed creates a Supabase
@@ -35,7 +36,11 @@ async function main() {
 
   const sillon = await prisma.resource.create({ data: { businessId: business.id, locationId: location.id, nombre: 'Sillón 1', tipo: 'CHAIR', capacidad: 1, services: { connect: [{ id: corte.id }, { id: color.id }] } } });
 
-  const ana = await prisma.customer.create({ data: { businessId: business.id, nombre: 'Ana', apellido: 'Gómez', telefono: '600555666', email: 'ana@mail.com' } });
+  // Estados de visita base del negocio (comercial de campo).
+  await seedVisitStates(business.id);
+  const pendiente = await prisma.visitState.findFirst({ where: { businessId: business.id, orden: 0 } });
+
+  const ana = await prisma.customer.create({ data: { businessId: business.id, nombre: 'Ana', apellido: 'Gómez', telefono: '600555666', email: 'ana@mail.com', direccion: 'Calle Mayor 1, Madrid', localidad: 'Madrid', provincia: 'Madrid', latitud: 40.4168, longitud: -3.7038, geoEstado: 'OK', categoriaAbc: 'A', estadoVisitaId: pendiente?.id ?? null } });
 
   await prisma.product.create({ data: { businessId: business.id, nombre: 'Cera modeladora', categoria: 'Peinado', stock: 24, minimo: 10, precio: 12.5, proveedor: 'BeautyDist' } });
 

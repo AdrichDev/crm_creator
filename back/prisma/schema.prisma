@@ -92,6 +92,36 @@ enum CustomerStatus {
   LEAD
 }
 
+// Comercial de campo (crm-comercial-campo)
+enum GeoStatus {
+  PENDING
+  OK
+  FAILED
+}
+
+enum AbcCategory {
+  A
+  B
+  C
+}
+
+enum RegistroType {
+  CLIENTE
+  PROSPECTO
+}
+
+enum NoteOrigin {
+  MANUAL
+  AUDIO
+  IMPORT
+}
+
+enum ReminderStatus {
+  PENDING
+  DONE
+  CANCELLED
+}
+
 enum PackageStatus {
   ACTIVE
   EXPIRED
@@ -156,6 +186,10 @@ model Business {
   notifications Notification[]
   invoices     Invoice[]
   teams        Team[]
+  visitStates  VisitState[]
+  visits       Visit[]
+  customerNotes CustomerNote[]
+  reminders    Reminder[]
 
   @@map("negocio")
 }
@@ -322,6 +356,19 @@ model Customer {
   consentimientoComms Boolean @default(false) @map("consentimiento_comms")
   consentimientoEn DateTime? @map("consentimiento_en")
   estado      CustomerStatus @default(ACTIVE) @map("estado")
+  // Comercial de campo (crm-comercial-campo). Todos aditivos/nullable → sin regresión.
+  localidad    String?     @map("localidad")
+  provincia    String?     @map("provincia")
+  codigoPostal String?     @map("codigo_postal")
+  latitud      Float?      @map("latitud")
+  longitud     Float?      @map("longitud")
+  geoEstado    GeoStatus   @default(PENDING) @map("geo_estado")
+  categoriaAbc AbcCategory? @map("categoria_abc")
+  estadoVisitaId String?   @map("estado_visita_id")
+  estadoVisita VisitState? @relation(fields: [estadoVisitaId], references: [id], onDelete: SetNull)
+  tipoRegistro RegistroType @default(CLIENTE) @map("tipo_registro")
+  ultimaVisitaEn DateTime? @map("ultima_visita_en")
+  proximaAccionEn DateTime? @map("proxima_accion_en")
   createdAt   DateTime @default(now()) @map("creado_en")
   updatedAt   DateTime @updatedAt @map("actualizado_en")
 
@@ -330,9 +377,14 @@ model Customer {
   packages    CustomerPackage[]
   sales       Sale[]
   teamMembers TeamMember[]
+  historialNotas CustomerNote[]
+  visitas     Visit[]
+  recordatorios Reminder[]
   @@index([businessId])
   @@index([businessId, telefono])
   @@index([businessId, email])
+  @@index([businessId, estadoVisitaId])
+  @@index([businessId, tipoRegistro])
   eliminadoEn DateTime? @map("eliminado_en")
   @@map("cliente")
 }
@@ -661,6 +713,86 @@ model Notification {
   @@unique([tipo, businessId, destino, programadoEn])  // idempotencia: evita recordatorios duplicados
   @@index([programadoEn, estado])
   @@map("notificacion")
+}
+
+// ----------------------------- Comercial de campo -----------------------------
+// crm-comercial-campo: mapa geolocalizado, estados de visita, notas, visitas, recordatorios.
+
+// Estado de visita configurable por negocio (RF-06/07/19). Fija color/icono del marcador.
+// SEPARADO de CustomerStatus (activo/inactivo) y de la categoría ABC (badge).
+model VisitState {
+  id          String   @id @default(cuid())
+  businessId  String   @map("negocio_id")
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  nombre      String   @map("nombre")
+  color       String   @default("#9ca3af") @map("color")
+  icono       String   @default("MapPin") @map("icono")
+  orden       Int      @default(0) @map("orden")
+  esPendiente Boolean  @default(true) @map("es_pendiente")
+  esSistema   Boolean  @default(false) @map("es_sistema")
+  customers   Customer[]
+  eliminadoEn DateTime? @map("eliminado_en")
+  createdAt   DateTime @default(now()) @map("creado_en")
+  @@index([businessId])
+  @@map("estado_visita")
+}
+
+// Registro de visita comercial (RF-12). Al crearse actualiza Customer.ultimaVisitaEn
+// y opcionalmente su estadoVisitaId (estado posterior), en transacción.
+model Visit {
+  id            String   @id @default(cuid())
+  businessId    String   @map("negocio_id")
+  business      Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customerId    String   @map("cliente_id")
+  customer      Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  employeeId    String?  @map("empleado_id")
+  fecha         DateTime @default(now()) @map("fecha")
+  resultado     String?  @map("resultado")
+  nota          String?  @map("nota")
+  proximaAccion String?  @map("proxima_accion")
+  estadoPosteriorId String? @map("estado_posterior_id")
+  eliminadoEn   DateTime? @map("eliminado_en")
+  createdAt     DateTime @default(now()) @map("creado_en")
+  @@index([businessId, customerId])
+  @@map("visita")
+}
+
+// Nota de cliente INMUTABLE (RF-11, regla de negocio 6). Sin updatedAt ni eliminadoEn:
+// el back expone solo POST (crear) y GET (listar). No hay edición ni borrado.
+model CustomerNote {
+  id         String   @id @default(cuid())
+  businessId String   @map("negocio_id")
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customerId String   @map("cliente_id")
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  autorId    String?  @db.Uuid @map("autor_id")
+  texto      String   @map("texto")
+  origen     NoteOrigin @default(MANUAL) @map("origen")
+  createdAt  DateTime @default(now()) @map("creado_en")
+  @@index([businessId, customerId])
+  @@map("nota_cliente")
+}
+
+// Recordatorio/tarea de usuario ligado a cliente (RF-16). DISTINTO de Notification
+// (cola de envío email). "Vencido" = estado PENDING con fechaPrevista < now (calculado).
+model Reminder {
+  id            String   @id @default(cuid())
+  businessId    String   @map("negocio_id")
+  business      Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customerId    String   @map("cliente_id")
+  customer      Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  titulo        String   @map("titulo")
+  descripcion   String?  @map("descripcion")
+  fechaPrevista DateTime? @map("fecha_prevista")
+  estado        ReminderStatus @default(PENDING) @map("estado")
+  responsableId String?  @db.Uuid @map("responsable_id")
+  origen        String   @default("manual") @map("origen")
+  eliminadoEn   DateTime? @map("eliminado_en")
+  createdAt     DateTime @default(now()) @map("creado_en")
+  updatedAt     DateTime @updatedAt @map("actualizado_en")
+  @@index([businessId, customerId])
+  @@index([businessId, estado, fechaPrevista])
+  @@map("recordatorio")
 }
 
 // ----------------------------- Categorías / Deporte -----------------------------

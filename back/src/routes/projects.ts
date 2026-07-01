@@ -2,6 +2,7 @@ import { Router, type Response } from 'express';
 import { prisma } from '../prisma.js';
 import { Prisma } from '../lib/generated/prisma/client.js';
 import type { AuthedRequest } from '../middleware/types.js';
+import { DEFAULT_VISIT_STATES } from '../lib/comercial/visit-states.js';
 
 // Proyectos = crm.Business (1-1 con aa.tenant vía tenant_id). La config del
 // onboarding (módulos/terminología/branding…) se guarda íntegra en BusinessSetting
@@ -95,6 +96,8 @@ async function createProject(
   await tx.location.create({ data: { businessId: b.id, nombre: config.business?.name ?? 'Sede' } });
   await tx.businessSetting.create({ data: { businessId: b.id, categoria: CONFIG_CATEGORY, datos: config as Prisma.InputJsonValue } });
   await tx.membership.create({ data: { userId, businessId: b.id, role: 'ADMIN' } });
+  // Comercial de campo: estados de visita base del negocio (idempotente por negocio nuevo).
+  await tx.visitState.createMany({ data: DEFAULT_VISIT_STATES.map((s) => ({ ...s, businessId: b.id, esSistema: true })) });
   return b;
 }
 

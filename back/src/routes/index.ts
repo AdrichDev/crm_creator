@@ -17,6 +17,10 @@ import { employeesRouter } from './employees.js';
 import { uploadRouter } from './upload.js';
 import { exportsRouter } from './exports.js';
 import { categoriesRouter } from './categories.js';
+import { visitStatesRouter } from './visit-states.js';
+import { visitsRouter } from './visits.js';
+import { customerNotesRouter } from './customer-notes.js';
+import { remindersRouter } from './reminders.js';
 
 export const api = Router();
 
@@ -49,6 +53,11 @@ api.use('/fichajes', crudRouter('fichaje', { fields: ['employeeId', 'empleado', 
 api.use('/tags', crudRouter('tag', { fields: ['nombre', 'color'], searchFields: ['nombre'] }));
 api.use('/upload', uploadRouter);
 api.use('/categories', categoriesRouter); // equipos deportivos (crm.equipo + crm.miembro_equipo)
+// Comercial de campo (crm-comercial-campo): estados de visita, visitas, notas, recordatorios.
+api.use('/visit-states', visitStatesRouter);
+api.use('/visits', visitsRouter);
+api.use('/customer-notes', customerNotesRouter);
+api.use('/reminders', remindersRouter);
 
 // Custom
 api.use('/tenants', tenantsRouter); // clientes de AA (aa.tenant, raw cross-schema) → FK de proyectos
