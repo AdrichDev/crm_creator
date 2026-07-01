@@ -39,8 +39,23 @@ export function consume(bucket: string, key: string, windowMs: number, max: numb
   return true;
 }
 
-/** Solo para tests: vacía todos los contadores. */
-export function resetRateLimits() { buckets.clear(); opsSinceSweep = 0; }
+/**
+ * Solo para tests: vacía contadores. Sin argumentos, vacía todo (uso de un
+ * archivo e2e que ejerce todos los limiters). Con `onlyBuckets`, vacía solo
+ * esos buckets — evita que un archivo e2e concurrente (que no usa, p.ej.,
+ * 'forgot') resetee de rebote el contador de otro test que sí depende de
+ * acumularlo (node:test corre archivos en paralelo contra el mismo back).
+ */
+export function resetRateLimits(onlyBuckets?: string[]) {
+  if (!onlyBuckets || onlyBuckets.length === 0) {
+    buckets.clear();
+  } else {
+    for (const key of buckets.keys()) {
+      if (onlyBuckets.some((b) => key.startsWith(`${b}:`))) buckets.delete(key);
+    }
+  }
+  opsSinceSweep = 0;
+}
 
 /** Middleware Express. Responde 429 al exceder el límite. */
 export function rateLimit(opts: RateLimitOptions) {

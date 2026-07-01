@@ -41,12 +41,12 @@ async function api(path: string, init: RequestInit = {}, token?: string, busines
 before(async () => {
   try { backUp = (await fetch(`${BASE}/health`)).ok; } catch { backUp = false; }
   if (!backUp) { console.warn(`[e2e] back no responde en ${BASE} — tests saltados`); return; }
-  await fetch(`${BASE}/api/auth/__test__/reset-rate-limits`, { method: 'POST' }).catch(() => {});
+  await fetch(`${BASE}/api/auth/__test__/reset-rate-limits?buckets=register,token`, { method: 'POST' }).catch(() => {});
 });
 
 beforeEach(async () => {
   if (!backUp) return;
-  await fetch(`${BASE}/api/auth/__test__/reset-rate-limits`, { method: 'POST' }).catch(() => {});
+  await fetch(`${BASE}/api/auth/__test__/reset-rate-limits?buckets=register,token`, { method: 'POST' }).catch(() => {});
 });
 
 after(async () => {

@@ -62,7 +62,7 @@ before(async () => {
 
 beforeEach(async () => {
   if (!backUp) return;
-  await fetch(`${BASE}/api/auth/__test__/reset-rate-limits`, { method: 'POST' }).catch(() => {});
+  await fetch(`${BASE}/api/auth/__test__/reset-rate-limits?buckets=register`, { method: 'POST' }).catch(() => {});
 });
 
 after(async () => {

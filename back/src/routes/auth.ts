@@ -24,8 +24,14 @@ const registerLimiter = rateLimit({ bucket: 'register', windowMs: 15 * 60_000, m
 const changePwLimiter = rateLimit({ bucket: 'changepw', windowMs: 15 * 60_000, max: 10, keyOf: ipKey });
 
 // Test-only endpoint to reset in-memory rate-limit counters (excluded from prod).
+// ?buckets=register,token restringe el reset a esos buckets; sin query, resetea todo.
 if (process.env.NODE_ENV !== 'production') {
-  authRouter.post('/__test__/reset-rate-limits', (_req, res) => { resetRateLimits(); res.status(204).end(); });
+  authRouter.post('/__test__/reset-rate-limits', (req, res) => {
+    const raw = typeof req.query.buckets === 'string' ? req.query.buckets : '';
+    const onlyBuckets = raw ? raw.split(',').map((b) => b.trim()).filter(Boolean) : undefined;
+    resetRateLimits(onlyBuckets);
+    res.status(204).end();
+  });
 }
 
 // ---------------------------------------------------------------------------
