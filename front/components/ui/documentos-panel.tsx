@@ -60,7 +60,7 @@ export function DocumentosPanel({ docs, canUpload = true, onAdd, onRemove }: {
   docs: Documento[];
   canUpload?: boolean;
   onAdd: (doc: Documento) => void;
-  onRemove?: (id: number) => void;
+  onRemove?: (id: number | string) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<Documento | null>(null);

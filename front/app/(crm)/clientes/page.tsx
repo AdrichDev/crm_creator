@@ -11,6 +11,7 @@ import { EntityModal, type Field } from '@/components/ui/entity-modal';
 import { Modal } from '@/components/ui/modal';
 import { DocumentosPanel } from '@/components/ui/documentos-panel';
 import { useCollection } from '@/lib/data/use-collection';
+import { useDocumentos } from '@/lib/data/use-documents';
 import { type Cliente, type Documento, facturas as facturasSeed, type Factura } from '@/lib/mock/data';
 import { UserPlus, Info, Euro, Pencil, Trash2 } from 'lucide-react';
 import { isApiEnabled } from '@/lib/api/client';
@@ -63,6 +64,8 @@ export default function Page() {
 
   // Modo API: paginación server-side.
   const paged = usePaginatedApi<ClienteApiRow>('/customers', 20, apiEnabled);
+  // Modo API: documentos respaldados por /api/documents (scoped por negocio).
+  const apiDocs = useDocumentos(apiEnabled);
 
   const dialog = useDialog();
   const [open, setOpen] = useState(false);
@@ -86,7 +89,7 @@ export default function Page() {
     if (!actual) return;
     update(actual.id, { documentos: [...(actual.documentos ?? []), d] });
   }
-  function removeDoc(id: number) {
+  function removeDoc(id: number | string) {
     if (!actual) return;
     update(actual.id, { documentos: (actual.documentos ?? []).filter((x) => x.id !== id) });
   }
@@ -176,7 +179,11 @@ export default function Page() {
               ))}
             </div>
             <div className="border-t border-white/10 pt-4">
-              <DocumentosPanel docs={actual.documentos ?? []} canUpload={puedeEditar} onAdd={addDoc} onRemove={removeDoc} />
+              <DocumentosPanel
+                docs={apiEnabled ? apiDocs.docs : (actual.documentos ?? [])}
+                canUpload={puedeEditar}
+                onAdd={apiEnabled ? apiDocs.add : addDoc}
+                onRemove={apiEnabled ? apiDocs.remove : removeDoc} />
             </div>
           </div>
         )}
