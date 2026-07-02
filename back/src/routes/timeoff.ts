@@ -3,6 +3,9 @@ import { prisma } from '../prisma.js';
 import { requireRole } from '../middleware/rbac.js';
 import type { AuthedRequest } from '../middleware/types.js';
 import { joinNombre } from '../lib/nombre.js';
+import { emit } from '../lib/automation/index.js';
+import { adminEmails } from '../lib/adminEmails.js';
+import { buildTimeoffRequested, buildTimeoffResolved } from '../lib/eventPayloads.js';
 
 export const timeOffRouter = Router();
 
@@ -30,6 +33,30 @@ timeOffRouter.post('/', async (req: AuthedRequest, res: Response) => {
   if (!employeeId || !inicio || !fin) return res.status(422).json({ error: { code: 'validation', message: 'employeeId, inicio y fin requeridos' } });
   const row = await prisma.timeOffRequest.create({ data: { businessId: req.businessId!, employeeId, tipo, inicio: new Date(inicio), fin: new Date(fin), dias, motivo, estado: 'PENDING' } });
   res.status(201).json(row);
+
+  // Fire-and-forget: aviso a los admins (emit directo, soft-fail). Nunca bloquea el 201.
+  void (async () => {
+    try {
+      const [employee, business, admins] = await Promise.all([
+        prisma.employee.findFirst({ where: { id: employeeId }, select: { nombre: true, apellido: true } }),
+        prisma.business.findFirst({ where: { id: req.businessId }, select: { nombre: true } }),
+        adminEmails(req.businessId!),
+      ]);
+      for (const email of admins) {
+        await emit('timeoff.requested', buildTimeoffRequested({
+          businessName: business?.nombre ?? '',
+          email,
+          employee,
+          tipoLabel: TIPO_LABEL[tipo] ?? 'Otro',
+          inicio: row.inicio,
+          fin: row.fin,
+          dias: row.dias,
+        }), { businessId: req.businessId!, eventId: `${row.id}:requested:${email}` });
+      }
+    } catch (err) {
+      console.error('[timeoff.requested] error en aviso a admins:', (err as Error).message);
+    }
+  })();
 });
 
 async function decide(req: AuthedRequest, res: Response, estado: 'APPROVED' | 'REJECTED') {
@@ -37,6 +64,28 @@ async function decide(req: AuthedRequest, res: Response, estado: 'APPROVED' | 'R
   if (!existing) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
   const row = await prisma.timeOffRequest.update({ where: { id: existing.id }, data: { estado, decididoPor: req.userId, decididoEn: new Date() } });
   res.json(row);
+
+  // Fire-and-forget: notificar al empleado la resolución SI tiene email (emit directo,
+  // soft-fail). Employee.email existe en el modelo; si está vacío → skip suave.
+  void (async () => {
+    try {
+      const [employee, business] = await Promise.all([
+        prisma.employee.findFirst({ where: { id: row.employeeId }, select: { nombre: true, apellido: true, email: true } }),
+        prisma.business.findFirst({ where: { id: req.businessId }, select: { nombre: true } }),
+      ]);
+      if (!employee?.email) return;
+      await emit('timeoff.resolved', buildTimeoffResolved({
+        businessName: business?.nombre ?? '',
+        employee,
+        email: employee.email,
+        estadoLabel: ESTADO_LABEL[estado] ?? estado,
+        inicio: row.inicio,
+        fin: row.fin,
+      }), { businessId: req.businessId!, eventId: `${row.id}:resolved:${estado}` });
+    } catch (err) {
+      console.error('[timeoff.resolved] error en aviso al empleado:', (err as Error).message);
+    }
+  })();
 }
 timeOffRouter.patch('/:id/approve', requireRole('ADMIN', 'MANAGER'), (req: AuthedRequest, res) => decide(req, res, 'APPROVED'));
 timeOffRouter.patch('/:id/reject', requireRole('ADMIN', 'MANAGER'), (req: AuthedRequest, res) => decide(req, res, 'REJECTED'));

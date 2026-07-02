@@ -1,5 +1,6 @@
 import { prisma as defaultPrisma } from '../prisma.js';
-import { sendEmail as defaultSendEmail, reminderTemplate } from './email.js';
+import { notifyBookingReminder } from './notify.js';
+import type { BookingNotifyData } from './notify.js';
 
 // ---------------------------------------------------------------------------
 // Drainer de recordatorios de citas.
@@ -83,7 +84,11 @@ export interface DrainerDeps {
   claimPending: () => Promise<NotificationRow[]>;
   findBooking: (bookingId: string) => Promise<{ id: string } | null>;
   updateNotification: (id: string, data: NotificationUpdate) => Promise<void>;
-  sendEmail: (opts: { to: string; subject: string; html: string }) => Promise<boolean>;
+  /**
+   * Paso de envío vía puerto: emit a n8n o SMTP directo según config (lo decide
+   * notify.ts). Devuelve true si se despachó. eventId de idempotencia = row.id.
+   */
+  notifyReminder: (row: NotificationRow, payload: ReminderPayload) => Promise<boolean>;
 }
 
 // ---------------------------------------------------------------------------
@@ -113,30 +118,14 @@ export async function processRow(row: NotificationRow, deps: DrainerDeps): Promi
     return;
   }
 
-  const window = row.tipo === 'booking.reminder.24h' ? '24h' : '2h';
-  const html = reminderTemplate(
-    {
-      customerName: payload.customerName,
-      serviceName: payload.serviceName,
-      startsAt: new Date(payload.startsAt),
-      employeeName: payload.employeeName,
-      businessName: payload.businessName,
-    },
-    window,
-  );
-
-  const subject = window === '24h'
-    ? `Recordatorio: tu cita de mañana — ${payload.serviceName}`
-    : `Recordatorio: tu cita es en 2 horas — ${payload.serviceName}`;
-
-  // sendEmail es soft-fail por contrato (devuelve false), pero si lanza (error
+  // El puerto es soft-fail por contrato (devuelve false), pero si lanza (error
   // transitorio) lo tratamos igual que false: así la fila NO queda atascada en
   // 'processing' y entra en el flujo acotado de reintentos/backoff.
   let sent = false;
   try {
-    sent = await deps.sendEmail({ to: row.destino, subject, html });
+    sent = await deps.notifyReminder(row, payload);
   } catch (err) {
-    console.error(`[drainer] fila ${row.id} sendEmail lanzó:`, (err as Error).message);
+    console.error(`[drainer] fila ${row.id} notifyReminder lanzó:`, (err as Error).message);
     sent = false;
   }
 
@@ -212,7 +201,22 @@ function buildProdDeps(): DrainerDeps {
     updateNotification: async (id: string, data: NotificationUpdate) => {
       await defaultPrisma.notification.update({ where: { id }, data });
     },
-    sendEmail: defaultSendEmail,
+    // Envío vía puerto: notify.ts decide emit(n8n) o SMTP directo. eventId = row.id
+    // (idempotencia por fila reclamada). processRow ya garantizó row.destino != null.
+    notifyReminder: (row: NotificationRow, payload: ReminderPayload) => {
+      const ventana = row.tipo === 'booking.reminder.24h' ? '24h' : '2h';
+      const data: BookingNotifyData = {
+        bookingId: payload.bookingId,
+        businessId: row.businessId,
+        businessName: payload.businessName,
+        customerName: payload.customerName,
+        email: row.destino ?? '',
+        serviceName: payload.serviceName,
+        employeeName: payload.employeeName,
+        startsAt: new Date(payload.startsAt),
+      };
+      return notifyBookingReminder(data, ventana, row.id);
+    },
   };
 }
 

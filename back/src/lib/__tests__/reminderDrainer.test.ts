@@ -3,11 +3,14 @@
 //
 // Estrategia: dependencias inyectadas via DrainerDeps (DI).
 // No se usa DB ni SMTP real. Se verifican los contratos de estado.
+// El paso de envío va por el puerto (notifyReminder); su decisión emit-vs-SMTP
+// se prueba abajo con el puerto real y espías inyectados.
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { _drainWithDeps, backoffMs } from '../reminderDrainer.js';
 import type { DrainerDeps, NotificationRow, NotificationUpdate } from '../reminderDrainer.js';
+import { notifyBookingReminder, type BookingNotifyData, type NotifyDeps } from '../notify.js';
 
 // ---------------------------------------------------------------------------
 // Builders de mocks reutilizables
@@ -31,49 +34,39 @@ function makeRow(overrides: Partial<NotificationRow> = {}): NotificationRow {
   };
 }
 
-function makeDeps(overrides: Partial<DrainerDeps> = {}): DrainerDeps & { updates: Record<string, NotificationUpdate>; emailCalls: number } {
-  const updates: Record<string, NotificationUpdate> = {};
-  let emailCalls = 0;
-
-  const deps: DrainerDeps = {
-    claimPending: async () => [],
-    findBooking: async (_id: string) => ({ id: 'booking-1' }),
-    updateNotification: async (id, data) => { updates[id] = data; },
-    sendEmail: async () => { emailCalls++; return true; },
-    ...overrides,
-  };
-
-  return Object.assign(deps, { get updates() { return updates; }, get emailCalls() { return emailCalls; } });
-}
-
 // ---------------------------------------------------------------------------
 // DB vacía → sin crash
 // ---------------------------------------------------------------------------
 describe('drainer — DB vacía', () => {
   test('termina sin error con 0 filas reclamadas', async () => {
-    const deps = makeDeps({ claimPending: async () => [] });
+    const deps: DrainerDeps = {
+      claimPending: async () => [],
+      findBooking: async () => ({ id: 'booking-1' }),
+      updateNotification: async () => {},
+      notifyReminder: async () => true,
+    };
     await assert.doesNotReject(() => _drainWithDeps(deps));
   });
 });
 
 // ---------------------------------------------------------------------------
-// 1 fila reclamada + booking activo → sendEmail + estado 'sent' + lock liberado
+// 1 fila reclamada + booking activo → notifyReminder + estado 'sent' + lock liberado
 // ---------------------------------------------------------------------------
 describe('drainer — fila reclamada con booking activo', () => {
-  test('llama sendEmail, marca sent y libera el lock', async () => {
+  test('llama notifyReminder, marca sent y libera el lock', async () => {
     const updates: Record<string, NotificationUpdate> = {};
-    let emailCalls = 0;
+    let notifyCalls = 0;
 
     const deps: DrainerDeps = {
       claimPending: async () => [makeRow()],
       findBooking: async () => ({ id: 'booking-1' }),
       updateNotification: async (id, data) => { updates[id] = data; },
-      sendEmail: async () => { emailCalls++; return true; },
+      notifyReminder: async () => { notifyCalls++; return true; },
     };
 
     await _drainWithDeps(deps);
 
-    assert.equal(emailCalls, 1);
+    assert.equal(notifyCalls, 1);
     const upd = updates['notif-1'];
     assert.equal(upd.estado, 'sent');
     assert.equal(upd.lockedAt, null); // lock liberado
@@ -87,7 +80,7 @@ describe('drainer — fila reclamada con booking activo', () => {
       claimPending: async () => [makeRow({ intentos: 0 })],
       findBooking: async () => ({ id: 'booking-1' }),
       updateNotification: async (id, data) => { updates[id] = data; },
-      sendEmail: async () => false,
+      notifyReminder: async () => false,
     };
 
     await _drainWithDeps(deps);
@@ -99,14 +92,14 @@ describe('drainer — fila reclamada con booking activo', () => {
     assert.ok(upd.programadoEn instanceof Date && upd.programadoEn.getTime() > Date.now());
   });
 
-  test('sendEmail que LANZA se trata como soft-fail (no deja la fila en processing)', async () => {
+  test('notifyReminder que LANZA se trata como soft-fail (no deja la fila en processing)', async () => {
     const updates: Record<string, NotificationUpdate> = {};
 
     const deps: DrainerDeps = {
       claimPending: async () => [makeRow({ intentos: 0 })],
       findBooking: async () => ({ id: 'booking-1' }),
       updateNotification: async (id, data) => { updates[id] = data; },
-      sendEmail: async () => { throw new Error('SMTP caído'); },
+      notifyReminder: async () => { throw new Error('n8n caído'); },
     };
 
     await assert.doesNotReject(() => _drainWithDeps(deps));
@@ -125,7 +118,7 @@ describe('drainer — fila reclamada con booking activo', () => {
       claimPending: async () => [makeRow({ intentos: 2 })],
       findBooking: async () => ({ id: 'booking-1' }),
       updateNotification: async (id, data) => { updates[id] = data; },
-      sendEmail: async () => false,
+      notifyReminder: async () => false,
     };
 
     await _drainWithDeps(deps);
@@ -160,23 +153,23 @@ describe('drainer — backoffMs', () => {
 });
 
 // ---------------------------------------------------------------------------
-// booking CANCELLED / inexistente → estado 'skipped', no llama sendEmail
+// booking CANCELLED / inexistente → estado 'skipped', no notifica
 // ---------------------------------------------------------------------------
 describe('drainer — booking cancelado', () => {
-  test('skipped + lock liberado sin sendEmail cuando findBooking devuelve null', async () => {
+  test('skipped + lock liberado sin notificar cuando findBooking devuelve null', async () => {
     const updates: Record<string, NotificationUpdate> = {};
-    let emailCalls = 0;
+    let notifyCalls = 0;
 
     const deps: DrainerDeps = {
       claimPending: async () => [makeRow()],
       findBooking: async () => null,
       updateNotification: async (id, data) => { updates[id] = data; },
-      sendEmail: async () => { emailCalls++; return true; },
+      notifyReminder: async () => { notifyCalls++; return true; },
     };
 
     await _drainWithDeps(deps);
 
-    assert.equal(emailCalls, 0);
+    assert.equal(notifyCalls, 0);
     const upd = updates['notif-1'];
     assert.equal(upd.estado, 'skipped');
     assert.equal(upd.lockedAt, null);
@@ -187,8 +180,8 @@ describe('drainer — booking cancelado', () => {
 // idempotencia — segunda iteración sin filas reclamadas no reenvía
 // ---------------------------------------------------------------------------
 describe('drainer — idempotencia', () => {
-  test('segunda iteración no llama sendEmail si claimPending devuelve vacío', async () => {
-    let emailCalls = 0;
+  test('segunda iteración no notifica si claimPending devuelve vacío', async () => {
+    let notifyCalls = 0;
     let callCount = 0;
 
     const deps: DrainerDeps = {
@@ -198,34 +191,34 @@ describe('drainer — idempotencia', () => {
       },
       findBooking: async () => ({ id: 'booking-1' }),
       updateNotification: async () => {},
-      sendEmail: async () => { emailCalls++; return true; },
+      notifyReminder: async () => { notifyCalls++; return true; },
     };
 
-    await _drainWithDeps(deps); // primera iteración → email enviado
+    await _drainWithDeps(deps); // primera iteración → notificado
     await _drainWithDeps(deps); // segunda iteración → sin filas
 
-    assert.equal(emailCalls, 1);
+    assert.equal(notifyCalls, 1);
   });
 });
 
 // ---------------------------------------------------------------------------
-// destino null → skipped sin sendEmail
+// destino null → skipped sin notificar
 // ---------------------------------------------------------------------------
 describe('drainer — fila sin destino email', () => {
   test('skipped cuando destino es null', async () => {
     const updates: Record<string, NotificationUpdate> = {};
-    let emailCalls = 0;
+    let notifyCalls = 0;
 
     const deps: DrainerDeps = {
       claimPending: async () => [makeRow({ destino: null })],
       findBooking: async () => ({ id: 'booking-1' }),
       updateNotification: async (id, data) => { updates[id] = data; },
-      sendEmail: async () => { emailCalls++; return true; },
+      notifyReminder: async () => { notifyCalls++; return true; },
     };
 
     await _drainWithDeps(deps);
 
-    assert.equal(emailCalls, 0);
+    assert.equal(notifyCalls, 0);
     const upd = updates['notif-1'];
     assert.equal(upd.estado, 'skipped');
   });
@@ -240,7 +233,7 @@ describe('drainer — error global', () => {
       claimPending: async () => { throw new Error('DB connection lost'); },
       findBooking: async () => null,
       updateNotification: async () => {},
-      sendEmail: async () => false,
+      notifyReminder: async () => false,
     };
 
     await assert.doesNotReject(() => _drainWithDeps(deps));
@@ -248,7 +241,7 @@ describe('drainer — error global', () => {
 
   test('un error procesando una fila no aborta el resto del lote', async () => {
     const updates: Record<string, NotificationUpdate> = {};
-    let emailCalls = 0;
+    let notifyCalls = 0;
 
     const deps: DrainerDeps = {
       claimPending: async () => [makeRow({ id: 'a' }), makeRow({ id: 'b' })],
@@ -257,7 +250,7 @@ describe('drainer — error global', () => {
         if (id === 'a') throw new Error('update a falló');
         updates[id] = data;
       },
-      sendEmail: async () => { emailCalls++; return true; },
+      notifyReminder: async () => { notifyCalls++; return true; },
     };
 
     await assert.doesNotReject(() => _drainWithDeps(deps));
@@ -267,7 +260,7 @@ describe('drainer — error global', () => {
 });
 
 // ---------------------------------------------------------------------------
-// payload inválido → skipped sin sendEmail
+// payload inválido → skipped sin notificar
 // ---------------------------------------------------------------------------
 describe('drainer — payload inválido', () => {
   test('skipped cuando el payload no tiene bookingId ni customerName', async () => {
@@ -277,12 +270,73 @@ describe('drainer — payload inválido', () => {
       claimPending: async () => [makeRow({ payload: { foo: 'bar' } })],
       findBooking: async () => ({ id: 'booking-1' }),
       updateNotification: async (id, data) => { updates[id] = data; },
-      sendEmail: async () => true,
+      notifyReminder: async () => true,
     };
 
     await _drainWithDeps(deps);
 
     const upd = updates['notif-1'];
     assert.equal(upd.estado, 'skipped');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ruteo del puerto (2.1): con URL → emit; sin URL → sendEmail. Mismo drainer,
+// mismo puerto real (notifyBookingReminder), espías inyectados en NotifyDeps.
+// ---------------------------------------------------------------------------
+describe('drainer — puerto: emit vs SMTP según AUTOMATION_WEBHOOK_URL', () => {
+  function drainerWithNotifyDeps(notifyDeps: NotifyDeps): DrainerDeps {
+    return {
+      claimPending: async () => [makeRow()],
+      findBooking: async () => ({ id: 'booking-1' }),
+      updateNotification: async () => {},
+      notifyReminder: (row, payload) => {
+        const ventana = row.tipo === 'booking.reminder.24h' ? '24h' : '2h';
+        const data: BookingNotifyData = {
+          bookingId: payload.bookingId,
+          businessId: row.businessId,
+          businessName: payload.businessName,
+          customerName: payload.customerName,
+          email: row.destino ?? '',
+          serviceName: payload.serviceName,
+          employeeName: payload.employeeName,
+          startsAt: new Date(payload.startsAt),
+        };
+        return notifyBookingReminder(data, ventana, row.id, notifyDeps);
+      },
+    };
+  }
+
+  test('con URL → emit llamado, sendEmail NO', async () => {
+    let emitCalls = 0;
+    let mailCalls = 0;
+    const notifyDeps: NotifyDeps = {
+      webhookUrl: 'https://n8n/webhook',
+      emit: (async (name: string, _d: unknown, opts: { businessId: string; eventId?: string }) => {
+        emitCalls++;
+        return { status: 'sent', eventId: opts.eventId ?? 'x' };
+      }) as NotifyDeps['emit'],
+      sendEmail: async () => { mailCalls++; return true; },
+    };
+
+    await _drainWithDeps(drainerWithNotifyDeps(notifyDeps));
+
+    assert.equal(emitCalls, 1);
+    assert.equal(mailCalls, 0);
+  });
+
+  test('sin URL → sendEmail llamado, emit NO (regresión SMTP intacta)', async () => {
+    let emitCalls = 0;
+    let mailCalls = 0;
+    const notifyDeps: NotifyDeps = {
+      webhookUrl: '',
+      emit: (async () => { emitCalls++; return { status: 'sent', eventId: 'x' }; }) as NotifyDeps['emit'],
+      sendEmail: async () => { mailCalls++; return true; },
+    };
+
+    await _drainWithDeps(drainerWithNotifyDeps(notifyDeps));
+
+    assert.equal(mailCalls, 1);
+    assert.equal(emitCalls, 0);
   });
 });
