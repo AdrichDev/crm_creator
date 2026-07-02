@@ -7,6 +7,7 @@ import { citas as seedCitas, type Cita } from '@/lib/mock/data';
 import { buildMonthCells, buildWeekCells, buildDayCell, type CalCell } from '@/lib/utils/calendar';
 import { DOW, DOW_FULL, MESES, MESES_ABBR } from '@/lib/config/constants';
 import { dateStr } from '@/lib/utils/format';
+import { CitaDetalleModal, type CitaConNotas } from '@/components/crm/cita-detalle-modal';
 
 type Vista = 'mes' | 'semana' | 'dia';
 const VISTAS: { id: Vista; label: string }[] = [
@@ -58,11 +59,14 @@ function periodoLabel(vista: Vista, cursor: Date, semana: CalCell[]): string {
 export function AgendaWidget() {
   const router = useRouter();
   const termCitas = useTerm('citas', 'Citas');
-  const { items } = useCollection<Cita>('citas', seedCitas);
+  const { items, update } = useCollection<Cita>('citas', seedCitas);
 
   const [vista, setVista] = useState<Vista>('mes');
   const [cursor, setCursor] = useState<Date | null>(null);
   const [selected, setSelected] = useState<string>('');
+  // Modal de detalle (WU5): se guarda solo el id, el detalle se deriva de `items` en
+  // cada render para reflejar de inmediato el guardado optimista de useCollection.
+  const [detalleId, setDetalleId] = useState<Cita['id'] | null>(null);
 
   // Fechas SOLO en cliente (evita mismatch de hidratación con el servidor).
   useEffect(() => {
@@ -106,9 +110,13 @@ export function AgendaWidget() {
     .filter((c) => c.fecha === selected)
     .sort((a, b) => a.hora.localeCompare(b.hora));
 
-  function editarCita(id: number) {
-    router.push(`/citas?edit=${id}`);
+  // Click en una cita: abre el modal de detalle (WU5). El deep-link a /citas?edit=
+  // se conserva como acción explícita dentro del modal ("Ir a agenda").
+  function editarCita(id: Cita['id']) {
+    setDetalleId(id);
   }
+
+  const detalleCita = (items as CitaConNotas[]).find((c) => c.id === detalleId) ?? null;
 
   return (
     <div className="agenda-widget">
@@ -233,6 +241,13 @@ export function AgendaWidget() {
           })}
         </div>
       )}
+
+      <CitaDetalleModal
+        cita={detalleCita}
+        onClose={() => setDetalleId(null)}
+        onSave={(notes) => { if (detalleCita) update(detalleCita.id, { notes } as unknown as Partial<Cita>); }}
+        onIrAgenda={() => { const id = detalleCita?.id; setDetalleId(null); if (id != null) router.push(`/citas?edit=${id}`); }}
+      />
     </div>
   );
 }

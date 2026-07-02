@@ -72,3 +72,28 @@ Orden: modelo → ICS → emisor n8n → UI. Ruflo gate antes de push.
       en Supabase (RLS on, 0 policies, verificado).
 - [ ] Z.3 Aprobación humana antes de merge (Nivel 4). Apply aprobado por el usuario el
       02/07/2026; falta el OK final de commit/merge.
+
+## Hallazgo de prueba en vivo (02/07/2026) — push NO es multi-tenant tal como está
+
+Prueba real con negocio "Comercial Demo IA" (20 clientes IA, achozas9@gmail.com):
+
+- **Feed ICS: validado end-to-end y SÍ es multi-tenant correcto.** Cada usuario tiene su
+  propio token/URL sin OAuth (10 eventos servidos vía túnel público, formato RFC 5545
+  correcto). Cubre el caso real de negocio sin ningún problema de escala.
+- **Push vía n8n (WU3): mecanismo probado hasta el borde de la credencial OAuth, PARADO
+  ahí a petición del usuario.** Al llegar al nodo "Google Calendar: crear evento" se
+  detectó que el diseño actual usa **una credencial n8n estática (una sola cuenta Google)**
+  compartida por todo el workflow. Con 1 usuario de prueba es suficiente, pero **no escala
+  a N clientes reales**: todos los eventos se crearían en el calendario de la cuenta Google
+  conectada a esa única credencial, no en el de cada cliente.
+- **Qué hace falta para push multi-tenant real** (fuera de alcance de este change, requiere
+  spec nueva): cada usuario conecta SU PROPIO Google Calendar desde Mi Cuenta (flujo OAuth
+  propio del back, no la credencial estática de n8n); el back guarda el refresh token por
+  usuario y llama a la Calendar API directamente (o pasa el token al workflow n8n por
+  ejecución en vez de usar credencial fija). Un solo Client ID/Secret de Google Cloud basta
+  para todos los clientes (esa parte del proceso NO se repite por cliente) — lo que cambia
+  es que el TOKEN de acceso debe ser por usuario, no fijo por instancia de n8n.
+- **Decisión:** no se completó el alta de credencial OAuth de Google Cloud hoy (el usuario
+  paró conscientemente al ver esta limitación). Workflow `crm-calendar-push` queda importado
+  en n8n (instancia `n8n-agents-agency`, puerto 5678) sin credencial conectada — WU3.2 sigue
+  PENDIENTE DEPLOY. Retomar cuando se aborde push multi-tenant como cambio propio.

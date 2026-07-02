@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, screen, fireEvent, act } from '@testing-library/react';
 import { AgendaWidget } from '@/components/panel/widgets/agenda-widget';
 
+const routerPush = vi.fn();
+
 // useCollection resuelve su backend (mock) en una promesa; se vacía la cola de
 // microtasks tras cada render para evitar el warning "not wrapped in act".
 async function flush() {
@@ -13,12 +15,13 @@ vi.mock('@/lib/tenant-config-context', () => ({
 }));
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useRouter: () => ({ push: routerPush, replace: vi.fn() }),
 }));
 
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  routerPush.mockClear();
 });
 
 describe('AgendaWidget — vistas mes/semana/día', () => {
@@ -87,5 +90,31 @@ describe('AgendaWidget — vistas mes/semana/día', () => {
 
     fireEvent.click(dia15!);
     expect(dia15).toHaveClass('active');
+  });
+
+  // crm-citas-ux-agenda WU5.2: click en una cita abre el modal de detalle (no navega
+  // directo); "Ir a agenda" es la única acción que sigue navegando a /citas?edit=id.
+  it('click en una cita del día abre el modal de detalle en vez de navegar', async () => {
+    vi.setSystemTime(new Date(2026, 5, 16)); // el mock tiene citas el 2026-06-16
+    const { container } = render(<AgendaWidget />);
+    await flush();
+    const tarjeta = container.querySelector('.appointment-card');
+    expect(tarjeta).toBeTruthy();
+    fireEvent.click(tarjeta!);
+
+    expect(screen.getByText('Detalle de cita')).toBeInTheDocument();
+    expect(routerPush).not.toHaveBeenCalled();
+  });
+
+  it('"Ir a agenda" en el modal de detalle navega a /citas?edit=id y cierra el modal', async () => {
+    vi.setSystemTime(new Date(2026, 5, 16)); // el mock tiene citas el 2026-06-16
+    const { container } = render(<AgendaWidget />);
+    await flush();
+    fireEvent.click(container.querySelector('.appointment-card')!);
+    expect(screen.getByText('Detalle de cita')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ir a agenda' }));
+    expect(routerPush).toHaveBeenCalledWith(expect.stringMatching(/^\/citas\?edit=/));
+    expect(screen.queryByText('Detalle de cita')).toBeNull();
   });
 });
