@@ -20,7 +20,10 @@ export type AutomationEventName =
   | 'fichaje.weekly_summary'
   | 'review.request'
   | 'timeoff.requested'
-  | 'timeoff.resolved';
+  | 'timeoff.resolved'
+  // crm-citas-google-calendar (WU3): push opt-in de un ítem de agenda a Google
+  // Calendar. Workflow n8n dedicado (crm-calendar-push), credencial Google en n8n.
+  | 'calendar.event_push';
 
 // Payload común de los eventos de cita. `fecha`/`hora` van ya formateados (es-ES)
 // para que la plantilla n8n no dependa de la zona horaria del CRM.
@@ -127,6 +130,16 @@ export interface AutomationPayloads {
     estado: string;         // etiqueta castellana (Aprobada / Rechazada)
     inicio: string;
     fin: string;
+  };
+
+  // --- crm-citas-google-calendar (WU3): push opt-in a Google Calendar ---
+  'calendar.event_push': {
+    /** UID iCal estable, mismo identificador que el feed ICS (booking-{id}@crm / reminder-{id}@crm). */
+    uid: string;
+    titulo: string;
+    inicio: string;   // ISO 8601
+    fin: string;       // ISO 8601
+    direccion?: string;
   };
 }
 

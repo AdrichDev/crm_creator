@@ -155,3 +155,52 @@ vía la API pública de n8n con `X-N8N-API-KEY`:
 - `n8n/workflows/crm/` → workflows propios del CRM (este proyecto).
 - `n8n/workflows/agents-agency/` → reservado para workflows del proyecto agents-agency (mismo workspace n8n).
 - `n8n/templates/` → plantillas de email (fuente de verdad, versionadas).
+
+## Workflow `crm-calendar-push` (crm-citas-google-calendar, WU3.2)
+
+Push opt-in de citas/recordatorios confirmados a Google Calendar. **Workflow separado**
+del dispatcher de emails (`crm-automation-dispatcher.json`), con su **propio webhook y
+su propia credencial OAuth de Google** — así las credenciales de Calendar no se mezclan
+con las de SMTP y una caída de Calendar no afecta al dispatcher de emails.
+
+```
+back/src/lib/calendarEmitter.ts --POST firmado--> n8n Webhook (/webhook/crm-calendar-push)
+                                                     └─ Verify (Code): HMAC + replay + idempotencia
+                                                         ├─ firma inválida/caducada/duplicada → 401
+                                                         └─ válida → Google Calendar: crear evento → Respond 200
+```
+
+- **Mismo HMAC que el dispatcher**: reutiliza `AUTOMATION_WEBHOOK_SECRET` (un solo
+  secreto que gestionar); la URL es DISTINTA (`CALENDAR_WEBHOOK_URL` en el back, apunta
+  al path `/webhook/crm-calendar-push` de este workflow).
+- **Payload** (`data`): `{ uid, titulo, inicio, fin, direccion }`. `uid` es el mismo
+  identificador estable del feed ICS (`booking-{id}@crm` / `reminder-{id}@crm`) — si el
+  usuario usa ICS + push a la vez, ambos mecanismos referencian el mismo evento lógico
+  (mitigación de duplicados documentada en `proposal.md`).
+- **Idempotencia**: igual que el dispatcher, `eventId` (= `uid`) se guarda en *workflow
+  static data*; un reenvío con el mismo `eventId` no vuelve a crear el evento.
+- **Fail-open desde el back**: `CALENDAR_WEBHOOK_URL` vacía → `emit()` responde
+  `disabled`, el CRM sigue funcionando (regla de negocio: nada bloquea la confirmación
+  de una cita ni la creación de un recordatorio).
+
+### Puesta en marcha
+
+1. **Variable adicional** (junto a las de `AUTOMATION_WEBHOOK_*`, arriba):
+   ```env
+   CALENDAR_WEBHOOK_URL=http://localhost:5678/webhook/crm-calendar-push
+   ```
+2. **Credencial Google Calendar OAuth2**: en n8n → *Credentials* → *Google Calendar
+   OAuth2 API* → autoriza con la cuenta que va a recibir los eventos (o una cuenta de
+   servicio delegada, según el proyecto). Reasigna la credencial en el nodo
+   *Google Calendar: crear evento* (el JSON trae el placeholder
+   `REPLACE_WITH_GOOGLE_CALENDAR_CREDENTIAL_ID`).
+3. **Importar**: *Workflows* → *Import from File* → `n8n/workflows/crm/crm-calendar-push.json`.
+   Verifica el mapeo de campos `start`/`end` del nodo Google Calendar contra la versión
+   instalada del nodo (puede variar de nombre/forma entre versiones de n8n) antes de activar.
+4. **Activa** el workflow (toggle *Active*) para que quede productivo en `/webhook/...`.
+
+### Estado
+
+- **JSON creado, PENDIENTE DEPLOY**: falta credencial OAuth de Google real (la aporta
+  el usuario/operador) y verificación e2e contra el n8n real, igual que el resto de
+  fases nuevas de este directorio.

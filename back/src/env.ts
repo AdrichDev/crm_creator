@@ -32,6 +32,13 @@ export const env = {
   automationMaxAttempts: Number(process.env.AUTOMATION_MAX_ATTEMPTS ?? 3),
   automationTimeoutMs: Number(process.env.AUTOMATION_TIMEOUT_MS ?? 5000),
 
+  // crm-citas-google-calendar (WU3): webhook DEDICADO del workflow n8n
+  // crm-calendar-push (Google Calendar node, credencial propia en n8n) — separado
+  // del dispatcher de emails para no mezclar credenciales. Reutiliza el mismo
+  // AUTOMATION_WEBHOOK_SECRET (firma HMAC) — un solo secreto que gestionar.
+  // Fail-open igual que el resto de automatizaciones: vacío = push desactivado.
+  calendarWebhookUrl: process.env.CALENDAR_WEBHOOK_URL ?? '',
+
   // Supabase Auth — backend only. SERVICE_ROLE_KEY must NEVER reach the browser.
   // Placeholder values: replace with real Supabase project values before deploying.
   supabaseUrl: envOr('SUPABASE_URL', 'https://placeholder.supabase.co'),
