@@ -3,23 +3,21 @@ import 'leaflet/dist/leaflet.css';
 import { useEffect, useRef } from 'react';
 import type * as L from 'leaflet';
 import type { ComercialCustomer } from '@/lib/comercial/types';
+import { markerColor, type ColorMode } from '@/lib/comercial/marker-color';
 
 // Mapa de clientes con Leaflet + OpenStreetMap (gratis, sin API key). Imperativo con
-// import dinámico (evita SSR). Sólo pinta clientes con coordenadas válidas (geoEstado=OK);
-// el color del marcador es el del ESTADO DE VISITA (RF-04/05/07).
+// import dinámico (evita SSR). Sólo pinta clientes con coordenadas válidas (geoEstado=OK).
+// El color del marcador depende del `modo` (selector exclusivo estado/gasto, §16.3).
 
 interface Props {
   customers: ComercialCustomer[];
   selectedId?: string | null;
   onSelect?: (c: ComercialCustomer) => void;
   center?: { lat: number; lng: number };
+  modo?: ColorMode;
 }
 
-function markerColor(c: ComercialCustomer): string {
-  return c.estadoVisita?.color ?? '#9ca3af';
-}
-
-export default function MapaClientes({ customers, selectedId, onSelect, center }: Props) {
+export default function MapaClientes({ customers, selectedId, onSelect, center, modo = 'estado' }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
@@ -55,11 +53,11 @@ export default function MapaClientes({ customers, selectedId, onSelect, center }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Re-pinta marcadores cuando cambian los clientes o la selección.
+  // Re-pinta marcadores cuando cambian los clientes, la selección o el modo de color.
   useEffect(() => {
     renderMarkers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customers, selectedId]);
+  }, [customers, selectedId, modo]);
 
   function renderMarkers() {
     const leaflet = LRef.current;
@@ -71,7 +69,7 @@ export default function MapaClientes({ customers, selectedId, onSelect, center }
     const located = customers.filter((c) => c.geoEstado === 'OK' && c.latitud != null && c.longitud != null);
     const pts: [number, number][] = [];
     for (const c of located) {
-      const color = markerColor(c);
+      const color = markerColor(c, modo);
       const selected = c.id === selectedId;
       const icon = leaflet.divIcon({
         className: 'comercial-marker',

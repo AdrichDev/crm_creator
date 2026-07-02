@@ -45,6 +45,7 @@ export interface ComercialCustomer {
   tipoRegistro: RegistroType;
   estadoVisitaId: string | null;
   estadoVisita: EstadoVisitaRef | null;
+  proximaAccionEn: string | null;
   distanciaKm?: number;
 }
 
@@ -72,9 +73,16 @@ export interface CustomerNoteDto {
 export interface ReminderDto {
   id: string;
   customerId: string;
+  customerNombre: string;
   titulo: string;
   descripcion: string | null;
   fechaPrevista: string | null;
   estado: ReminderStatus;
   createdAt: string;
+}
+
+export interface ReminderSummaryDto {
+  vencidos: number;
+  hoy: number;
+  proximos7d: number;
 }

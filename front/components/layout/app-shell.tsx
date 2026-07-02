@@ -9,6 +9,7 @@ import { isAuthed } from '@/lib/auth/session';
 import { ArrowLeft } from 'lucide-react';
 import { ROLES, type Role } from '@/lib/config/roles';
 import { ThemeToggle } from './theme-toggle';
+import { NotificationBell } from './notification-bell';
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { config, ready, hasActive, closeProject, role, setRole } = useProjects();
@@ -53,6 +54,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
             <ThemeToggle />
 
+            <NotificationBell />
 
             {/* Selector de perfil (filtrado de vista) */}
             <label className="opera-role-select">

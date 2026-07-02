@@ -1,7 +1,7 @@
 'use client';
 import { apiFetch } from '@/lib/api/client';
 import type {
-  ComercialCustomer, VisitStateDto, VisitDto, CustomerNoteDto, ReminderDto,
+  ComercialCustomer, VisitStateDto, VisitDto, CustomerNoteDto, ReminderDto, ReminderSummaryDto,
 } from './types';
 
 interface Listed<T> { items: T[]; total?: number; }
@@ -102,4 +102,8 @@ export async function createReminder(data: Record<string, unknown>): Promise<Rem
 }
 export async function patchReminder(id: string, data: Record<string, unknown>): Promise<ReminderDto> {
   return apiFetch<ReminderDto>(`/reminders/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+}
+// Contadores para el panel de seguimiento y la campana (agregado ligero, sin listas).
+export async function fetchReminderSummary(): Promise<ReminderSummaryDto> {
+  return apiFetch<ReminderSummaryDto>('/reminders/summary');
 }
