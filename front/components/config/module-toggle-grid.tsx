@@ -1,5 +1,6 @@
 'use client';
 import { MODULES, CATEGORY_LABEL, type ModuleCategory, type ModuleId } from '@/lib/config/modules';
+import { effectiveCategory, groupModules } from '@/lib/config/module-category';
 import { Icon } from '@/components/ui/icon';
 import { Toggle } from '@/components/ui/primitives';
 import { EmojiPickerButton } from '@/components/ui/emoji-picker';
@@ -24,19 +25,19 @@ export function ModuleToggleGrid({ modules, onToggle, terminology = {}, vertical
   { modules: Record<ModuleId, boolean>; onToggle: (id: ModuleId, on: boolean) => void; terminology?: Record<string, string>;
     vertical?: VerticalId; emojis?: Partial<Record<ModuleId, string>>; onSetEmoji?: (id: ModuleId, emoji: string) => void;
     views?: BusinessViews; onViewsChange?: (v: BusinessViews) => void }) {
-  const cats = Array.from(new Set(MODULES.map((m) => m.category))) as ModuleCategory[];
+  const groups = groupModules(MODULES, vertical);
   return (
     <div className="space-y-6">
       {onViewsChange && <ViewSelector views={views} onChange={onViewsChange} />}
-      {cats.map((cat) => (
+      {groups.map(({ cat, items }) => (
         <div key={cat}>
           <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">{CATEGORY_LABEL[cat]}</p>
           <div className="grid gap-3 sm:grid-cols-2">
-            {MODULES.filter((m) => m.category === cat).map((m) => {
+            {items.map((m) => {
               const on = modules[m.id];
               const label = terminology[m.termKey] ?? m.defaultLabel;
               const missing = (m.recommends ?? []).filter((r) => !modules[r]);
-              const color = CATEGORY_COLOR[m.category];
+              const color = CATEGORY_COLOR[vertical ? effectiveCategory(vertical, m.id) : m.category];
               // Módulo de personas con la vista "Trabajador" desactivada: bloqueado.
               const blocked = !!m.requiresWorkerView && !views.worker;
               return (

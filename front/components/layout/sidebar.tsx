@@ -2,7 +2,8 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { MODULES, CATEGORY_LABEL, type ModuleCategory } from '@/lib/config/modules';
+import { MODULES, CATEGORY_LABEL } from '@/lib/config/modules';
+import { groupModules } from '@/lib/config/module-category';
 import { useProjects, useRole } from '@/lib/tenant-config-context';
 import { resolveModuleEmoji } from '@/lib/config/icons';
 import { cn } from '@/lib/utils';
@@ -49,9 +50,7 @@ export function Sidebar() {
   // Los módulos obligatorios (dashboard, configuración) se muestran siempre,
   // aunque una config antigua no los tenga marcados — el rol sigue filtrando.
   const active = MODULES.filter((m) => (config.modules[m.id] || m.mandatory) && moduleAllowedForRole(role, m.id));
-  const groups = (Object.keys(CATEGORY_LABEL) as ModuleCategory[])
-    .map((cat) => ({ cat, items: active.filter((m) => m.category === cat) }))
-    .filter((g) => g.items.length > 0);
+  const groups = groupModules(active, config.business.vertical);
 
   // Pie del sidebar: usuario REAL de la sesión cuando hay backend; si no
   // (consola fuente demo) se usa el usuario demo del rol activo. Fallback
