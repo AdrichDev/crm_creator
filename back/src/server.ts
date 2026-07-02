@@ -5,6 +5,7 @@ import { env, assertConfig } from './env.js';
 import { api } from './routes/index.js';
 import { notFound, errorHandler } from './middleware/error.js';
 import { startReminderDrainer } from './lib/reminderDrainer.js';
+import { startDigestScheduler } from './lib/digestScheduler.js';
 import { swaggerSpec } from './lib/swagger.js';
 
 // Fail-closed: no arrancar con config Supabase incompleta/placeholder.
@@ -32,4 +33,5 @@ app.use(errorHandler);
 app.listen(env.port, () => {
   console.log(`OperaOS backend escuchando en http://localhost:${env.port}`);
   startReminderDrainer();
+  startDigestScheduler();
 });
