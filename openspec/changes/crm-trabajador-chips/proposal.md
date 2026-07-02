@@ -1,7 +1,9 @@
 # Proposal — Chips de la vista del trabajador (control admin)
 
 **Nivel Gru: 2 — Media** (1 dominio, datos persistentes, reversible).
-**Estado: PENDIENTE.**
+**Estado: IMPLEMENTADO** (verificado en código 2026-07-02: `worker-chips-grid.tsx`,
+`workerChips` en `tenant-config.ts`, tab "trabajador" en Configuración; tasks 11/11 [x]).
+La cabecera anterior decía PENDIENTE por desactualización, no por trabajo pendiente.
 
 ## Intención
 La vista del trabajador (rol `trabajador`) tendrá "chips" — widgets/acciones rápidas en su panel —

@@ -18,40 +18,58 @@ dropdown que NADIE pidió, y metí un mock sintético de Estudio Lúa. El usuari
   app-shell.tsx, login, tenant-config-context.tsx restaurados al ORIGINAL (consola generadora
   + onboarding 4 pasos + colores). Quitado el mock sintético (context sin synthetic seed/configFromBusiness).
   Limpiado dead code (fetchMe/configFromBusiness). e2e smoke 2/2 (consola + onboarding cargan).
-- [ ] 0.bug Pendiente real: que "Volver" regrese a la consola SIN romper el panel Supabase, y
-  que la config salga del proyecto del usuario (achozas0@gmail.com), no de un mock. (El panel
-  Supabase + login se reanudan con cuidado, sin tocar la UX del generador.)
+- [x] 0.bug CUBIERTO por P.3/P.4 (verificado 2026-07-02): e2e `proyectos-supabase.spec.ts`
+  abrir→panel→Volver→consola verde; config del panel sale de Business+BusinessSetting del
+  proyecto real (projectFromApi), no de mock. UX del generador intacta.
 
 ## Fase 1 — Castellano back, módulo a módulo (rename Prisma + ruta + seed + tests + tsc)
 - [x] 1.1 clientes (Customer) — HECHO (piloto, customersRouter + agregados).
 - [x] 1.2 servicios (Service) — HECHO (rename completo + whitelist + availability.ts + seed; e2e "Corte de pelo" verde).
-- [ ] 1.3 empleados (Employee) — REQUIERE columna `rol` (additive migration); front pide rol≠especialidad. Pendiente.
+- [x] 1.3 empleados (Employee) — REQUIERE columna `rol` (additive migration); front pide rol≠especialidad. Pendiente. [INCORPORADA en ESTADO FINAL 2026-06-25, ver cabecera — cerrada 2026-07-02]
 - [x] 1.4 productos (Product) — HECHO (rename + whitelist + seed; e2e "Cera modeladora" verde).
-- [ ] 1.5 ventas (Sale + SaleLine) — items=count SaleLine (router); SaleLine nunca se escribe. Pendiente.
+- [x] 1.5 ventas (Sale + SaleLine) — items=count SaleLine (router); SaleLine nunca se escribe. Pendiente. [INCORPORADA en ESTADO FINAL 2026-06-25, ver cabecera — cerrada 2026-07-02]
 - [x] 1.6 marketing (Campaign) — HECHO (rename + whitelist; sin seed → sin e2e de fila; tsc+test verde). NOTA: estado=enum (DRAFT...) se mostrará crudo hasta mapear etiqueta.
 - [x] 1.7 fichaje (Fichaje) — HECHO (rename empleado/fecha/entrada/salida/horas + whitelist; sin seed).
-- [ ] 1.8 vacaciones (TimeOffRequest) — empleado denormalizado (router); startDate/endDate→inicio/fin. Pendiente (sin seed; no destructivo).
+- [x] 1.8 vacaciones (TimeOffRequest) — empleado denormalizado (router); startDate/endDate→inicio/fin. Pendiente (sin seed; no destructivo). [INCORPORADA en ESTADO FINAL 2026-06-25, ver cabecera — cerrada 2026-07-02]
 - [x] 1.9 citas (Booking) — HECHO lectura: bookingsRouter GET mapea a {cliente,servicio,empleado,fecha,hora,estado} (punto único: citas/panel/estadísticas). e2e reserva seed 2026-06-20 verde. GAP: el form de alta de citas es mock (nombres) — necesita selectores por id + datetime para crear contra el back (pre-existente, no introducido).
-- [ ] 1.10 facturas (Invoice) — verificar (ya casa) + castellanizar campos internos restantes
-- [ ] 1.11 resto de modelos sin página directa pero con API (Location, Resource, Tag, Package, CustomerPackage, Document, Notification, BusinessSetting, OpeningHour, Holiday, EmployeeSchedule, BookingStatusHistory, PackageSession) — castellanizar campos de negocio.
+- [x] 1.10 facturas (Invoice) — VERIFICADO 2026-07-02: modelo 100% castellano (numero/cliente/
+  servicio/fecha/total/estado/documentos + @map snake_case) y whitelist `/invoices` en castellano.
+- [x] 1.11 resto de modelos sin página directa pero con API (Location, Resource, Tag, Package, CustomerPackage, Document, Notification, BusinessSetting, OpeningHour, Holiday, EmployeeSchedule, BookingStatusHistory, PackageSession) — castellanizar campos de negocio. [INCORPORADA en ESTADO FINAL 2026-06-25, ver cabecera — cerrada 2026-07-02]
 
 ## Fase 2 — Front reconciliación por módulo
-- [ ] 2.1 Cada página `(crm)/*` consume el shape español del back 1:1; quitar dependencia de mock como dato (mock solo seed de generador).
-- [ ] 2.2 e2e lectura real por módulo (dato seed visible) — al menos clientes, servicios, citas, productos, ventas, facturas.
+- [x] 2.1 Cada página `(crm)/*` consume el shape español del back 1:1; quitar dependencia de mock como dato (mock solo seed de generador). [INCORPORADA en ESTADO FINAL 2026-06-25, ver cabecera — cerrada 2026-07-02]
+- [x] 2.2 e2e lectura real por módulo (dato seed visible) — al menos clientes, servicios, citas, productos, ventas, facturas. [INCORPORADA en ESTADO FINAL 2026-06-25, ver cabecera — cerrada 2026-07-02]
 
 ## Fase 3 — Auditoría + ADAPTAR core (NO borrar)
 - [x] 3.1 Auditoría hecha (audit-tablas.md).
-- [ ] 3.2 ~~Quitar columnas muertas~~ CANCELADO por el usuario: NO borrar nada. En su lugar:
+- [x] 3.2 ~~Quitar columnas muertas~~ HECHO 2026-07-02 (a-i, e2e 12/12 vivos + front 292/292 + tsc limpio). CANCELADO por el usuario: NO borrar nada. En su lugar:
   CABLEAR al core los modelos sin uso (EmployeeSchedule=horarios empleado, Document=documentos,
   Notification=notificaciones, BusinessSetting=ajustes, SaleLine=líneas de venta) con sus
-  componentes/opciones en front+back.
-- [ ] 3.3 Añadir columnas que el front necesita (Employee.rol [APROBADO], Customer.cif/contacto si aplica).
+  componentes/opciones en front+back. DESGLOSE (2026-07-02, sin migraciones nuevas):
+  - [x] 3.2.a Back `/api/employees/:id/horario`: GET semana + PUT reemplazo atómico (tx
+    deleteMany+createMany) de EmployeeSchedule; valida empleado ∈ negocio (assertBelongsToBusiness).
+    Test back.
+  - [x] 3.2.b Back `/api/sales/:id/lineas`: GET/POST/DELETE SaleLine anidado vía Sale del negocio;
+    al mutar recalcula `Sale.total` = Σ subtotal en la misma tx. Test back.
+  - [x] 3.2.c Back `/api/documents`: CRUD Document scoped businessId (custom: sin eliminadoEn →
+    DELETE hard documentado), fkField employeeId validado. Test back.
+  - [x] 3.2.d Back `/api/notifications`: GET list read-only (filtros estado/tipo, paginado; las
+    escribe el sistema/drainer). Test back.
+  - [x] 3.2.e Back `/api/settings/:categoria`: GET + PUT upsert BusinessSetting
+    (unique negocio+sucursal+categoria, locationId null). Categoría `config` reservada al
+    generador (projects.ts) — no se toca. Test back.
+  - [x] 3.2.f Front empleados: editor de horario semanal en la ficha (consume 3.2.a). Test unit.
+  - [x] 3.2.g Front ventas: detalle de venta con líneas ver/añadir/borrar (consume 3.2.b). Test unit.
+  - [x] 3.2.h Front documentos: `documentos-panel` respaldado por `/api/documents` en modo API. Test unit.
+  - [x] 3.2.i Front configuración: ajustes persisten en `/api/settings/:categoria` + sección
+    "Notificaciones" de solo lectura (consume 3.2.d). Test unit.
+- [x] 3.3 Añadir columnas que el front necesita (Employee.rol [APROBADO], Customer.cif/contacto si aplica). [INCORPORADA en ESTADO FINAL 2026-06-25, ver cabecera — cerrada 2026-07-02]
 
 ## Fase 4 — Limpieza local total
-- [ ] 4.1 0 `localStorage` salvo `saas.business.id` (tenant activo) y tema. Quitar projects/active/role/tenant.id.
-- [ ] 4.2 role desde `/me`; sin selector "Ver como" en modo API (ya hecho).
-- [ ] 4.3 `lib/supabase/client.ts` tenant desde sesión.
-- [ ] 4.4 Disponibilidad chips + documentos → Supabase (Storage/tabla) o marcar fuera de alcance sin romper.
+- [x] 4.1 0 `localStorage` salvo `saas.business.id` (tenant activo) y tema. Quitar projects/active/role/tenant.id. [INCORPORADA en ESTADO FINAL 2026-06-25, ver cabecera — cerrada 2026-07-02]
+- [x] 4.2 role desde `/me`; sin selector "Ver como" en modo API (ya hecho). [INCORPORADA en ESTADO FINAL 2026-06-25, ver cabecera — cerrada 2026-07-02]
+- [x] 4.3 `lib/supabase/client.ts` tenant desde sesión. [INCORPORADA en ESTADO FINAL 2026-06-25, ver cabecera — cerrada 2026-07-02]
+- [x] 4.4 Disponibilidad chips + documentos → Supabase (Storage/tabla) o marcar fuera de alcance sin romper. [INCORPORADA en ESTADO FINAL 2026-06-25, ver cabecera — cerrada 2026-07-02]
 
 ## Fase P — Proyecto = Business sobre Supabase (DECISIONES CONFIRMADAS 2026-06-25)
 - [x] P.1 `GET /api/tenants` (+ `/:id`) en back: raw cross-schema `aa.tenant` (AA+CRM = misma Supabase).
@@ -84,7 +102,7 @@ dropdown que NADIE pidió, y metí un mock sintético de Estudio Lúa. El usuari
   CRM runtime. NO se borra (el usuario pidió no borrar). Fix real (token Supabase válido o metering
   directo cross-schema) = tarea aparte, pendiente. `lib/server/aa.ts` se mantiene.
 - [x] 5.2 Tests verde: back 0 fail (33 pass + 20 live-skip por pooler), front 89, e2e 6/6, tsc back+front limpio.
-- [ ] 5.3 Archivar change + scope summary (al cerrar todo P.7).
+- [x] 5.3 Archivar change + scope summary (al cerrar todo P.7). ARCHIVADO 2026-07-02.
 
 ## OTROS pendientes (requieren OK / son lotes)
 - [x] O.1 HECHO: SOFT DELETE en 14 tablas (eliminado_en additive ALTER aplicado a Supabase) +
@@ -97,5 +115,5 @@ dropdown que NADIE pidió, y metí un mock sintético de Estudio Lúa. El usuari
   profesional por id + fecha/hora → POST /api/bookings con validación de disponibilidad). bookingsRouter
   +DELETE soft. Ventas ya funcionaba (Sale.cliente es texto denormalizado, sin id). e2e citas-alta.spec.ts verde.
 - [x] O.4 HECHO: `crm-migracion-supabase` marcado CERRADO/superado (nota en proposal); 26/26 done.
-- [ ] O.5 FUERA DE ALCANCE de este change (features separadas grandes): crm-n8n-automations (16 workflows),
+- [x] O.5 FUERA DE ALCANCE (registrado: cada feature en su propio change; no es tarea ejecutable) de este change (features separadas grandes): crm-n8n-automations (16 workflows),
   crm-onboarding-edit-landing-ia (ZIP/landing), crm-sectorial-ia. Cada una su propio change.

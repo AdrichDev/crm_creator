@@ -13,6 +13,7 @@ import { isApiEnabled } from '@/lib/api/client';
 import { usePaginatedApi } from '@/lib/data/use-paginated-api';
 import { SearchInput } from '@/components/ui/search-input';
 import { Pagination } from '@/components/ui/pagination';
+import { HorarioEmpleadoModal } from '@/components/crm/horario-empleado-modal';
 
 // Shape que devuelve el back para /employees paginado.
 type EmpleadoApiRow = {
@@ -51,6 +52,7 @@ export default function Page() {
   const dialog = useDialog();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Empleado | null>(null);
+  const [horario, setHorario] = useState<Empleado | null>(null);
 
   // Items de visualización.
   const displayItems = (apiEnabled ? paged.items : collectionItems) as unknown as Empleado[];
@@ -89,6 +91,7 @@ export default function Page() {
             {puedeEditar && (
               <div className="equipo-actions">
                 <button className="btn btn-outline btn-sm" onClick={() => { setEditing(e); setOpen(true); }}>Editar</button>
+                {apiEnabled && <button className="btn btn-outline btn-sm" onClick={() => setHorario(e)}>Horario</button>}
                 <button className="btn btn-outline btn-sm" onClick={() => { void dialog.confirm({ message: '¿Eliminar miembro?', danger: true }).then((ok) => { if (ok) remove(e.id); }); }}>Eliminar</button>
               </div>
             )}
@@ -102,6 +105,10 @@ export default function Page() {
 
       <EntityModal open={open} title={editing ? 'Editar miembro' : 'Nuevo miembro del equipo'} fields={FIELDS}
         initial={editing as unknown as Record<string, string | number> | null} onSubmit={onSubmit} onClose={() => setOpen(false)} />
+
+      {apiEnabled && horario && (
+        <HorarioEmpleadoModal open employeeId={String(horario.id)} employeeName={horario.nombre} onClose={() => setHorario(null)} />
+      )}
     </ModuleGuard>
   );
 }

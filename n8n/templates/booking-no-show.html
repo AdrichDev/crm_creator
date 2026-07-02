@@ -1,0 +1,8 @@
+<!-- no asistio (booking.no_show). Vars: $json.data.safe.{customerName,businessName,serviceName,fecha,hora} + $json.{logoHtml,primary} -->
+<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222">
+  <div style="text-align:center;margin-bottom:18px">{{ $json.logoHtml }}</div>
+  <h2 style="margin:0 0 12px">😊 Hola {{ $json.data.safe.customerName }},</h2>
+  <p>Te echamos de menos en tu cita de <b>{{ $json.data.safe.fecha }}</b> a las <b>{{ $json.data.safe.hora }}</b> en <b>{{ $json.data.safe.businessName }}</b>.</p>
+  <p>No pasa nada, a todos se nos escapa un d&iacute;a. Cuando quieras, reprogramamos tu <b>{{ $json.data.safe.serviceName }}</b> en el horario que mejor te venga.</p>
+  <p style="font-size:13px;color:#666">📞 Contacta con nosotros para elegir nuevo hueco. ¡Te esperamos! 🙌</p>
+</div>

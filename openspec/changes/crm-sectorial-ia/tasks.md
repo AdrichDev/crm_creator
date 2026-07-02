@@ -45,8 +45,8 @@ Orden de implementación. ✅ = hecho en esta entrega; ⏳ = fase siguiente.
 - [✅] T19. Tests `crm-theme.test.ts` + E2E `e2e/tema.spec.ts`.
 
 ## Verificación final
-- [ ] `npm run test` y `npm run test:e2e` en verde (lo ejecuta el usuario; iteramos sobre fallos).
-- [ ] Comprobar en agents-agency que una generación del CRM incrementa `tokensUsed` del cliente.
+- [ ] `npm run test` y `npm run test:e2e` en verde (lo ejecuta el usuario; iteramos sobre fallos). — PENDIENTE VERIFICACIÓN MANUAL DEL USUARIO.
+- [ ] Comprobar en agents-agency que una generación del CRM incrementa `tokensUsed` del cliente. — PENDIENTE VERIFICACIÓN MANUAL DEL USUARIO (BLOQUEADA: ledger no cableado en AA, repo aparte).
 
 ### Notas de integración (requieren entorno para validar)
 - El proxy `/api/ai/generate` mapea `market-study → /api/market-studies` y `marketing-plan → /api/ai/marketing-plan`

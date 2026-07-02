@@ -81,3 +81,55 @@ employeesRouter.delete('/:id', async (req: AuthedRequest, res: Response) => {
   await prisma.employee.update({ where: { id: req.params.id }, data: { eliminadoEn: new Date() } });
   res.status(204).end();
 });
+
+// ----------------------------- Horario semanal (EmployeeSchedule) -----------------------------
+// Tramos de disponibilidad del empleado por día de la semana. El PUT reemplaza
+// el horario completo de forma atómica (deleteMany + createMany en una tx).
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+// Confirma que el empleado pertenece al negocio activo (scoping tenant). 404 si no.
+async function findScopedEmployee(req: AuthedRequest) {
+  return prisma.employee.findFirst({ where: { id: req.params.id, businessId: req.businessId, eliminadoEn: null } });
+}
+
+employeesRouter.get('/:id/horario', async (req: AuthedRequest, res: Response) => {
+  const employee = await findScopedEmployee(req);
+  if (!employee) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
+  const tramos = await prisma.employeeSchedule.findMany({
+    where: { employeeId: employee.id },
+    orderBy: [{ diaSemana: 'asc' }, { inicio: 'asc' }],
+  });
+  res.json({ tramos });
+});
+
+employeesRouter.put('/:id/horario', async (req: AuthedRequest, res: Response) => {
+  const employee = await findScopedEmployee(req);
+  if (!employee) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
+
+  const tramos = (req.body?.tramos ?? []) as Array<{ diaSemana: unknown; inicio: unknown; fin: unknown }>;
+  if (!Array.isArray(tramos)) return res.status(400).json({ error: { code: 'validation', message: 'tramos debe ser un array' } });
+  for (const t of tramos) {
+    if (!Number.isInteger(t.diaSemana) || (t.diaSemana as number) < 0 || (t.diaSemana as number) > 6) {
+      return res.status(400).json({ error: { code: 'validation', message: 'diaSemana debe ser un entero 0-6' } });
+    }
+    if (typeof t.inicio !== 'string' || !HHMM.test(t.inicio) || typeof t.fin !== 'string' || !HHMM.test(t.fin)) {
+      return res.status(400).json({ error: { code: 'validation', message: 'inicio y fin deben tener formato HH:MM' } });
+    }
+  }
+
+  // Reemplazo atómico: borra el horario previo y crea los nuevos tramos en la misma tx.
+  await prisma.$transaction(async (tx) => {
+    await tx.employeeSchedule.deleteMany({ where: { employeeId: employee.id } });
+    if (tramos.length) {
+      await tx.employeeSchedule.createMany({
+        data: tramos.map((t) => ({ employeeId: employee.id, diaSemana: t.diaSemana as number, inicio: t.inicio as string, fin: t.fin as string })),
+      });
+    }
+  });
+
+  const nuevos = await prisma.employeeSchedule.findMany({
+    where: { employeeId: employee.id },
+    orderBy: [{ diaSemana: 'asc' }, { inicio: 'asc' }],
+  });
+  res.json({ tramos: nuevos });
+});

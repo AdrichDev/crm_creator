@@ -8,8 +8,10 @@ import { EntityModal, type Field } from '@/components/ui/entity-modal';
 import { Modal } from '@/components/ui/modal';
 import { DocumentosPanel } from '@/components/ui/documentos-panel';
 import { useCollection } from '@/lib/data/use-collection';
+import { useDocumentos } from '@/lib/data/use-documents';
 import { facturas as seed, type Factura, type Documento } from '@/lib/mock/data';
 import { Plus, Info } from 'lucide-react';
+import { isApiEnabled } from '@/lib/api/client';
 
 const FIELDS: Field[] = [
   { name: 'numero', label: 'Nº de factura', required: true },
@@ -29,7 +31,10 @@ export default function Page() {
   // Vista cliente: todas las facturas son suyas → no se muestra el cliente,
   // sino el tratamiento/servicio recibido. Igual para todos los verticales.
   const vistaCliente = role === 'cliente';
+  const apiEnabled = isApiEnabled();
   const { items, create, update } = useCollection<Factura>('facturas', seed);
+  // Modo API: documentos respaldados por /api/documents (scoped por negocio).
+  const apiDocs = useDocumentos(apiEnabled);
   const [open, setOpen] = useState(false);
   const [info, setInfo] = useState<Factura | null>(null);
 
@@ -43,7 +48,7 @@ export default function Page() {
     if (!actual) return;
     update(actual.id, { documentos: [...(actual.documentos ?? []), d] });
   }
-  function removeDoc(id: number) {
+  function removeDoc(id: number | string) {
     if (!actual) return;
     update(actual.id, { documentos: (actual.documentos ?? []).filter((x) => x.id !== id) });
   }
@@ -95,7 +100,11 @@ export default function Page() {
               <div><span className="text-[var(--panel-muted)]">Estado</span><p><Badge tone={tone(actual.estado)}>{actual.estado}</Badge></p></div>
             </div>
             <div className="border-t border-white/10 pt-4">
-              <DocumentosPanel docs={actual.documentos ?? []} canUpload={puedeEditar} onAdd={addDoc} onRemove={removeDoc} />
+              <DocumentosPanel
+                docs={apiEnabled ? apiDocs.docs : (actual.documentos ?? [])}
+                canUpload={puedeEditar}
+                onAdd={apiEnabled ? apiDocs.add : addDoc}
+                onRemove={apiEnabled ? apiDocs.remove : removeDoc} />
             </div>
           </div>
         )}

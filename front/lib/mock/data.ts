@@ -3,7 +3,7 @@
 
 // `datos`: data URL (base64) del archivo para previsualizar/descargar. Opcional:
 // las semillas y archivos grandes (> límite localStorage) guardan solo metadatos.
-export interface Documento { id: number; nombre: string; tipo: string; tam: number; fecha: string; datos?: string; }
+export interface Documento { id: number | string; nombre: string; tipo: string; tam: number; fecha: string; datos?: string; }
 export interface Cliente { id: number; nombre: string; email: string; telefono: string; visitas: number; gastoTotal: number; segmento: string; ultimaVisita: string; cif?: string; direccion?: string; contacto?: string; documentos?: Documento[]; extra?: Record<string, string>; }
 export interface Factura { id: number; numero: string; cliente: string; servicio?: string; fecha: string; total: number; estado: string; documentos?: Documento[]; }
 export interface Cita { id: number; cliente: string; servicio: string; empleado: string; fecha: string; hora: string; estado: string; }

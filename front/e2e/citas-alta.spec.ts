@@ -43,7 +43,8 @@ test('alta de cita real (modal → POST /bookings → aparece en agenda)', async
     const k = Object.keys(localStorage).find((x) => x.includes('auth-token'));
     let token = ''; try { token = k ? JSON.parse(localStorage.getItem(k)!).access_token : ''; } catch {}
     const h = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'x-business-id': localStorage.getItem('saas.business.id') ?? '' };
-    const list = await (await fetch(`${api}/api/bookings`, { headers: h })).json();
+    const listRaw = await (await fetch(`${api}/api/bookings`, { headers: h })).json();
+    const list = Array.isArray(listRaw) ? listRaw : (listRaw?.items ?? []);
     for (const b of list as Array<{ id: string; fecha: string }>) {
       if (b.fecha === fecha) await fetch(`${api}/api/bookings/${b.id}`, { method: 'DELETE', headers: h });
     }

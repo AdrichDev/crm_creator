@@ -34,7 +34,7 @@ test('abrir proyecto → panel → clientes reales → volver', async ({ page })
   await expect(page.getByText('Recurrente').first()).toBeVisible({ timeout: 10_000 });
 
   await page.getByRole('button', { name: /volver/i }).click();
-  await page.waitForURL((u) => u.pathname === '/', { timeout: 15_000 });
+  await page.waitForURL((u) => u.pathname === '/' || u.pathname === '/dashboard', { timeout: 15_000 }); // consola vive en / o /dashboard
   await expect(page.getByText(/OperaOS · Consola/i)).toBeVisible({ timeout: 15_000 });
 });
 

@@ -22,7 +22,7 @@ Orden = por dependencia (modelo → back → activación → front). Ruflo gate 
 - [x] 3.1 `ModuleId += 'comercial'` + entrada en `MODULES` (front + shared) (icon MapPinned, href `/comercial`).
 - [x] 3.2 `verticals.comerciales.defaultModules += 'comercial'` + terminología (`comercial: 'Ruta comercial'`).
 - [x] 3.3 Emoji (icons.ts), roles (trabajador ve comercial). `deserialize` mergea el módulo nuevo a false.
-- [ ] 3.4 Test front unit de config (pendiente; cubierto por tsc de momento).
+- [x] 3.4 Test front unit de config (`tests/comercial-activacion.test.ts`, 4/4 verde).
 
 ## WU4 — Mapa + marcadores + estados visuales (RF-04/05/07/10) ✅ HECHO
 - [x] 4.1 `mapa-clientes.tsx` Leaflet dynamic (ssr:false), markers por `estadoVisita.color`, leyenda (en page).
@@ -54,7 +54,10 @@ Orden = por dependencia (modelo → back → activación → front). Ruflo gate 
 
 ## Cierre
 - [x] Z.1 back 137/0 · front 284/0 · tsc back+front limpio (+28 tests nuevos: back 17, front 11).
-- [ ] Z.2 Ruflo review (refactor gate) antes de proponer commit/push. — PENDIENTE
+- [x] Z.2 Ruflo review HECHO (5 hallazgos). Aplicados 3: import geocode (🔴), Leaflet cleanup en
+  unmount (🟡), try/catch en mutaciones de la ficha (🟡). Skip justificado 2 (filtros
+  estadoVisitaId/customerId ya scoped por businessId → sin fuga cross-tenant). Commit bf40a8b
+  en rama ac/comercial-campo-geolocalizado (NO pusheado).
 - [x] Z.3 ARQUITECTURA.md catálogo actualizado. Engram persistido.
 - [x] Z.4 Migración APLICADA a Supabase (migrate deploy) + backfill 38 negocios (190 estados).
   Verificado: 4 tablas + 6 columnas cliente + estados sembrados. Schema up to date, sin drift.

@@ -13,7 +13,7 @@
 
 ## Verificación
 - [x] V.3 `tsc` + tests front verde (176 suite completa).
-- [ ] V.1 Toggle alterna claro↔oscuro y persiste en reload. (manual visual)
-- [ ] V.2 localStorage con `system` previo → carga como resuelto sin romper. (cubierto por test; verificar visual)
+- [ ] V.1 Toggle alterna claro↔oscuro y persiste en reload. (manual visual) — PENDIENTE VERIFICACIÓN MANUAL DEL USUARIO.
+- [ ] V.2 localStorage con `system` previo → carga como resuelto sin romper. (cubierto por test; verificar visual) — PENDIENTE VERIFICACIÓN MANUAL DEL USUARIO.
 
 ## Tras verde: gate Ruflo antes de commit.

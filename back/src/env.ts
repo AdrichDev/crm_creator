@@ -24,7 +24,13 @@ export const env = {
   // URL pública del front, base de los enlaces de invitación/reset que viajan por email.
   frontUrl: process.env.FRONT_URL ?? 'http://localhost:3002',
 
-  // (n8n automation emit removed in Phase 6 — auth emails are sent by Supabase Auth.)
+  // Automatizaciones n8n (opcionales, fail-open). Si AUTOMATION_WEBHOOK_URL está vacío,
+  // el emisor es no-op y las notificaciones de citas salen por SMTP directo (email.ts).
+  // NO se exigen en assertConfig: el CRM arranca y opera sin n8n configurado.
+  automationWebhookUrl: process.env.AUTOMATION_WEBHOOK_URL ?? '',
+  automationWebhookSecret: process.env.AUTOMATION_WEBHOOK_SECRET ?? '',
+  automationMaxAttempts: Number(process.env.AUTOMATION_MAX_ATTEMPTS ?? 3),
+  automationTimeoutMs: Number(process.env.AUTOMATION_TIMEOUT_MS ?? 5000),
 
   // Supabase Auth — backend only. SERVICE_ROLE_KEY must NEVER reach the browser.
   // Placeholder values: replace with real Supabase project values before deploying.

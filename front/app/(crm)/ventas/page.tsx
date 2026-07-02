@@ -7,6 +7,9 @@ import { canWrite } from '@/lib/config/roles';
 import { PageHeader, Stat, Table, Td, Badge, RowActions } from '@/components/ui/primitives';
 import { useCollection } from '@/lib/data/use-collection';
 import { ventas as seedVentas, type Venta, productos as seedProductos, type Producto } from '@/lib/mock/data';
+import { isApiEnabled } from '@/lib/api/client';
+import { LineasVentaModal } from '@/components/crm/lineas-venta-modal';
+import { ListOrdered } from 'lucide-react';
 
 const today = new Date().toISOString().slice(0, 10);
 const tone = (m: string) => m === 'Tarjeta' ? 'blue' : m === 'Efectivo' ? 'green' : 'brand';
@@ -19,11 +22,13 @@ export default function Page() {
   const { role } = useRole();
   const puedeCobrar = canWrite(role, 'ventas');
   const dialog = useDialog();
-  const { items, create, remove } = useCollection<Venta>('ventas', seedVentas);
+  const apiEnabled = isApiEnabled();
+  const { items, create, remove, refresh } = useCollection<Venta>('ventas', seedVentas);
   const { items: productos } = useCollection<Producto>('productos', seedProductos);
 
   const [cart, setCart] = useState<CartLine[]>([]);
   const [metodo, setMetodo] = useState('Tarjeta');
+  const [lineasVenta, setLineasVenta] = useState<Venta | null>(null);
 
   const total = cart.reduce((a, l) => a + l.precio * l.qty, 0);
   const facturado = items.reduce((a, v) => a + Number(v.total), 0);
@@ -107,10 +112,23 @@ export default function Page() {
             <Td>{v.fecha}</Td><Td>{v.cliente}</Td><Td>{v.items}</Td>
             <Td><Badge tone={tone(v.metodo)}>{v.metodo}</Badge></Td>
             <Td className="font-medium">€{Number(v.total).toFixed(2)}</Td>
-            <Td><RowActions onDelete={() => { void dialog.confirm({ message: '¿Anular ticket?', danger: true }).then((ok) => { if (ok) remove(v.id); }); }} /></Td>
+            <Td>
+              <div className="flex items-center justify-end gap-2">
+                {apiEnabled && (
+                  <button className="row-action edit" title="Ver líneas" aria-label="Ver líneas" onClick={() => setLineasVenta(v)}>
+                    <ListOrdered className="h-4 w-4" />
+                  </button>
+                )}
+                <RowActions onDelete={() => { void dialog.confirm({ message: '¿Anular ticket?', danger: true }).then((ok) => { if (ok) remove(v.id); }); }} />
+              </div>
+            </Td>
           </tr>
         ))}
       </Table>
+
+      {apiEnabled && lineasVenta && (
+        <LineasVentaModal open saleId={String(lineasVenta.id)} onClose={() => setLineasVenta(null)} onChanged={refresh} />
+      )}
     </ModuleGuard>
   );
 }

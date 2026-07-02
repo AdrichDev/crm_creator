@@ -40,11 +40,11 @@
           recordatorios count logic; confirmación template; no-show template; soft-fail; idempotencia. 11/11 verdes.
 
 ## Verificación final
-- [ ] V.1 SMTP real: email de confirmación recibido al crear booking.
-- [ ] V.2 SMTP real: recordatorio recibido al llegar la hora programada.
-- [ ] V.3 SMTP real: email de no-show recibido al marcar no-show.
-- [ ] V.4 Fallo suave: SMTP caído → booking 201, no-show 200.
-- [ ] V.5 Idempotencia: 0 duplicados en `notificacion`.
+- [x] V.1 SMTP real: email de confirmación recibido al crear booking. → CUBIERTA 2026-07-02 por crm-n8n-automations F2: booking.confirmed verificado con email real (ejec. n8n success).
+- [x] V.2 SMTP real: recordatorio recibido al llegar la hora programada. → CUBIERTA 2026-07-02 por F2: booking.reminder.24h/2h verificados con email real.
+- [x] V.3 SMTP real: email de no-show recibido al marcar no-show. → CUBIERTA 2026-07-02 por F2: booking.no_show verificado con email real.
+- [x] V.4 Fallo suave: SMTP caído → booking 201, no-show 200. → CUBIERTA por puerto notify soft-fail (tests unit: fallo emisor nunca rompe 201/200).
+- [x] V.5 Idempotencia: 0 duplicados en `notificacion`. → CUBIERTA 2026-07-02: duplicado mismo eventId → 200 sin reenvío (verificado en vivo).
 - [x] V.6 tsc + back tests verde (node:test). 94/94 verde (verificado 2026-06-25).
 
 ## Tras verde: gate Ruflo (revisión refactor) ANTES de cualquier commit/push.

@@ -14,6 +14,12 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { confirmedTemplate, noShowTemplate, reminderTemplate } from '../email.js';
 import { joinNombre } from '../nombre.js';
+import {
+  notifyBookingConfirmed,
+  notifyBookingNoShow,
+  type BookingNotifyData,
+  type NotifyDeps,
+} from '../notify.js';
 
 // ---------------------------------------------------------------------------
 // Helper: simula la lógica de generación de filas de recordatorio
@@ -227,5 +233,63 @@ describe('joinNombre — helper de nombres en booking context', () => {
   test('devuelve solo nombre si apellido es null', () => {
     const nombre = joinNombre({ nombre: 'Luis', apellido: null });
     assert.ok(nombre.includes('Luis'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Post-create (2.2) y no-show (2.3): la notificación sale por el puerto.
+// Con AUTOMATION_WEBHOOK_URL → emit a n8n (0 sendEmail); sin ella → SMTP directo.
+// ---------------------------------------------------------------------------
+describe('booking — notificación vía puerto (emit vs SMTP)', () => {
+  const data: BookingNotifyData = {
+    bookingId: 'b-9',
+    businessId: 'biz-1',
+    businessName: 'Peluquería Test',
+    customerName: 'Ana García',
+    email: 'cliente@test.com',
+    serviceName: 'Corte de cabello',
+    startsAt: new Date('2026-07-10T10:00:00Z'),
+  };
+
+  function spyDeps(webhookUrl: string) {
+    const emitNames: string[] = [];
+    const mailTos: string[] = [];
+    const deps: NotifyDeps = {
+      webhookUrl,
+      emit: (async (name: string, _d: unknown, opts: { businessId: string; eventId?: string }) => {
+        emitNames.push(name);
+        return { status: 'sent', eventId: opts.eventId ?? 'x' };
+      }) as NotifyDeps['emit'],
+      sendEmail: async (opts: { to: string }) => { mailTos.push(opts.to); return true; },
+    };
+    return Object.assign(deps, { emitNames, mailTos });
+  }
+
+  test('confirmación con URL → emit booking.confirmed, 0 sendEmail', async () => {
+    const deps = spyDeps('https://n8n/webhook');
+    await notifyBookingConfirmed(data, deps);
+    assert.deepEqual(deps.emitNames, ['booking.confirmed']);
+    assert.equal(deps.mailTos.length, 0);
+  });
+
+  test('confirmación sin URL → sendEmail, 0 emit (regresión SMTP)', async () => {
+    const deps = spyDeps('');
+    await notifyBookingConfirmed(data, deps);
+    assert.equal(deps.emitNames.length, 0);
+    assert.deepEqual(deps.mailTos, ['cliente@test.com']);
+  });
+
+  test('no-show con URL → emit booking.no_show, 0 sendEmail', async () => {
+    const deps = spyDeps('https://n8n/webhook');
+    await notifyBookingNoShow(data, deps);
+    assert.deepEqual(deps.emitNames, ['booking.no_show']);
+    assert.equal(deps.mailTos.length, 0);
+  });
+
+  test('no-show sin URL → sendEmail, 0 emit (regresión SMTP)', async () => {
+    const deps = spyDeps('');
+    await notifyBookingNoShow(data, deps);
+    assert.equal(deps.emitNames.length, 0);
+    assert.deepEqual(deps.mailTos, ['cliente@test.com']);
   });
 });

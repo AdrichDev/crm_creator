@@ -1,0 +1,8 @@
+<!-- fichaje.weekly_summary. Vars: $json.data.safe.{businessName,detalle} + $json.{logoHtml,primary} -->
+<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222">
+  <div style="text-align:center;margin-bottom:18px">{{ $json.logoHtml }}</div>
+  <h2 style="margin:0 0 12px">⏱️ Resumen semanal de fichajes</h2>
+  <p>Horas registradas la semana pasada por el equipo de <b>{{ $json.data.safe.businessName }}</b>:</p>
+  <div style="background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0;white-space:pre-line;font-size:14px;line-height:1.5">{{ $json.data.safe.detalle }}</div>
+  <p style="font-size:13px;color:#666">📋 Detalle de horas por empleado arriba. 💼</p>
+</div>

@@ -5,7 +5,9 @@ import type { AuthedRequest } from '../middleware/types.js';
 import { BookingStatus } from '../lib/generated/prisma/client.js';
 import { assertFks, handleCrossTenant } from '../lib/tenant.js';
 import { joinNombre } from '../lib/nombre.js';
-import { sendEmail, confirmedTemplate, noShowTemplate } from '../lib/email.js';
+import { notifyBookingConfirmed, notifyBookingNoShow } from '../lib/notify.js';
+import { emit } from '../lib/automation/index.js';
+import { buildReviewRequest } from '../lib/eventPayloads.js';
 import { parsePagination } from '../lib/pagination.js';
 
 export const bookingsRouter = Router();
@@ -149,20 +151,19 @@ bookingsRouter.post('/', async (req: AuthedRequest, res: Response) => {
       const business = await prisma.business.findFirst({ where: { id: businessId }, select: { nombre: true } });
       const businessName = business?.nombre ?? '';
 
-      // Email de confirmación (solo si el cliente tiene email).
+      // Notificación de confirmación vía puerto (emit a n8n o SMTP directo según
+      // config). Solo si el cliente tiene email. Soft-fail: nunca rompe el 201.
       if (customerEmail) {
-        const html = confirmedTemplate({
-          customerName: joinNombre(booking.customer) || 'Cliente',
-          serviceName: booking.service?.nombre ?? '',
-          startsAt: booking.startAt,
-          employeeName: booking.employee ? joinNombre(booking.employee) : undefined,
+        void notifyBookingConfirmed({
+          bookingId: booking.id,
+          businessId,
           businessName,
-        });
-        void sendEmail({
-          to: customerEmail,
-          subject: `Cita confirmada — ${booking.service?.nombre ?? 'tu servicio'}`,
-          html,
-        }).catch(() => { /* ya logueado en sendEmail */ });
+          customerName: joinNombre(booking.customer) || 'Cliente',
+          email: customerEmail,
+          serviceName: booking.service?.nombre ?? '',
+          employeeName: booking.employee ? joinNombre(booking.employee) : undefined,
+          startsAt: booking.startAt,
+        }).catch(() => { /* soft-fail ya logueado */ });
 
         // Upsert 2 filas de recordatorio (24h y 2h antes).
         const reminderPayload = {
@@ -234,7 +235,35 @@ bookingsRouter.delete('/:id', async (req: AuthedRequest, res: Response) => {
 });
 
 bookingsRouter.post('/:id/cancel', (req: AuthedRequest, res) => transition(req, res, 'CANCELLED'));
-bookingsRouter.post('/:id/complete', (req: AuthedRequest, res) => transition(req, res, 'COMPLETED'));
+
+// Completar: transición + solicitud de reseña al cliente (fire-and-forget, emit
+// directo a n8n; NO usa el puerto de F2). Nunca bloquea la respuesta.
+bookingsRouter.post('/:id/complete', async (req: AuthedRequest, res: Response) => {
+  await transition(req, res, 'COMPLETED');
+
+  void (async () => {
+    try {
+      const booking = await prisma.booking.findFirst({
+        where: { id: req.params.id, businessId: req.businessId, status: 'COMPLETED' },
+        include: { customer: true, service: true },
+      });
+      if (!booking?.customer?.email) return;
+
+      const business = await prisma.business.findFirst({ where: { id: req.businessId }, select: { nombre: true } });
+
+      // emit() es soft-fail: nunca lanza. eventId idempotente por transición.
+      await emit('review.request', buildReviewRequest({
+        businessName: business?.nombre ?? '',
+        customer: booking.customer,
+        email: booking.customer.email,
+        serviceName: booking.service?.nombre ?? '',
+        startAt: booking.startAt,
+      }), { businessId: booking.businessId, eventId: `${booking.id}:review` });
+    } catch (err) {
+      console.error('[booking.complete] error en review.request:', (err as Error).message);
+    }
+  })();
+});
 
 // No-show: transición de estado + email de seguimiento al cliente (fire-and-forget).
 bookingsRouter.post('/:id/no-show', async (req: AuthedRequest, res: Response) => {
@@ -254,18 +283,16 @@ bookingsRouter.post('/:id/no-show', async (req: AuthedRequest, res: Response) =>
         select: { nombre: true },
       });
 
-      const html = noShowTemplate({
+      // Notificación de seguimiento vía puerto (emit a n8n o SMTP directo). Soft-fail.
+      void notifyBookingNoShow({
+        bookingId: booking.id,
+        businessId: booking.businessId,
+        businessName: business?.nombre ?? '',
         customerName: joinNombre(booking.customer) || 'Cliente',
+        email: booking.customer.email,
         serviceName: booking.service?.nombre ?? '',
         startsAt: booking.startAt,
-        businessName: business?.nombre ?? '',
-      });
-
-      void sendEmail({
-        to: booking.customer.email,
-        subject: `Te echamos de menos — ${booking.service?.nombre ?? 'tu cita'}`,
-        html,
-      }).catch(() => { /* ya logueado en sendEmail */ });
+      }).catch(() => { /* soft-fail ya logueado */ });
     } catch (err) {
       console.error('[booking.no-show] error en email de seguimiento:', (err as Error).message);
     }

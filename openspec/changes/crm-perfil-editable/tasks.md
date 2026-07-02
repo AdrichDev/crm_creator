@@ -21,9 +21,9 @@
 - [x] S.1 Revisión seguridad flujo contraseña (jun 2026): PASA. Reautenticación con cliente Supabase efímero (no en navegador); gating por sesión (userId de sesión, nunca del body → solo cambia su propia pass); sin logs de contraseña ni fuga del error de Supabase; rate limit + política + invalidación de otras sesiones. Hardening añadido: back exige `newPassword !== oldPassword` (422 same_password). **Aprobación humana concedida (jun 2026) → flujo habilitado.**
 
 ## Verificación
-- [ ] V.1 Editar nombre/apellido/teléfono persiste y se ve tras reload.
-- [ ] V.2 Cambiar contraseña exige la antigua correcta; con antigua mala falla.
-- [ ] V.3 "No recuerdo" envía email de reset.
+- [ ] V.1 Editar nombre/apellido/teléfono persiste y se ve tras reload. — PENDIENTE VERIFICACIÓN MANUAL DEL USUARIO.
+- [ ] V.2 Cambiar contraseña exige la antigua correcta; con antigua mala falla. — PENDIENTE VERIFICACIÓN MANUAL DEL USUARIO.
+- [ ] V.3 "No recuerdo" envía email de reset. — PENDIENTE VERIFICACIÓN MANUAL DEL USUARIO.
 - [x] V.4 `tsc` + tests (front vitest) verde. ← 152 tests green, tsc clean.
 
 ## Tras verde: gate Ruflo antes de commit.

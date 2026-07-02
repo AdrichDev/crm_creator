@@ -23,8 +23,9 @@ test('FK fuera del negocio → 422 cross_tenant (bookings y sales)', async ({ pa
     const k = Object.keys(localStorage).find((x) => x.includes('auth-token'));
     let token = ''; try { token = k ? JSON.parse(localStorage.getItem(k)!).access_token : ''; } catch {}
     const h = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'x-business-id': localStorage.getItem('saas.business.id') ?? '' };
-    const services = await (await fetch(`${api}/api/services`, { headers: h })).json();
-    const locations = await (await fetch(`${api}/api/locations`, { headers: h })).json();
+    const unwrap = (r: unknown) => (Array.isArray(r) ? r : (r as { items?: unknown[] })?.items ?? []);
+    const services = unwrap(await (await fetch(`${api}/api/services`, { headers: h })).json()) as Array<{ id: string }>;
+    const locations = unwrap(await (await fetch(`${api}/api/locations`, { headers: h })).json()) as Array<{ id: string }>;
     const serviceId = services[0]?.id; const locationId = locations[0]?.id;
 
     // Booking con customerId ajeno/inexistente → 422.

@@ -1,0 +1,12 @@
+<!-- timeoff.resolved. Vars: $json.data.safe.{businessName,employeeName,estado,inicio,fin} + $json.{logoHtml,primary} -->
+<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222">
+  <div style="text-align:center;margin-bottom:18px">{{ $json.logoHtml }}</div>
+  <h2 style="margin:0 0 12px">📋 Hola {{ $json.data.safe.employeeName }},</h2>
+  <p>Tu solicitud de ausencia en <b>{{ $json.data.safe.businessName }}</b> ha sido <b>{{ $json.data.safe.estado }}</b>:</p>
+  <div style="background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0">
+    <p style="margin:4px 0">📌 <b>Estado:</b> {{ $json.data.safe.estado }}</p>
+    <p style="margin:4px 0">📅 <b>Desde:</b> {{ $json.data.safe.inicio }}</p>
+    <p style="margin:4px 0">📅 <b>Hasta:</b> {{ $json.data.safe.fin }}</p>
+  </div>
+  <p style="font-size:13px;color:#666">🙌 Si tienes dudas, habla con tu responsable. Gracias.</p>
+</div>
