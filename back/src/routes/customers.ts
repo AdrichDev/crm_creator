@@ -250,6 +250,7 @@ function shapeCustomer(c: CustomerRow, aggs: Aggregates, distanciaKm?: number): 
     tipoRegistro: c.tipoRegistro,
     estadoVisitaId: c.estadoVisitaId,
     estadoVisita: c.estadoVisita ? { id: c.estadoVisita.id, nombre: c.estadoVisita.nombre, color: c.estadoVisita.color, icono: c.estadoVisita.icono, esPendiente: c.estadoVisita.esPendiente } : null,
+    proximaAccionEn: c.proximaAccionEn ? c.proximaAccionEn.toISOString() : null,
     ...(distanciaKm !== undefined ? { distanciaKm: Math.round(distanciaKm * 10) / 10 } : {}),
   };
 }

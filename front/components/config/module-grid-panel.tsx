@@ -1,5 +1,6 @@
 'use client';
-import { MODULES, CATEGORY_LABEL, type ModuleCategory, type ModuleId } from '@/lib/config/modules';
+import { MODULES, CATEGORY_LABEL, type ModuleId } from '@/lib/config/modules';
+import { groupModules } from '@/lib/config/module-category';
 import { Icon } from '@/components/ui/icon';
 import { Card, CardBody, Toggle } from '@/components/ui/primitives';
 import { resolveModuleEmoji } from '@/lib/config/icons';
@@ -14,14 +15,14 @@ import { cn } from '@/lib/utils';
 export function ModuleGridPanel({ modules, onToggle, terminology = {}, vertical, emojis, onSetEmoji }:
   { modules: Record<ModuleId, boolean>; onToggle: (id: ModuleId, on: boolean) => void; terminology?: Record<string, string>;
     vertical?: VerticalId; emojis?: Partial<Record<ModuleId, string>>; onSetEmoji?: (id: ModuleId, emoji: string) => void }) {
-  const cats = Array.from(new Set(MODULES.map((m) => m.category))) as ModuleCategory[];
+  const groups = groupModules(MODULES, vertical);
   return (
     <div className="space-y-6">
-      {cats.map((cat) => (
+      {groups.map(({ cat, items }) => (
         <div key={cat}>
           <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--panel-muted)]">{CATEGORY_LABEL[cat]}</p>
           <div className="grid gap-3 sm:grid-cols-2">
-            {MODULES.filter((m) => m.category === cat).map((m) => {
+            {items.map((m) => {
               const on = modules[m.id];
               const label = terminology[m.termKey] ?? m.defaultLabel;
               const missing = (m.recommends ?? []).filter((r) => !modules[r]);

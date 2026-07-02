@@ -25,6 +25,7 @@ import { saleLinesRouter } from './sale-lines.js';
 import { documentsRouter } from './documents.js';
 import { notificationsRouter } from './notifications.js';
 import { settingsRouter } from './settings.js';
+import { calendarRouter } from './calendar.js';
 
 export const api = Router();
 
@@ -32,6 +33,10 @@ export const api = Router();
 api.use('/auth', authRouter);
 // Extracción de diseño de la landing con IA (setup de proyecto, sin tenant aún).
 api.use('/branding', brandingRouter);
+// crm-citas-google-calendar: feed ICS por token en la URL (sin Bearer, Google/Outlook
+// lo piden por suscripción); los endpoints de autoservicio dentro del router llaman
+// `authenticate` explícitamente (mismo patrón que /auth).
+api.use('/calendar', calendarRouter);
 
 // A partir de aquí, todo requiere token (y resuelve el tenant activo)
 api.use(authenticate);

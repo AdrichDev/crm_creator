@@ -1,7 +1,8 @@
 import { Router, type Response } from 'express';
 import { prisma } from '../prisma.js';
 import type { AuthedRequest } from '../middleware/types.js';
-import { pickFields } from '../lib/nombre.js';
+import { pickFields, joinNombre } from '../lib/nombre.js';
+import { maybePushCalendarEvent } from '../lib/calendarEmitter.js';
 
 // Recordatorios de usuario ligados a cliente (RF-16). Estado pendiente/completado/cancelado.
 // "Vencido" = PENDING con fechaPrevista < now → se puede filtrar con ?vencidos=1.
@@ -19,8 +20,33 @@ remindersRouter.get('/', async (req: AuthedRequest, res: Response) => {
     where.estado = 'PENDING';
     where.fechaPrevista = { lt: new Date() };
   }
-  const rows = await prisma.reminder.findMany({ where, orderBy: [{ fechaPrevista: 'asc' }, { createdAt: 'desc' }] });
-  res.json({ items: rows });
+  const rows = await prisma.reminder.findMany({
+    where,
+    orderBy: [{ fechaPrevista: 'asc' }, { createdAt: 'desc' }],
+    include: { customer: { select: { nombre: true, apellido: true } } },
+  });
+  res.json({ items: rows.map(({ customer, ...r }) => ({ ...r, customerNombre: joinNombre(customer) })) });
+});
+
+// Contadores para el panel de seguimiento y la campana (RF-16 + colores-seguimiento).
+// Agregado ligero (solo counts, sin listas) escopado por negocio Y por el usuario del token
+// (responsableId): cada comercial ve SOLO sus propios compromisos, no los de todo el negocio.
+remindersRouter.get('/summary', async (req: AuthedRequest, res: Response) => {
+  const now = new Date();
+  const startToday = new Date(now);
+  startToday.setHours(0, 0, 0, 0);
+  const endToday = new Date(startToday);
+  endToday.setDate(endToday.getDate() + 1);
+  const in7d = new Date(startToday);
+  in7d.setDate(in7d.getDate() + 7);
+
+  const base = { businessId: req.businessId, responsableId: req.userId, estado: 'PENDING' as const, eliminadoEn: null };
+  const [vencidos, hoy, proximos7d] = await Promise.all([
+    prisma.reminder.count({ where: { ...base, fechaPrevista: { lt: startToday } } }),
+    prisma.reminder.count({ where: { ...base, fechaPrevista: { gte: startToday, lt: endToday } } }),
+    prisma.reminder.count({ where: { ...base, fechaPrevista: { gte: endToday, lt: in7d } } }),
+  ]);
+  res.json({ vencidos, hoy, proximos7d });
 });
 
 remindersRouter.post('/', async (req: AuthedRequest, res: Response) => {
@@ -35,6 +61,29 @@ remindersRouter.post('/', async (req: AuthedRequest, res: Response) => {
   const row = await prisma.reminder.create({
     data: { ...data, businessId: req.businessId!, customerId, responsableId: req.userId ?? null } as never,
   });
+
+  // crm-citas-google-calendar (WU3.1): push opt-in a Google Calendar del
+  // responsable si tiene el toggle activo, solo cuando hay fecha. Fire-and-forget.
+  if (row.fechaPrevista && req.userId) {
+    const businessId = req.businessId!;
+    const responsableId = req.userId;
+    void (async () => {
+      try {
+        const responsable = await prisma.user.findUnique({ where: { id: responsableId }, select: { calendarPushEnabled: true } });
+        await maybePushCalendarEvent(responsable?.calendarPushEnabled ?? false, {
+          uid: `reminder-${row.id}@crm`,
+          businessId,
+          titulo: `${row.titulo} — ${joinNombre(owner)}`.trim(),
+          inicio: row.fechaPrevista as Date,
+          fin: new Date((row.fechaPrevista as Date).getTime() + 30 * 60 * 1000),
+          direccion: owner.direccion ?? undefined,
+        });
+      } catch (err) {
+        console.error('[reminder.created] error en push calendario:', (err as Error).message);
+      }
+    })();
+  }
+
   res.status(201).json(row);
 });
 

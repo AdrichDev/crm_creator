@@ -1,24 +1,31 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ModuleGuard } from '@/components/layout/module-guard';
-import { useRole, useTerm } from '@/lib/tenant-config-context';
+import { useProjects, useRole, useTerm } from '@/lib/tenant-config-context';
 import { canWrite } from '@/lib/config/roles';
 import { isApiEnabled } from '@/lib/api/client';
 import { PageHeader, Button, Badge, EmptyState } from '@/components/ui/primitives';
 import { MapPin, Upload, UserPlus, LocateFixed } from 'lucide-react';
-import type { ComercialCustomer, VisitStateDto } from '@/lib/comercial/types';
-import { fetchCustomers, fetchVisitStates, createCustomer } from '@/lib/comercial/api';
+import type { ComercialCustomer, VisitStateDto, ReminderDto } from '@/lib/comercial/types';
+import { fetchCustomers, fetchVisitStates, createCustomer, fetchReminders, patchReminder } from '@/lib/comercial/api';
 import { FichaClientePanel } from '@/components/comercial/ficha-cliente-panel';
 import { ConfigEstados } from '@/components/comercial/config-estados';
 import { ImportClientesModal } from '@/components/comercial/import-clientes-modal';
 import { EstadoVisitaBadge } from '@/components/comercial/estado-visita-badge';
 import { AbcBadge } from '@/components/comercial/abc-badge';
+import { MapaColorSelector } from '@/components/comercial/mapa-color-selector';
+import { SeguimientoPanel } from '@/components/comercial/seguimiento-panel';
 import { EntityModal, type Field } from '@/components/ui/entity-modal';
+import type { ColorMode } from '@/lib/comercial/marker-color';
+import { loadColorMode, saveColorMode } from '@/lib/comercial/color-mode-storage';
+import { buildFollowUpList } from '@/lib/comercial/follow-up';
+import { buildRouteUrl } from '@/lib/comercial/maps-link';
 
 const MapaClientes = dynamic(() => import('@/components/comercial/mapa-clientes'), { ssr: false });
 
-type Tab = 'mapa' | 'pendientes' | 'config';
+type Tab = 'mapa' | 'seguimiento' | 'pendientes' | 'config';
 
 const PROSPECTO_FIELDS: Field[] = [
   { name: 'nombre', label: 'Nombre', required: true },
@@ -33,37 +40,75 @@ const PROSPECTO_FIELDS: Field[] = [
 export default function Page() {
   const term = useTerm('comercial', 'Comercial de campo');
   const { role } = useRole();
+  const { activeId } = useProjects();
   const puedeEditar = canWrite(role, 'comercial');
   const apiEnabled = isApiEnabled();
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [tab, setTab] = useState<Tab>('mapa');
   const [states, setStates] = useState<VisitStateDto[]>([]);
   const [customers, setCustomers] = useState<ComercialCustomer[]>([]);
+  const [reminders, setReminders] = useState<ReminderDto[]>([]);
   const [selected, setSelected] = useState<ComercialCustomer | null>(null);
   const [loading, setLoading] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [prospectoOpen, setProspectoOpen] = useState(false);
   const [near, setNear] = useState<{ lat: number; lng: number } | null>(null);
   const [filters, setFilters] = useState({ estadoVisitaId: '', categoriaAbc: '', tipoRegistro: '', zona: '' });
+  const [colorMode, setColorMode] = useState<ColorMode>('estado');
+
+  // Preferencia de modo de color persistida por tenant (comportamiento por defecto = estado, sin regresión).
+  useEffect(() => { setColorMode(loadColorMode(activeId)); }, [activeId]);
+  function changeColorMode(m: ColorMode) { setColorMode(m); saveColorMode(activeId, m); }
 
   const load = useCallback(async () => {
     if (!apiEnabled) return;
     setLoading(true);
     try {
-      const [st, cs] = await Promise.all([
+      const [st, cs, rs] = await Promise.all([
         fetchVisitStates(),
         fetchCustomers({ ...filters, near: near ?? undefined, limit: 500 }),
+        fetchReminders(),
       ]);
       setStates(st);
       setCustomers(cs.items);
+      setReminders(rs);
     } finally { setLoading(false); }
   }, [apiEnabled, filters, near]);
 
   useEffect(() => { void load(); }, [load]);
 
+  // Deep-link desde la campana de notificaciones: /comercial?customerId=<id> abre la ficha.
+  useEffect(() => {
+    const cid = searchParams.get('customerId');
+    if (!cid || customers.length === 0) return;
+    const found = customers.find((c) => c.id === cid);
+    if (found) { setSelected(found); router.replace('/comercial'); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, customers]);
+
   const geolocated = useMemo(() => customers.filter((c) => c.geoEstado === 'OK'), [customers]);
   const sinGeo = useMemo(() => customers.filter((c) => c.geoEstado !== 'OK'), [customers]);
   const pendientes = useMemo(() => customers.filter((c) => c.estadoVisita?.esPendiente), [customers]);
+
+  const followUpItems = useMemo(() => buildFollowUpList(
+    reminders.map((r) => ({ id: r.id, customerId: r.customerId, customerNombre: r.customerNombre, titulo: r.titulo, fechaPrevista: r.fechaPrevista, estado: r.estado })),
+    customers.map((c) => ({ id: c.id, nombre: c.nombre, proximaAccionEn: c.proximaAccionEn, estadoVisita: c.estadoVisita })),
+  ), [reminders, customers]);
+
+  async function completarSeguimiento(reminderId: string) {
+    await patchReminder(reminderId, { estado: 'DONE' });
+    await load();
+  }
+  function abrirFichaSeguimiento(customerId: string) {
+    const c = customers.find((x) => x.id === customerId);
+    if (c) setSelected(c);
+  }
+  function routeUrlFor(customerId: string): string | null {
+    const c = customers.find((x) => x.id === customerId);
+    return c ? buildRouteUrl(c) : null;
+  }
 
   function pedirUbicacion() {
     if (!navigator.geolocation) return;
@@ -109,10 +154,10 @@ export default function Page() {
 
       {/* Tabs */}
       <div className="mb-4 flex gap-1 border-b border-white/10 text-sm">
-        {(['mapa', 'pendientes', 'config'] as Tab[]).map((t) => (
+        {(['mapa', 'seguimiento', 'pendientes', 'config'] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-4 py-2 capitalize ${tab === t ? 'text-white border-b-2 border-[var(--acc)]' : 'text-[var(--panel-muted)]'}`}>
-            {t === 'pendientes' ? `Pendientes (${pendientes.length})` : t}
+            {t === 'pendientes' ? `Pendientes (${pendientes.length})` : t === 'seguimiento' ? `Seguimiento (${followUpItems.length})` : t}
           </button>
         ))}
       </div>
@@ -140,17 +185,10 @@ export default function Page() {
             </Button>
           </div>
 
-          {/* Leyenda (regla 9) */}
-          <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--panel-muted)]">
-            <span>Leyenda:</span>
-            {states.map((s) => (
-              <span key={s.id} className="inline-flex items-center gap-1.5">
-                <span className="h-3 w-3 rounded-full" style={{ backgroundColor: s.color }} />{s.nombre}
-              </span>
-            ))}
-          </div>
+          {/* Selector de modo de color + leyenda dinámica (regla 9 / §16.3) */}
+          <MapaColorSelector modo={colorMode} onModoChange={changeColorMode} estados={states} />
 
-          <MapaClientes customers={geolocated} selectedId={selected?.id} onSelect={setSelected} center={near ?? undefined} />
+          <MapaClientes customers={geolocated} selectedId={selected?.id} onSelect={setSelected} center={near ?? undefined} modo={colorMode} />
 
           {/* Lista lateral / pendientes de geolocalizar */}
           <div className="grid gap-4 lg:grid-cols-2">
@@ -183,6 +221,13 @@ export default function Page() {
               </ul>
             </div>
           </div>
+        </div>
+      )}
+
+      {tab === 'seguimiento' && (
+        <div>
+          <h3 className="mb-2 text-sm font-medium text-white">Seguimiento ({followUpItems.length})</h3>
+          <SeguimientoPanel items={followUpItems} onCompletar={completarSeguimiento} onAbrirFicha={abrirFichaSeguimiento} getRouteUrl={routeUrlFor} />
         </div>
       )}
 

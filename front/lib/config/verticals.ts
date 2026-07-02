@@ -1,4 +1,4 @@
-import type { ModuleId } from './modules';
+import type { ModuleCategory, ModuleId } from './modules';
 import type { Terminology } from './terminology';
 
 export type VerticalId =
@@ -14,6 +14,8 @@ export interface VerticalDef {
   tagline: string;
   defaultModules: ModuleId[];
   terminology: Terminology;
+  /** Recoloca módulos concretos a otra categoría del sidebar/grid para este vertical. */
+  moduleCategories?: Partial<Record<ModuleId, ModuleCategory>>;
   branding: { primary: string; secondary: string };
 }
 
@@ -93,8 +95,12 @@ export const VERTICALS: VerticalDef[] = [
   {
     id: 'comerciales', label: 'Equipo comercial', emoji: '💼',
     tagline: 'Gestión de equipos de ventas, leads y pipeline comercial',
-    defaultModules: ['clientes', 'comercial', 'citas', 'servicios', 'empleados', 'fichaje', 'vacaciones', 'ventas', 'facturas', 'marketing', 'estadisticas'],
-    terminology: { citas: 'Reuniones', empleados: 'Comerciales', servicios: 'Productos y tarifas', clientes: 'Cuentas', ventas: 'Pipeline', comercial: 'Ruta comercial' },
+    // Por defecto solo lo que usa un comercial de campo; retail/marketing quedan
+    // activables pero apagados (dashboard/configuración/mi-cuenta son obligatorios).
+    defaultModules: ['clientes', 'comercial', 'citas'],
+    terminology: { citas: 'Agenda', empleados: 'Comerciales', servicios: 'Productos y tarifas', clientes: 'Cartera de clientes', ventas: 'Pedidos', comercial: 'Mapa comercial', estadisticas: 'Informes' },
+    // `comercial` sube a "Esencial": es el módulo central de este vertical.
+    moduleCategories: { comercial: 'core' },
     branding: { primary: '#1e3a5f', secondary: '#3b82f6' },
   },
   {

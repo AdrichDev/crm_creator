@@ -6,6 +6,7 @@ import { BookingStatus } from '../lib/generated/prisma/client.js';
 import { assertFks, handleCrossTenant } from '../lib/tenant.js';
 import { joinNombre } from '../lib/nombre.js';
 import { notifyBookingConfirmed, notifyBookingNoShow } from '../lib/notify.js';
+import { maybePushCalendarEvent } from '../lib/calendarEmitter.js';
 import { emit } from '../lib/automation/index.js';
 import { buildReviewRequest } from '../lib/eventPayloads.js';
 import { parsePagination } from '../lib/pagination.js';
@@ -196,6 +197,29 @@ bookingsRouter.post('/', async (req: AuthedRequest, res: Response) => {
             });
           }
         }
+      }
+
+      // crm-citas-google-calendar (WU3.1): push opt-in a Google Calendar del STAFF
+      // asignado (no del cliente). Independiente del email de confirmación —
+      // corre aunque el cliente no tenga email. Solo si employeeId tiene usuario
+      // vinculado y ese usuario activó el toggle "enviar a mi calendario".
+      if (booking.employee?.userId) {
+        const employeeUser = await prisma.user.findUnique({
+          where: { id: booking.employee.userId },
+          select: { calendarPushEnabled: true },
+        });
+        const location = await prisma.location.findUnique({
+          where: { id: booking.locationId },
+          select: { direccion: true },
+        });
+        void maybePushCalendarEvent(employeeUser?.calendarPushEnabled ?? false, {
+          uid: `booking-${booking.id}@crm`,
+          businessId,
+          titulo: `${booking.service?.nombre ?? 'Cita'} — ${joinNombre(booking.customer) || 'Cliente'}`,
+          inicio: booking.startAt,
+          fin: booking.endAt,
+          direccion: location?.direccion ?? undefined,
+        }).catch(() => { /* soft-fail ya logueado */ });
       }
     } catch (err) {
       console.error('[booking.confirmed] error en post-create email/notificaciones:', (err as Error).message);

@@ -263,9 +263,12 @@ model User {
   firstName   String   @map("nombre")
   lastName    String?  @map("apellido")
   createdAt   DateTime @default(now()) @map("creado_en")
+  // crm-citas-google-calendar: opt-in de push de citas/recordatorios a Google Calendar vía n8n.
+  calendarPushEnabled Boolean @default(false) @map("calendario_push_habilitado")
   memberships Membership[]
   employee    Employee?
   customers   Customer[]
+  calendarToken CalendarToken?
   @@map("usuario")
 }
 
@@ -793,6 +796,22 @@ model Reminder {
   @@index([businessId, customerId])
   @@index([businessId, estado, fechaPrevista])
   @@map("recordatorio")
+}
+
+// ----------------------------- Calendario externo -----------------------------
+// crm-citas-google-calendar (WU1): token opaco del feed ICS suscribible. 1 fila por
+// usuario (unique userId); regenerar sobrescribe tokenHash (invalida el anterior al
+// instante), revocar marca revokedAt. Sin RLS de lectura para authenticated (a
+// diferencia del resto de crm.*): es un secreto, solo el backend (service role) lo lee.
+model CalendarToken {
+  id            String    @id @default(cuid())
+  userId        String    @unique @db.Uuid @map("usuario_id")
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash     String    @unique @map("token_hash")
+  revokedAt     DateTime? @map("revocado_en")
+  createdAt     DateTime  @default(now()) @map("creado_en")
+  regeneratedAt DateTime? @map("regenerado_en")
+  @@map("token_calendario")
 }
 
 // ----------------------------- Categorías / Deporte -----------------------------

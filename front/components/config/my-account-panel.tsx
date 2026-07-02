@@ -5,6 +5,7 @@
 import { useState } from 'react';
 import { MyAccountForm } from './my-account-form';
 import { ChangePasswordForm } from './change-password-form';
+import { CalendarSection } from './calendar-section';
 import type { AuthUserProfile } from '@/lib/api/profile';
 
 export function MyAccountPanel() {
@@ -18,6 +19,7 @@ export function MyAccountPanel() {
     <div className="space-y-6">
       <MyAccountForm onProfileChange={handleProfileChange} />
       <ChangePasswordForm userEmail={userEmail} />
+      <CalendarSection />
     </div>
   );
 }

@@ -26,6 +26,14 @@ export interface EmitOptions {
   businessId: string;
   eventId?: string;       // idempotencia; si se omite → uuid
   occurredAt?: Date;
+  /**
+   * Override de destino (crm-citas-google-calendar): permite emitir a un webhook
+   * n8n DISTINTO del dispatcher de emails (workflow separado con su propio
+   * webhook/credencial, p.ej. Google Calendar). Si se omite, usa
+   * env.automationWebhookUrl/Secret (comportamiento de siempre).
+   */
+  url?: string;
+  secret?: string;
 }
 
 // Memoria de eventos ya enviados en este proceso → idempotencia barata.
@@ -49,17 +57,18 @@ export async function emit<N extends AutomationEventName>(
   data: AutomationPayloads[N],
   opts: EmitOptions,
 ): Promise<EmitResult> {
-  const url = env.automationWebhookUrl;
+  const url = opts.url ?? env.automationWebhookUrl;
   if (!url) return { status: 'skipped', reason: 'disabled' };
 
+  const secret = opts.secret ?? env.automationWebhookSecret;
   // Si hay URL pero el secreto está vacío, firmar produciría un HMAC trivial
   // (secreto vacío) que cualquiera podría reproducir. Bloqueamos en lugar de
   // enviar mensajes inseguros; el operador debe configurar el secreto.
-  if (!env.automationWebhookSecret) {
+  if (!secret) {
     // Misconfiguración con riesgo (no un simple "desactivado"): la URL está
     // puesta pero falta el secreto. Se registra como error para que sea visible
     // en observabilidad y se distingue con un reason propio.
-    console.error('[automation] AUTOMATION_WEBHOOK_URL está configurada pero AUTOMATION_WEBHOOK_SECRET está vacío — emit bloqueado para evitar firma insegura. Configura el secreto.');
+    console.error('[automation] webhook configurado pero el secreto está vacío — emit bloqueado para evitar firma insegura. Configura el secreto.');
     return { status: 'skipped', reason: 'no_secret' };
   }
 
@@ -91,7 +100,7 @@ export async function emit<N extends AutomationEventName>(
           'X-Automation-Event': name,
           'X-Automation-Id': eventId,
           'X-Automation-Timestamp': String(timestamp),
-          'X-Automation-Signature': sign(env.automationWebhookSecret, timestamp, rawBody),
+          'X-Automation-Signature': sign(secret, timestamp, rawBody),
         },
         body: rawBody,
       });
