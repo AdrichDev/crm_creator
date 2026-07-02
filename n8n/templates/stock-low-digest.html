@@ -1,0 +1,8 @@
+<!-- stock.low_digest. Vars: $json.data.safe.{businessName,detalle,numProductos} + $json.{logoHtml,primary} -->
+<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222">
+  <div style="text-align:center;margin-bottom:18px">{{ $json.logoHtml }}</div>
+  <h2 style="margin:0 0 12px">📦 Stock bajo</h2>
+  <p>En <b>{{ $json.data.safe.businessName }}</b> hay <b>{{ $json.data.safe.numProductos }}</b> productos por debajo del stock mínimo:</p>
+  <div style="background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0;white-space:pre-line;font-size:14px;line-height:1.5">{{ $json.data.safe.detalle }}</div>
+  <p style="font-size:13px;color:#666">🛒 Revisa el inventario y planifica el reabastecimiento. 📋</p>
+</div>

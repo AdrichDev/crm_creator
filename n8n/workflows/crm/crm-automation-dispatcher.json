@@ -21,7 +21,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const crypto = require('crypto');\nconst secret = $env.AUTOMATION_WEBHOOK_SECRET || '';\nconst item = $input.all()[0].json;\nconst headers = item.headers || {};\nconst body = item.body || {};\nconst envelope = { eventId: body.eventId, name: body.name, businessId: body.businessId, occurredAt: body.occurredAt, data: body.data };\nconst rawBody = JSON.stringify(envelope);\nconst ts = Number(headers['x-automation-timestamp']);\nconst sig = String(headers['x-automation-signature'] || '');\nlet validSig = false;\ntry {\n  const expected = crypto.createHmac('sha256', secret).update(`${ts}.${rawBody}`).digest('hex');\n  const a = Buffer.from(expected, 'hex');\n  const b = Buffer.from(sig, 'hex');\n  validSig = a.length === b.length && crypto.timingSafeEqual(a, b);\n} catch (e) { validSig = false; }\nconst fresh = Number.isFinite(ts) && Math.abs(Date.now() - ts) < 5 * 60 * 1000;\nconst store = $getWorkflowStaticData('global');\nstore.seen = store.seen || {};\nconst duplicate = !!store.seen[body.eventId];\nlet route;\nif (!secret || !validSig || !fresh) route = 'auth_failed';\nelse if (duplicate) route = 'duplicate';\nelse { store.seen[body.eventId] = Date.now(); route = body.name; }\n\n// Helpers de presentacion: branding por cliente + fecha legible.\nconst d = body.data || {};\nconst br = d.branding || {};\nconst primary = br.primary || '#4f46e5';\nconst secondary = br.secondary || primary;\nlet logoHtml;\nif (br.logoImage) {\n  logoHtml = `<img src=\"${br.logoImage}\" alt=\"${d.businessName || ''}\" height=\"44\" style=\"height:44px;border-radius:8px\"/>`;\n} else {\n  const txt = String(br.logoText || (d.businessName || '').slice(0, 2) || 'OK').toUpperCase();\n  logoHtml = `<div style=\"display:inline-block;width:48px;height:48px;line-height:48px;border-radius:12px;color:#fff;font-weight:700;font-size:18px;background:linear-gradient(135deg,${primary},${secondary})\">${txt}</div>`;\n}\nlet expiresHuman = d.expiresAt || '';\ntry {\n  const dt = new Date(d.expiresAt);\n  if (!isNaN(dt.getTime())) {\n    const p = (n) => String(n).padStart(2, '0');\n    expiresHuman = `${p(dt.getDate())}/${p(dt.getMonth() + 1)}/${dt.getFullYear()} ${p(dt.getHours())}:${p(dt.getMinutes())}`;\n  }\n} catch (e) {}\n\n// Guard anti-bounce: nunca enviar a dominios reservados de test (.test/.local/example.*).\n// Evita rebotes del subsistema de correo cuando las suites e2e usan emails falsos.\nconst __email = String((body.data || {}).email || '');\nif (!['auth_failed', 'duplicate'].includes(route) && /(\\.test|\\.local|@example\\.(com|net|org))$/i.test(__email)) route = 'skip';\n\nreturn [{ json: { route, eventId: body.eventId, businessId: body.businessId, name: body.name, data: body.data, primary, secondary, logoHtml, expiresHuman } }];"
+        "jsCode": "const crypto = require('crypto');\nconst esc = (s) => String(s == null ? '' : s).replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\nconst secret = $env.AUTOMATION_WEBHOOK_SECRET || '';\nconst item = $input.all()[0].json;\nconst headers = item.headers || {};\nconst body = item.body || {};\nconst envelope = { eventId: body.eventId, name: body.name, businessId: body.businessId, occurredAt: body.occurredAt, data: body.data };\nconst rawBody = JSON.stringify(envelope);\nconst ts = Number(headers['x-automation-timestamp']);\nconst sig = String(headers['x-automation-signature'] || '');\nlet validSig = false;\ntry {\n  const expected = crypto.createHmac('sha256', secret).update(`${ts}.${rawBody}`).digest('hex');\n  const a = Buffer.from(expected, 'hex');\n  const b = Buffer.from(sig, 'hex');\n  validSig = a.length === b.length && crypto.timingSafeEqual(a, b);\n} catch (e) { validSig = false; }\nconst fresh = Number.isFinite(ts) && Math.abs(Date.now() - ts) < 5 * 60 * 1000;\nconst store = $getWorkflowStaticData('global');\nstore.seen = store.seen || {};\nconst duplicate = !!store.seen[body.eventId];\nlet route;\nif (!secret || !validSig || !fresh) route = 'auth_failed';\nelse if (duplicate) route = 'duplicate';\nelse { store.seen[body.eventId] = Date.now(); route = body.name; }\n\n// Helpers de presentacion: branding por cliente + fecha legible.\nconst d = body.data || {};\nconst br = d.branding || {};\nconst primary = br.primary || '#4f46e5';\nconst secondary = br.secondary || primary;\nlet logoHtml;\nif (br.logoImage) {\n  logoHtml = `<img src=\"${esc(br.logoImage)}\" alt=\"${esc(d.businessName || '')}\" height=\"44\" style=\"height:44px;border-radius:8px\"/>`;\n} else {\n  const txt = String(br.logoText || (d.businessName || '').slice(0, 2) || 'OK').toUpperCase();\n  logoHtml = `<div style=\"display:inline-block;width:48px;height:48px;line-height:48px;border-radius:12px;color:#fff;font-weight:700;font-size:18px;background:linear-gradient(135deg,${primary},${secondary})\">${esc(txt)}</div>`;\n}\nlet expiresHuman = d.expiresAt || '';\ntry {\n  const dt = new Date(d.expiresAt);\n  if (!isNaN(dt.getTime())) {\n    const p = (n) => String(n).padStart(2, '0');\n    expiresHuman = `${p(dt.getDate())}/${p(dt.getMonth() + 1)}/${dt.getFullYear()} ${p(dt.getHours())}:${p(dt.getMinutes())}`;\n  }\n} catch (e) {}\n\n// Guard anti-bounce: nunca enviar a dominios reservados de test (.test/.local/example.*).\n// Evita rebotes del subsistema de correo cuando las suites e2e usan emails falsos.\nconst __email = String((body.data || {}).email || '');\nif (!['auth_failed', 'duplicate'].includes(route) && /(\\.test|\\.local|@example\\.(com|net|org))$/i.test(__email)) route = 'skip';\n\n// XSS guard: expose an HTML-escaped mirror of every string field so email\n// templates interpolate data.safe.* instead of raw attacker-controlled values.\nconst safe = {};\nfor (const k of Object.keys(d)) { if (typeof d[k] === 'string') safe[k] = esc(d[k]); }\nd.safe = safe;\n\nreturn [{ json: { route, eventId: body.eventId, businessId: body.businessId, name: body.name, data: d, primary, secondary, logoHtml, expiresHuman } }];"
       },
       "id": "22222222-2222-4222-8222-222222222222",
       "name": "Verify & Route",
@@ -123,6 +123,314 @@
               },
               "renameOutput": true,
               "outputKey": "email.verification_requested"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "booking.confirmed",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "booking.confirmed"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "booking.reminder.24h",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "booking.reminder.24h"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "booking.reminder.2h",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "booking.reminder.2h"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "booking.no_show",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "booking.no_show"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "invoice.pending_digest",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "invoice.pending_digest"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "cash.daily_summary",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "cash.daily_summary"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "stock.low_digest",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "stock.low_digest"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "customer.birthday",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "customer.birthday"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "customer.reactivation_digest",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "customer.reactivation_digest"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "package.renewal_due",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "package.renewal_due"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "fichaje.weekly_summary",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "fichaje.weekly_summary"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "review.request",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "review.request"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "timeoff.requested",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "timeoff.requested"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "timeoff.resolved",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "timeoff.resolved"
             }
           ]
         },
@@ -233,6 +541,106 @@
     },
     {
       "parameters": {
+        "fromEmail": "achozas9@gmail.com",
+        "toEmail": "={{ $json.data.email }}",
+        "subject": "={{ '✅ Cita confirmada — ' + ($json.data.serviceName || 'tu cita') }}",
+        "emailFormat": "html",
+        "html": "<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 12px\">✅ Hola {{ $json.data.safe.customerName }},</h2>\n  <p>Tu cita en <b>{{ $json.data.safe.businessName }}</b> est&aacute; confirmada. Aqu&iacute; tienes los detalles:</p>\n  <div style=\"background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0\">\n    <p style=\"margin:4px 0\">💇 <b>Servicio:</b> {{ $json.data.safe.serviceName }}</p>\n    <p style=\"margin:4px 0\">📅 <b>Fecha:</b> {{ $json.data.safe.fecha }}</p>\n    <p style=\"margin:4px 0\">🕐 <b>Hora:</b> {{ $json.data.safe.hora }}</p>\n    {{ $json.data.safe.employeeName ? '<p style=\"margin:4px 0\">👤 <b>Profesional:</b> ' + $json.data.safe.employeeName + '</p>' : '' }}\n  </div>\n  <p style=\"font-size:13px;color:#666\">📍 Te esperamos. Si necesitas cambiar la cita, contacta con nosotros. 🙌</p>\n</div>",
+        "options": {}
+      },
+      "id": "a1a1a1a1-aaaa-4aaa-8aaa-a1a1a1a1a1a1",
+      "name": "Email: cita confirmada",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "onError": "continueRegularOutput",
+      "position": [
+        720,
+        720
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID",
+          "name": "SMTP CRM"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "achozas9@gmail.com",
+        "toEmail": "={{ $json.data.email }}",
+        "subject": "={{ '⏰ Recordatorio: tu cita mañana — ' + ($json.data.serviceName || '') }}",
+        "emailFormat": "html",
+        "html": "<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 12px\">⏰ Hola {{ $json.data.safe.customerName }},</h2>\n  <p>Te recordamos que tienes una cita <b>ma&ntilde;ana</b> en <b>{{ $json.data.safe.businessName }}</b>:</p>\n  <div style=\"background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0\">\n    <p style=\"margin:4px 0\">💇 <b>Servicio:</b> {{ $json.data.safe.serviceName }}</p>\n    <p style=\"margin:4px 0\">📅 <b>Fecha:</b> {{ $json.data.safe.fecha }}</p>\n    <p style=\"margin:4px 0\">🕐 <b>Hora:</b> {{ $json.data.safe.hora }}</p>\n    {{ $json.data.safe.employeeName ? '<p style=\"margin:4px 0\">👤 <b>Profesional:</b> ' + $json.data.safe.employeeName + '</p>' : '' }}\n  </div>\n  <p style=\"font-size:13px;color:#666\">🙌 Si no puedes asistir, av&iacute;sanos para reprogramar. ¡Te esperamos!</p>\n</div>",
+        "options": {}
+      },
+      "id": "b2b2b2b2-bbbb-4bbb-8bbb-b2b2b2b2b2b2",
+      "name": "Email: recordatorio 24h",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "onError": "continueRegularOutput",
+      "position": [
+        720,
+        880
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID",
+          "name": "SMTP CRM"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "achozas9@gmail.com",
+        "toEmail": "={{ $json.data.email }}",
+        "subject": "={{ '🔔 Tu cita es hoy — ' + ($json.data.serviceName || '') }}",
+        "emailFormat": "html",
+        "html": "<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 12px\">🔔 Hola {{ $json.data.safe.customerName }},</h2>\n  <p>Tu cita en <b>{{ $json.data.safe.businessName }}</b> es <b>dentro de un par de horas</b>:</p>\n  <div style=\"background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0\">\n    <p style=\"margin:4px 0\">💇 <b>Servicio:</b> {{ $json.data.safe.serviceName }}</p>\n    <p style=\"margin:4px 0\">📅 <b>Fecha:</b> {{ $json.data.safe.fecha }}</p>\n    <p style=\"margin:4px 0\">🕐 <b>Hora:</b> {{ $json.data.safe.hora }}</p>\n    {{ $json.data.safe.employeeName ? '<p style=\"margin:4px 0\">👤 <b>Profesional:</b> ' + $json.data.safe.employeeName + '</p>' : '' }}\n  </div>\n  <p style=\"font-size:13px;color:#666\">🚗 Ve preparando tu visita. ¡Nos vemos pronto!</p>\n</div>",
+        "options": {}
+      },
+      "id": "c3c3c3c3-cccc-4ccc-8ccc-c3c3c3c3c3c3",
+      "name": "Email: recordatorio 2h",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "onError": "continueRegularOutput",
+      "position": [
+        720,
+        1040
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID",
+          "name": "SMTP CRM"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "achozas9@gmail.com",
+        "toEmail": "={{ $json.data.email }}",
+        "subject": "={{ '😊 ¿Reprogramamos tu cita en ' + ($json.data.businessName || 'tu negocio') + '?' }}",
+        "emailFormat": "html",
+        "html": "<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 12px\">😊 Hola {{ $json.data.safe.customerName }},</h2>\n  <p>Te echamos de menos en tu cita de <b>{{ $json.data.safe.fecha }}</b> a las <b>{{ $json.data.safe.hora }}</b> en <b>{{ $json.data.safe.businessName }}</b>.</p>\n  <p>No pasa nada, a todos se nos escapa un d&iacute;a. Cuando quieras, reprogramamos tu <b>{{ $json.data.safe.serviceName }}</b> en el horario que mejor te venga.</p>\n  <p style=\"font-size:13px;color:#666\">📞 Contacta con nosotros para elegir nuevo hueco. ¡Te esperamos! 🙌</p>\n</div>",
+        "options": {}
+      },
+      "id": "d4d4d4d4-dddd-4ddd-8ddd-d4d4d4d4d4d4",
+      "name": "Email: no-show",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "onError": "continueRegularOutput",
+      "position": [
+        720,
+        1200
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID",
+          "name": "SMTP CRM"
+        }
+      }
+    },
+    {
+      "parameters": {
         "respondWith": "text",
         "responseBody": "ok",
         "options": {
@@ -247,6 +655,256 @@
         980,
         420
       ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "achozas9@gmail.com",
+        "toEmail": "={{ $json.data.email }}",
+        "subject": "={{ '🧾 Facturas pendientes — ' + ($json.data.businessName || 'tu negocio') }}",
+        "emailFormat": "html",
+        "html": "<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 12px\">🧾 Facturas pendientes</h2>\n  <p>En <b>{{ $json.data.safe.businessName }}</b> hay <b>{{ $json.data.safe.totalPendientes }}</b> facturas pendientes o vencidas de cobro:</p>\n  <div style=\"background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0;white-space:pre-line;font-size:14px;line-height:1.5\">{{ $json.data.safe.detalle }}</div>\n  <p style=\"font-size:13px;color:#666\">📊 Revisa el detalle en tu panel para gestionar los cobros. 💪</p>\n</div>",
+        "options": {}
+      },
+      "id": "e1e1e1e1-1111-4111-8111-e1e1e1e1e1e1",
+      "name": "Email: facturas pendientes",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "onError": "continueRegularOutput",
+      "position": [
+        720,
+        1360
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID",
+          "name": "SMTP CRM"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "achozas9@gmail.com",
+        "toEmail": "={{ $json.data.email }}",
+        "subject": "={{ '💰 Resumen de caja — ' + ($json.data.fecha || 'hoy') }}",
+        "emailFormat": "html",
+        "html": "<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 12px\">💰 Resumen de caja</h2>\n  <p>Resumen de caja del <b>{{ $json.data.safe.fecha }}</b> en <b>{{ $json.data.safe.businessName }}</b>. Total: <b>{{ $json.data.safe.total }}</b>.</p>\n  <div style=\"background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0;white-space:pre-line;font-size:14px;line-height:1.5\">{{ $json.data.safe.detalle }}</div>\n  <p style=\"font-size:13px;color:#666\">📈 Desglose por método de pago arriba. ¡Buen trabajo hoy! 🙌</p>\n</div>",
+        "options": {}
+      },
+      "id": "e2e2e2e2-2222-4222-8222-e2e2e2e2e2e2",
+      "name": "Email: resumen de caja",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "onError": "continueRegularOutput",
+      "position": [
+        720,
+        1520
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID",
+          "name": "SMTP CRM"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "achozas9@gmail.com",
+        "toEmail": "={{ $json.data.email }}",
+        "subject": "={{ '📦 Stock bajo — ' + ($json.data.businessName || 'tu negocio') }}",
+        "emailFormat": "html",
+        "html": "<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 12px\">📦 Stock bajo</h2>\n  <p>En <b>{{ $json.data.safe.businessName }}</b> hay <b>{{ $json.data.safe.numProductos }}</b> productos por debajo del stock mínimo:</p>\n  <div style=\"background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0;white-space:pre-line;font-size:14px;line-height:1.5\">{{ $json.data.safe.detalle }}</div>\n  <p style=\"font-size:13px;color:#666\">🛒 Revisa el inventario y planifica el reabastecimiento. 📋</p>\n</div>",
+        "options": {}
+      },
+      "id": "e3e3e3e3-3333-4333-8333-e3e3e3e3e3e3",
+      "name": "Email: stock bajo",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "onError": "continueRegularOutput",
+      "position": [
+        720,
+        1680
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID",
+          "name": "SMTP CRM"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "achozas9@gmail.com",
+        "toEmail": "={{ $json.data.email }}",
+        "subject": "={{ '🎂 ¡Feliz cumpleaños' + ($json.data.customerName ? ', ' + $json.data.customerName : '') + '!' }}",
+        "emailFormat": "html",
+        "html": "<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 12px\">🎂 ¡Feliz cumpleaños, {{ $json.data.safe.customerName }}!</h2>\n  <p>Desde <b>{{ $json.data.safe.businessName }}</b> queremos desearte un d&iacute;a estupendo. 🥳</p>\n  <p>Gracias por confiar en nosotros. ¡Que cumplas muchos m&aacute;s! 🎉</p>\n  <p style=\"font-size:13px;color:#666\">🎁 Con cari&ntilde;o, el equipo de {{ $json.data.safe.businessName }}.</p>\n</div>",
+        "options": {}
+      },
+      "id": "e4e4e4e4-4444-4444-8444-e4e4e4e4e4e4",
+      "name": "Email: cumpleaños",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "onError": "continueRegularOutput",
+      "position": [
+        720,
+        1840
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID",
+          "name": "SMTP CRM"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "achozas9@gmail.com",
+        "toEmail": "={{ $json.data.email }}",
+        "subject": "={{ '📉 Clientes inactivos — ' + ($json.data.businessName || 'tu negocio') }}",
+        "emailFormat": "html",
+        "html": "<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 12px\">📉 Clientes inactivos</h2>\n  <p>En <b>{{ $json.data.safe.businessName }}</b> hay <b>{{ $json.data.safe.numClientes }}</b> clientes sin cita en los &uacute;ltimos 90 d&iacute;as:</p>\n  <div style=\"background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0;white-space:pre-line;font-size:14px;line-height:1.5\">{{ $json.data.safe.detalle }}</div>\n  <p style=\"font-size:13px;color:#666\">💌 Buen momento para una campa&ntilde;a de reactivaci&oacute;n. 🚀</p>\n</div>",
+        "options": {}
+      },
+      "id": "e5e5e5e5-5555-4555-8555-e5e5e5e5e5e5",
+      "name": "Email: reactivación clientes",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "onError": "continueRegularOutput",
+      "position": [
+        720,
+        2000
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID",
+          "name": "SMTP CRM"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "achozas9@gmail.com",
+        "toEmail": "={{ $json.data.email }}",
+        "subject": "={{ '🎟️ Tu bono está por agotarse — ' + ($json.data.businessName || 'tu negocio') }}",
+        "emailFormat": "html",
+        "html": "<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 12px\">🎟️ Hola {{ $json.data.safe.customerName }},</h2>\n  <p>Tu bono en <b>{{ $json.data.safe.businessName }}</b> est&aacute; a punto de agotarse:</p>\n  <div style=\"background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0\">\n    <p style=\"margin:4px 0\">🎫 <b>Bono:</b> {{ $json.data.safe.packageName }}</p>\n    <p style=\"margin:4px 0\">⏳ <b>Sesiones restantes:</b> {{ $json.data.safe.sesionesRestantes }}</p>\n  </div>\n  <p style=\"font-size:13px;color:#666\">🔄 Cuando quieras renovarlo, cont&aacute;ctanos y lo dejamos listo. 🙌</p>\n</div>",
+        "options": {}
+      },
+      "id": "e6e6e6e6-6666-4666-8666-e6e6e6e6e6e6",
+      "name": "Email: renovación bono",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "onError": "continueRegularOutput",
+      "position": [
+        720,
+        2160
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID",
+          "name": "SMTP CRM"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "achozas9@gmail.com",
+        "toEmail": "={{ $json.data.email }}",
+        "subject": "={{ '⏱️ Resumen semanal de fichajes — ' + ($json.data.businessName || 'tu negocio') }}",
+        "emailFormat": "html",
+        "html": "<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 12px\">⏱️ Resumen semanal de fichajes</h2>\n  <p>Horas registradas la semana pasada por el equipo de <b>{{ $json.data.safe.businessName }}</b>:</p>\n  <div style=\"background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0;white-space:pre-line;font-size:14px;line-height:1.5\">{{ $json.data.safe.detalle }}</div>\n  <p style=\"font-size:13px;color:#666\">📋 Detalle de horas por empleado arriba. 💼</p>\n</div>",
+        "options": {}
+      },
+      "id": "e7e7e7e7-7777-4777-8777-e7e7e7e7e7e7",
+      "name": "Email: resumen fichajes",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "onError": "continueRegularOutput",
+      "position": [
+        720,
+        2320
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID",
+          "name": "SMTP CRM"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "achozas9@gmail.com",
+        "toEmail": "={{ $json.data.email }}",
+        "subject": "={{ '⭐ ¿Qué tal tu ' + ($json.data.serviceName || 'servicio') + '?' }}",
+        "emailFormat": "html",
+        "html": "<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 12px\">⭐ Hola {{ $json.data.safe.customerName }},</h2>\n  <p>Esperamos que hayas disfrutado tu visita a <b>{{ $json.data.safe.businessName }}</b>. ¿Nos cuentas qu&eacute; tal fue?</p>\n  <div style=\"background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0\">\n    <p style=\"margin:4px 0\">💇 <b>Servicio:</b> {{ $json.data.safe.serviceName }}</p>\n    <p style=\"margin:4px 0\">📅 <b>Fecha:</b> {{ $json.data.safe.fecha }}</p>\n    <p style=\"margin:4px 0\">🕐 <b>Hora:</b> {{ $json.data.safe.hora }}</p>\n  </div>\n  <p style=\"font-size:13px;color:#666\">🙏 Tu opini&oacute;n nos ayuda a mejorar. ¡Gracias por tu confianza! 😊</p>\n</div>",
+        "options": {}
+      },
+      "id": "e8e8e8e8-8888-4888-8888-e8e8e8e8e8e8",
+      "name": "Email: reseña",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "onError": "continueRegularOutput",
+      "position": [
+        720,
+        2480
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID",
+          "name": "SMTP CRM"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "achozas9@gmail.com",
+        "toEmail": "={{ $json.data.email }}",
+        "subject": "={{ '🏖️ Solicitud de vacaciones — ' + ($json.data.businessName || 'tu negocio') }}",
+        "emailFormat": "html",
+        "html": "<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 12px\">🏖️ Solicitud de vacaciones</h2>\n  <p><b>{{ $json.data.safe.employeeName }}</b> ha solicitado una ausencia en <b>{{ $json.data.safe.businessName }}</b>:</p>\n  <div style=\"background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0\">\n    <p style=\"margin:4px 0\">🏷️ <b>Tipo:</b> {{ $json.data.safe.tipo }}</p>\n    <p style=\"margin:4px 0\">📅 <b>Desde:</b> {{ $json.data.safe.inicio }}</p>\n    <p style=\"margin:4px 0\">📅 <b>Hasta:</b> {{ $json.data.safe.fin }}</p>\n    <p style=\"margin:4px 0\">🗓️ <b>Días:</b> {{ $json.data.safe.dias }}</p>\n  </div>\n  <p style=\"font-size:13px;color:#666\">✅ Revisa y aprueba o rechaza la solicitud desde tu panel. 📋</p>\n</div>",
+        "options": {}
+      },
+      "id": "e9e9e9e9-9999-4999-8999-e9e9e9e9e9e9",
+      "name": "Email: solicitud vacaciones",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "onError": "continueRegularOutput",
+      "position": [
+        720,
+        2640
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID",
+          "name": "SMTP CRM"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "achozas9@gmail.com",
+        "toEmail": "={{ $json.data.email }}",
+        "subject": "={{ '📋 Tu solicitud: ' + ($json.data.estado || 'actualizada') }}",
+        "emailFormat": "html",
+        "html": "<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 12px\">📋 Hola {{ $json.data.safe.employeeName }},</h2>\n  <p>Tu solicitud de ausencia en <b>{{ $json.data.safe.businessName }}</b> ha sido <b>{{ $json.data.safe.estado }}</b>:</p>\n  <div style=\"background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0\">\n    <p style=\"margin:4px 0\">📌 <b>Estado:</b> {{ $json.data.safe.estado }}</p>\n    <p style=\"margin:4px 0\">📅 <b>Desde:</b> {{ $json.data.safe.inicio }}</p>\n    <p style=\"margin:4px 0\">📅 <b>Hasta:</b> {{ $json.data.safe.fin }}</p>\n  </div>\n  <p style=\"font-size:13px;color:#666\">🙌 Si tienes dudas, habla con tu responsable. Gracias.</p>\n</div>",
+        "options": {}
+      },
+      "id": "eaeaeaea-aaaa-4aaa-8aaa-eaeaeaeaeaea",
+      "name": "Email: resolución vacaciones",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "onError": "continueRegularOutput",
+      "position": [
+        720,
+        2800
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID",
+          "name": "SMTP CRM"
+        }
+      }
     }
   ],
   "connections": {
@@ -304,6 +962,104 @@
         ],
         [
           {
+            "node": "Email: cita confirmada",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email: recordatorio 24h",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email: recordatorio 2h",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email: no-show",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email: facturas pendientes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email: resumen de caja",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email: stock bajo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email: cumpleaños",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email: reactivación clientes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email: renovación bono",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email: resumen fichajes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email: reseña",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email: solicitud vacaciones",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email: resolución vacaciones",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "Respond 200",
             "type": "main",
             "index": 0
@@ -334,6 +1090,160 @@
       ]
     },
     "Email: verificación": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email: cita confirmada": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email: recordatorio 24h": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email: recordatorio 2h": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email: no-show": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email: facturas pendientes": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email: resumen de caja": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email: stock bajo": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email: cumpleaños": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email: reactivación clientes": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email: renovación bono": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email: resumen fichajes": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email: reseña": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email: solicitud vacaciones": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email: resolución vacaciones": {
       "main": [
         [
           {

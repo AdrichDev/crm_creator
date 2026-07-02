@@ -1,0 +1,8 @@
+<!-- customer.birthday. Vars: $json.data.safe.{businessName,customerName} + $json.{logoHtml,primary} -->
+<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222">
+  <div style="text-align:center;margin-bottom:18px">{{ $json.logoHtml }}</div>
+  <h2 style="margin:0 0 12px">🎂 ¡Feliz cumpleaños, {{ $json.data.safe.customerName }}!</h2>
+  <p>Desde <b>{{ $json.data.safe.businessName }}</b> queremos desearte un d&iacute;a estupendo. 🥳</p>
+  <p>Gracias por confiar en nosotros. ¡Que cumplas muchos m&aacute;s! 🎉</p>
+  <p style="font-size:13px;color:#666">🎁 Con cari&ntilde;o, el equipo de {{ $json.data.safe.businessName }}.</p>
+</div>

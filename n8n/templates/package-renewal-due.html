@@ -1,0 +1,11 @@
+<!-- package.renewal_due. Vars: $json.data.safe.{businessName,customerName,packageName,sesionesRestantes} + $json.{logoHtml,primary} -->
+<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222">
+  <div style="text-align:center;margin-bottom:18px">{{ $json.logoHtml }}</div>
+  <h2 style="margin:0 0 12px">🎟️ Hola {{ $json.data.safe.customerName }},</h2>
+  <p>Tu bono en <b>{{ $json.data.safe.businessName }}</b> est&aacute; a punto de agotarse:</p>
+  <div style="background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0">
+    <p style="margin:4px 0">🎫 <b>Bono:</b> {{ $json.data.safe.packageName }}</p>
+    <p style="margin:4px 0">⏳ <b>Sesiones restantes:</b> {{ $json.data.safe.sesionesRestantes }}</p>
+  </div>
+  <p style="font-size:13px;color:#666">🔄 Cuando quieras renovarlo, cont&aacute;ctanos y lo dejamos listo. 🙌</p>
+</div>

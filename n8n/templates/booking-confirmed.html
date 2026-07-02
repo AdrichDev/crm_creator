@@ -1,0 +1,13 @@
+<!-- cita confirmada (booking.confirmed). Vars: $json.data.safe.{customerName,businessName,serviceName,employeeName?,fecha,hora} + $json.{logoHtml,primary} -->
+<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222">
+  <div style="text-align:center;margin-bottom:18px">{{ $json.logoHtml }}</div>
+  <h2 style="margin:0 0 12px">✅ Hola {{ $json.data.safe.customerName }},</h2>
+  <p>Tu cita en <b>{{ $json.data.safe.businessName }}</b> est&aacute; confirmada. Aqu&iacute; tienes los detalles:</p>
+  <div style="background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0">
+    <p style="margin:4px 0">💇 <b>Servicio:</b> {{ $json.data.safe.serviceName }}</p>
+    <p style="margin:4px 0">📅 <b>Fecha:</b> {{ $json.data.safe.fecha }}</p>
+    <p style="margin:4px 0">🕐 <b>Hora:</b> {{ $json.data.safe.hora }}</p>
+    {{ $json.data.safe.employeeName ? '<p style="margin:4px 0">👤 <b>Profesional:</b> ' + $json.data.safe.employeeName + '</p>' : '' }}
+  </div>
+  <p style="font-size:13px;color:#666">📍 Te esperamos. Si necesitas cambiar la cita, contacta con nosotros. 🙌</p>
+</div>

@@ -6,19 +6,68 @@ Integración CRM ↔ n8n. El back emite **eventos de dominio** firmados (HMAC) h
 > Principio rector: **el CRM nunca depende de n8n.** Si n8n cae, `emit()` hace fallo suave
 > y el flujo de negocio sigue. n8n es un consumidor best-effort.
 
-## Arquitectura (Fase 1)
+## Arquitectura (Fases 1–2)
 
 ```
 back/src/lib/automation/emit()  --POST firmado-->  n8n Webhook (/webhook/crm-automation)
                                                       └─ Verify & Route (Code): HMAC + replay + idempotencia
-                                                          ├─ auth_failed              → 401
-                                                          ├─ user.invited             → Email: alta usuario → 200
-                                                          ├─ password.reset_requested → Email: reset         → 200
-                                                          └─ fallback (duplicate/desconocido) → 200
+                                                          ├─ auth_failed                 → 401
+                                                          ├─ user.invited                → Email: alta usuario     → 200
+                                                          ├─ password.reset_requested    → Email: reset            → 200
+                                                          ├─ email.verification_requested→ Email: verificación     → 200
+                                                          ├─ booking.confirmed           → Email: cita confirmada  → 200
+                                                          ├─ booking.reminder.24h        → Email: recordatorio 24h → 200
+                                                          ├─ booking.reminder.2h         → Email: recordatorio 2h  → 200
+                                                          ├─ booking.no_show             → Email: no-show          → 200
+                                                          ├─ invoice.pending_digest      → Email: facturas pendientes    → 200
+                                                          ├─ cash.daily_summary          → Email: resumen de caja        → 200
+                                                          ├─ stock.low_digest            → Email: stock bajo             → 200
+                                                          ├─ customer.birthday           → Email: cumpleaños             → 200
+                                                          ├─ customer.reactivation_digest→ Email: reactivación clientes  → 200
+                                                          ├─ package.renewal_due         → Email: renovación bono        → 200
+                                                          ├─ fichaje.weekly_summary      → Email: resumen fichajes       → 200
+                                                          ├─ review.request              → Email: reseña                 → 200
+                                                          ├─ timeoff.requested           → Email: solicitud vacaciones   → 200
+                                                          ├─ timeoff.resolved            → Email: resolución vacaciones  → 200
+                                                          └─ fallback (duplicate/skip/desconocido) → 200
 ```
 
+## Ramas Fases 3–5 (digests + eventos de marketing/equipo)
+
+Añadidas 10 ramas nuevas (18 reglas Switch = 8 + 10). Todas renderizan el cuerpo HTML
+**exclusivamente** con `$json.data.safe.*` (espejo XSS-safe del payload); el `toEmail` usa
+`$json.data.email` en crudo (es el destinatario, no va al HTML). Los eventos *digest* traen un
+campo `detalle` = texto plano multilínea, renderizado en bloque con `white-space:pre-line`
+(también vía `data.safe.detalle`, cero HTML desde datos).
+
+| Evento | Destinatario | Payload (`data`) |
+|--------|--------------|------------------|
+| `invoice.pending_digest` | admin | businessName, email, detalle, totalPendientes |
+| `cash.daily_summary` | admin | businessName, email, fecha, total, detalle |
+| `stock.low_digest` | admin | businessName, email, detalle, numProductos |
+| `customer.birthday` | cliente | businessName, customerName, email |
+| `customer.reactivation_digest` | admin | businessName, email, detalle, numClientes |
+| `package.renewal_due` | cliente | businessName, customerName, email, packageName, sesionesRestantes |
+| `fichaje.weekly_summary` | admin | businessName, email, detalle |
+| `review.request` | cliente | businessName, customerName, email, serviceName, fecha, hora |
+| `timeoff.requested` | admin | businessName, email, employeeName, tipo, inicio, fin, dias |
+| `timeoff.resolved` | empleado | businessName, employeeName, email, estado, inicio, fin |
+
+Plantillas versionadas en `templates/` (fuente de verdad, sincronizadas con el HTML incrustado
+en el JSON): `invoice-pending-digest.html`, `cash-daily-summary.html`, `stock-low-digest.html`,
+`customer-birthday.html`, `customer-reactivation-digest.html`, `package-renewal-due.html`,
+`fichaje-weekly-summary.html`, `review-request.html`, `timeoff-requested.html`,
+`timeoff-resolved.html`. Sin enlaces con token, PII mínima. Cada rama → `Respond 200`; el
+fallback del Switch sigue siendo la última salida.
+
 Un solo webhook porque el back usa una sola `AUTOMATION_WEBHOOK_URL`. El enrutado por
-tipo de evento ocurre dentro de n8n (header `X-Automation-Event` / campo `name`).
+tipo de evento ocurre dentro de n8n (campo `name` del envelope → `route` en el Code node →
+Switch `Route by event`). El Switch usa `fallbackOutput: extra` (última salida), así que
+al añadir ramas el fallback se desplaza siempre al índice final.
+
+Las ramas `booking.*` usan el payload `data` = `{bookingId, businessName, customerName,
+email, serviceName, employeeName?, fecha, hora}`. PII mínima: solo nombre del cliente y
+datos de la cita, sin enlaces con token. `employeeName` se renderiza condicionalmente.
 
 ## Seguridad del webhook (V.2)
 
@@ -89,7 +138,17 @@ vía la API pública de n8n con `X-N8N-API-KEY`:
 ## Estado
 
 - Fase 0.1 (infra docker) + Fase 1 (alta usuario, reset contraseña): **DESPLEGADO Y VERIFICADO**.
-- Fases 2–5 (citas, facturación, marketing, equipo): pendientes; requieren endpoints/eventos del back aún no emitidos.
+- Fase 2 (citas): **ramas añadidas al JSON** (`booking.confirmed`, `booking.reminder.24h`,
+  `booking.reminder.2h`, `booking.no_show`) + plantillas `templates/booking-*.html` versionadas.
+  **PENDIENTE DEPLOY (tarea 2.5)**: importar/actualizar el workflow vía REST y verificación e2e
+  real (bloqueado por `N8N_API_KEY`, la aporta el usuario). Verify/idempotencia/401 sin cambios.
+- Fase 2 (citas): **DESPLEGADO Y VERIFICADO** (tarea 2.5, 2026-07-02).
+- Fases 3–5 (facturación, marketing, equipo): **ramas añadidas al JSON** (10 eventos nuevos) +
+  10 plantillas `templates/*.html` versionadas + README. JSON validado (22 nodos, 18 reglas
+  Switch, router 19 salidas, cada rama nueva → Email → Respond 200, cero `data.X` crudo en los
+  HTML nuevos, `new Function(jsCode)` OK). Verify/idempotencia/401 sin cambios. **PENDIENTE
+  DEPLOY (tarea 6.2)**: PUT REST del dispatcher + verificación e2e real por rama y idempotencia
+  (patrón 2.5); la ejecuta el orquestador.
 
 ## Organización en el repo
 
