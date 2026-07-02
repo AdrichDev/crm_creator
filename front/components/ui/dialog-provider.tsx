@@ -54,15 +54,19 @@ export function DialogProvider({ children }: { children: ReactNode }) {
     <Ctx.Provider value={{ confirm, alert }}>
       {children}
       {state && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="panel rounded-2xl p-6 shadow-2xl w-full max-w-sm mx-4">
-            {state.opts.title && (
-              <p className="text-base font-semibold text-white mb-1">{state.opts.title}</p>
-            )}
-            <p className="text-[var(--panel-muted)] mb-6 text-sm leading-relaxed">
-              {state.opts.message}
-            </p>
-            <div className="flex justify-end gap-3">
+        <div className="opera-modal-backdrop">
+          <div className="opera-modal w-full max-w-sm">
+            <div className="opera-modal-header">
+              <h3 className="opera-modal-title">
+                {state.opts.title ?? (state.mode === 'alert' ? 'Aviso' : 'Confirmar')}
+              </h3>
+            </div>
+            <div className="opera-modal-body">
+              <p className="text-[var(--panel-muted)] text-sm leading-relaxed">
+                {state.opts.message}
+              </p>
+            </div>
+            <div className="opera-modal-foot">
               {state.mode === 'confirm' && (
                 <Button variant="ghost" onClick={() => close(false)}>
                   {state.opts.cancelLabel ?? 'Cancelar'}

@@ -65,7 +65,7 @@ export function NotificationBell() {
   return (
     <div className="relative">
       <button type="button" onClick={() => setOpen((o) => !o)} aria-label="Notificaciones"
-        className="relative rounded-lg p-2 text-gray-400 transition hover:bg-white/5 hover:text-white">
+        className="relative rounded-lg p-2 text-gray-400 transition hover:bg-[var(--hover-bg)] hover:text-[var(--hover-text)]">
         <Bell className="h-4 w-4" />
         {badge > 0 && (
           <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
@@ -79,7 +79,7 @@ export function NotificationBell() {
           {items.length === 0 && <p className="px-2 py-2 text-sm text-[var(--panel-muted)]">Sin recordatorios pendientes.</p>}
           <ul className="max-h-72 space-y-1 overflow-auto">
             {items.map((item) => (
-              <li key={item.id} className="rounded-lg px-2 py-1.5 text-sm hover:bg-white/5">
+              <li key={item.id} className="rounded-lg px-2 py-1.5 text-sm hover:bg-[var(--hover-bg)]">
                 <button type="button" onClick={() => irAFicha(item.customerId)} className="block w-full text-left">
                   <span className="block text-white">{item.customerNombre}</span>
                   <span className="block text-xs text-[var(--panel-muted)]">{item.titulo}</span>

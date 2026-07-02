@@ -27,6 +27,14 @@ afterEach(() => { cleanup(); created.length = 0; });
 async function flush() { await act(async () => { await Promise.resolve(); }); }
 
 describe('NuevaEntrenamientoModal (spec C-S3)', () => {
+  // crm-modales-hover-unificados WU3 (AC4): conserva su chasis propio, pero con
+  // borde theme-aware (nunca fundido con el backdrop) vía .crm-modal-panel.
+  it('renderiza con borde de contraste garantizado (.crm-modal-panel)', async () => {
+    const { container } = render(<NuevaEntrenamientoModal open onClose={vi.fn()} onCreated={vi.fn()} />);
+    await flush();
+    expect(container.querySelector('.crm-modal-panel')).toBeInTheDocument();
+  });
+
   it('no muestra ningún campo "Cliente" ni "Actividad" (la actividad es siempre Entrenamiento, resuelta en segundo plano)', async () => {
     render(<NuevaEntrenamientoModal open onClose={vi.fn()} onCreated={vi.fn()} />);
     await flush();

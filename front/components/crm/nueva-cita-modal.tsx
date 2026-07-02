@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api/client';
 import { useTerm } from '@/lib/tenant-config-context';
 import { Button } from '@/components/ui/primitives';
+import { HoraChips } from '@/components/crm/hora-chips';
 import { Loader2, CalendarPlus } from 'lucide-react';
 
 interface Opt { id: string; nombre: string }
@@ -22,12 +23,15 @@ export function NuevaCitaModal({ open, onClose, onCreated, mostrarCanal = false 
   const [form, setForm] = useState({ customerId: '', serviceId: '', employeeId: '', fecha: '', hora: '', canal: CANALES[0] });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  // Fallback WU3: si GET /bookings/slots falla, se degrada al <input type="time"> de siempre.
+  const [chipsFallback, setChipsFallback] = useState(false);
   const termCliente = useTerm('clientes', 'Cliente');
   const termEmpleado = useTerm('empleados', 'Profesional');
 
   useEffect(() => {
     if (!open) return;
-    setError(''); setForm({ customerId: '', serviceId: '', employeeId: '', fecha: '', hora: '', canal: CANALES[0] });
+    setError(''); setChipsFallback(false);
+    setForm({ customerId: '', serviceId: '', employeeId: '', fecha: '', hora: '', canal: CANALES[0] });
     // Los endpoints devuelven { items, total, page, limit } tras añadir paginación server-side.
     Promise.all([
       apiFetch<{ items: Opt[] }>('/customers').then(r => r.items ?? []).catch(() => [] as Opt[]),
@@ -61,8 +65,8 @@ export function NuevaCitaModal({ open, onClose, onCreated, mostrarCanal = false 
 
   const inputCls = 'mt-1 w-full rounded-xl border border-[var(--line)] px-3 py-2 text-sm';
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 px-4" onClick={onClose}>
-      <form onClick={(e) => e.stopPropagation()} onSubmit={submit} className="w-full max-w-md rounded-2xl bg-[var(--panel-bg,#fff)] p-6 shadow-xl">
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 px-4 backdrop-blur-sm" onClick={onClose}>
+      <form onClick={(e) => e.stopPropagation()} onSubmit={submit} className="crm-modal-panel w-full max-w-md rounded-2xl bg-[var(--panel-bg,#fff)] p-6 shadow-xl">
         <p className="mb-4 font-display text-lg font-semibold text-[var(--panel-text)]">Nueva cita</p>
 
         <label className="block text-xs font-medium text-[var(--panel-muted)]">{termCliente} *</label>
@@ -90,7 +94,19 @@ export function NuevaCitaModal({ open, onClose, onCreated, mostrarCanal = false 
           </div>
           <div>
             <label className="block text-xs font-medium text-[var(--panel-muted)]">Hora *</label>
-            <input type="time" className={inputCls} value={form.hora} onChange={(e) => setForm({ ...form, hora: e.target.value })} />
+            {chipsFallback ? (
+              <input type="time" className={inputCls} value={form.hora} onChange={(e) => setForm({ ...form, hora: e.target.value })} />
+            ) : (
+              <HoraChips
+                fecha={form.fecha}
+                serviceId={form.serviceId}
+                employeeId={form.employeeId || undefined}
+                locationId={locationId || undefined}
+                value={form.hora}
+                onChange={(hora) => setForm({ ...form, hora })}
+                onFallback={() => setChipsFallback(true)}
+              />
+            )}
           </div>
         </div>
 
