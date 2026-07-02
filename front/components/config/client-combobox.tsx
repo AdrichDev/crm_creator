@@ -94,7 +94,7 @@ export function ClientCombobox({ clients, selectedId, onPick, error }:
           className="w-full rounded-xl border border-gray-300 px-3 py-2 pr-9 text-sm" />
         {/* Vinculado → check (decorativo). Si no, botón flecha integrado: cursor pointer, sin caja ni hueco. */}
         {selected && !open ? (
-          <Check className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#2563eb]" />
+          <Check className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--acc)]" />
         ) : (
           <button
             type="button"
@@ -122,9 +122,9 @@ export function ClientCombobox({ clients, selectedId, onPick, error }:
                 <li key={c.id} role="option" aria-selected={isSel}
                   onMouseEnter={() => setActive(i)}
                   onMouseDown={(e) => { e.preventDefault(); pick(c); }}
-                  className={`flex cursor-pointer items-center justify-between px-3 py-2 text-sm transition ${isActive ? 'bg-[#2563eb]/10' : ''} ${isSel ? 'font-medium text-gray-900' : 'text-gray-700'}`}>
+                  className={`flex cursor-pointer items-center justify-between px-3 py-2 text-sm transition ${isActive ? 'bg-[color-mix(in_srgb,var(--acc)_14%,var(--panel-card))]' : ''} ${isSel ? 'font-medium text-gray-900' : 'text-gray-700'}`}>
                   <span>{c.nombre}</span>
-                  {isSel && <span className="shrink-0 text-[10px] font-medium text-[#2563eb]">vinculado ✓</span>}
+                  {isSel && <span className="shrink-0 text-[10px] font-medium text-[var(--acc)]">vinculado ✓</span>}
                 </li>
               );
             })}

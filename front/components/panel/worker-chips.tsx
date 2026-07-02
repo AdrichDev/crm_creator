@@ -138,7 +138,7 @@ function DisponibilidadChip({ label, icon }: { label: string; icon: string }) {
         {DISPONIBILIDAD.map((d) => (
           <button key={d.id} type="button" onClick={() => cambiar(d.id)}
             className={cn('rounded-lg px-2 py-1 text-[11px] font-medium transition',
-              estado === d.id ? 'text-white' : 'text-[var(--panel-muted)] hover:text-white')}
+              estado === d.id ? 'text-white' : 'text-[var(--panel-muted)] hover:text-[var(--hover-text)]')}
             style={estado === d.id ? { background: 'color-mix(in srgb, var(--acc) 22%, transparent)' } : undefined}>
             {d.label}
           </button>

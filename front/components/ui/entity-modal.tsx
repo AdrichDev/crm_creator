@@ -1,10 +1,13 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useDialog } from '@/components/ui/dialog-provider';
 import { Modal } from './modal';
 import { Button } from './primitives';
 
 export type FieldType = 'text' | 'number' | 'email' | 'date' | 'time' | 'select' | 'textarea';
+
+type Values = Record<string, string | number>;
+
 export interface Field {
   name: string;
   label: string;
@@ -13,9 +16,11 @@ export interface Field {
   required?: boolean;
   placeholder?: string;
   step?: string;
+  /** Control a medida (p. ej. chips de hora en vez de <input type="time">). Si
+   *  se define, sustituye al control por defecto solo para este campo — el
+   *  resto de EntityModal (validación, layout, footer) no cambia. */
+  render?: (ctx: { value: string | number; onChange: (raw: string) => void; values: Values }) => ReactNode;
 }
-
-type Values = Record<string, string | number>;
 
 export function EntityModal({ open, title, fields, initial, onSubmit, onClose }: {
   open: boolean;
@@ -59,7 +64,8 @@ export function EntityModal({ open, title, fields, initial, onSubmit, onClose }:
         {fields.map((f) => (
           <div key={f.name} className="opera-field">
             <label className="opera-label">{f.label}{f.required && ' *'}</label>
-            {f.type === 'select' ? (
+            {f.render ? f.render({ value: values[f.name] ?? '', onChange: (raw) => set(f.name, raw, f.type), values }) :
+             f.type === 'select' ? (
               <select value={String(values[f.name] ?? '')} onChange={(e) => set(f.name, e.target.value)}
                 className="opera-control">
                 <option value="">—</option>

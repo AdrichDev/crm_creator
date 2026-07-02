@@ -46,10 +46,10 @@ export function ModuleToggleGrid({ modules, onToggle, terminology = {}, vertical
                   className={cn('flex items-start gap-3 rounded-2xl border p-4 transition',
                     on ? 'border-[var(--gold)]/50' : 'border-gray-200 bg-gray-50',
                     blocked && 'opacity-40 cursor-not-allowed')}
-                  style={on ? { backgroundColor: 'color-mix(in srgb, var(--gold) 12%, transparent)' } : undefined}>
+                  style={on ? { backgroundColor: 'color-mix(in srgb, var(--gold) 12%, var(--panel-card))' } : undefined}>
                   {/* Icono coloreado por categoría. Con vertical activo → emoji del sector. */}
                   <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl"
-                    style={{ backgroundColor: `color-mix(in srgb, ${color} 16%, transparent)`, color }}>
+                    style={{ backgroundColor: `color-mix(in srgb, ${color} 16%, var(--panel-card))`, color }}>
                     {vertical
                       ? <span className="text-base leading-none">{resolveModuleEmoji(vertical, m.id, emojis)}</span>
                       : <Icon name={m.icon} className="h-4 w-4" />}

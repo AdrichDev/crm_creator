@@ -125,7 +125,7 @@ export function ChangePasswordForm({ userEmail }: ChangePasswordFormProps) {
           type="button"
           onClick={handleForgotPassword}
           disabled={resetSending}
-          className="text-sm text-[var(--panel-muted)] hover:text-white transition disabled:opacity-50"
+          className="text-sm text-[var(--panel-muted)] hover:text-[var(--hover-text)] transition disabled:opacity-50"
         >
           {resetSending ? 'Enviando…' : '¿No recuerdas tu contraseña?'}
         </button>

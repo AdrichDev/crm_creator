@@ -363,7 +363,7 @@ export default function Page() {
                   className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px ${
                     tab === key
                       ? 'text-white border-[var(--acc)]'
-                      : 'text-[var(--panel-muted)] border-transparent hover:text-white'
+                      : 'text-[var(--panel-muted)] border-transparent hover:text-[var(--hover-text)]'
                   }`}
                   onClick={() => setTab(key)}
                 >
@@ -668,7 +668,7 @@ export default function Page() {
                 </span>
                 <button
                   type="button"
-                  className="text-[var(--panel-muted)] hover:text-white text-xs ml-3"
+                  className="text-[var(--panel-muted)] hover:text-[var(--hover-text)] text-xs ml-3"
                   onClick={() => { setSelectedPerson(null); setSearchQuery(''); }}
                 >
                   Cambiar
@@ -689,7 +689,7 @@ export default function Page() {
                       <li key={p.id}>
                         <button
                           type="button"
-                          className="w-full text-left px-3 py-2 text-sm text-white hover:bg-white/5"
+                          className="w-full text-left px-3 py-2 text-sm text-white hover:bg-[var(--hover-bg)]"
                           onClick={() => {
                             setSelectedPerson(p);
                             setSearchQuery('');

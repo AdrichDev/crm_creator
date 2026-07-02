@@ -16,7 +16,7 @@ const ABC_LABELS: Record<'A' | 'B' | 'C', string> = { A: 'Gasto alto', B: 'Gasto
 
 export function MapaColorSelector({ modo, onModoChange, estados }: Props) {
   const btnCls = (active: boolean) =>
-    `rounded-md px-3 py-1.5 text-xs font-medium transition ${active ? 'bg-[var(--acc)] text-white' : 'text-[var(--panel-muted)] hover:text-white'}`;
+    `rounded-md px-3 py-1.5 text-xs font-medium transition ${active ? 'bg-[var(--acc)] text-white' : 'text-[var(--panel-muted)] hover:text-[var(--hover-text)]'}`;
 
   return (
     <div className="space-y-2">

@@ -61,7 +61,7 @@ export default function ConfiguracionPage() {
         {TABS.map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={cn('rounded-lg px-4 py-1.5 text-sm font-medium transition',
-              tab === t ? 'text-[var(--acc)]' : 'text-gray-400 hover:text-white')}
+              tab === t ? 'text-[var(--acc)]' : 'text-gray-400 hover:text-[var(--hover-text)]')}
             style={tab === t ? { background: 'color-mix(in srgb, var(--acc) 18%, transparent)' } : undefined}>
             {TAB_LABEL[t]}
           </button>

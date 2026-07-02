@@ -19,6 +19,14 @@ async function flush() { await act(async () => { await Promise.resolve(); }); }
 const SALA_SELECT_INDEX = 2;
 
 describe('NuevaClaseModal (spec C-S6)', () => {
+  // crm-modales-hover-unificados WU3 (AC4): conserva su chasis propio, pero con
+  // borde theme-aware (nunca fundido con el backdrop) vía .crm-modal-panel.
+  it('renderiza con borde de contraste garantizado (.crm-modal-panel)', async () => {
+    const { container } = render(<NuevaClaseModal open onClose={vi.fn()} onCreated={vi.fn()} />);
+    await flush();
+    expect(container.querySelector('.crm-modal-panel')).toBeInTheDocument();
+  });
+
   it('no muestra aforo hasta elegir sala', async () => {
     render(<NuevaClaseModal open onClose={vi.fn()} onCreated={vi.fn()} />);
     await flush();

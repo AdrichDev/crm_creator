@@ -82,8 +82,8 @@ export function NuevaEntrenamientoModal({ open, onClose, onCreated }: { open: bo
 
   const inputCls = 'mt-1 w-full rounded-xl border border-[var(--line)] px-3 py-2 text-sm';
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 px-4" onClick={onClose}>
-      <form onClick={(e) => e.stopPropagation()} onSubmit={submit} className="w-full max-w-md rounded-2xl bg-[var(--panel-bg,#fff)] p-6 shadow-xl">
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 px-4 backdrop-blur-sm" onClick={onClose}>
+      <form onClick={(e) => e.stopPropagation()} onSubmit={submit} className="crm-modal-panel w-full max-w-md rounded-2xl bg-[var(--panel-bg,#fff)] p-6 shadow-xl">
         <p className="mb-4 font-display text-lg font-semibold text-[var(--panel-text)]">Nuevo entrenamiento</p>
 
         <label className="block text-xs font-medium text-[var(--panel-muted)]">Equipo *</label>

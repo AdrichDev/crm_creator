@@ -141,7 +141,7 @@ export function Sidebar() {
             <p className="truncate text-[11px] text-gold">{rolLabel}</p>
           </div>
           <button onClick={salir} title="Salir"
-            className="rounded-lg p-2 text-gray-400 transition hover:bg-white/5 hover:text-red-400">
+            className="rounded-lg p-2 text-gray-400 transition hover:bg-[var(--hover-bg)] hover:text-red-400">
             <LogOut className="h-4 w-4" />
           </button>
         </div>

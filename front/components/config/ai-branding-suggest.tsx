@@ -105,7 +105,7 @@ export function AiBrandingSuggest({ business, current, onApply, landingSource }:
     <div className="rounded-xl border border-dashed border-gray-300 p-4">
       <div className="flex items-center justify-between gap-3">
         <p className="flex items-center gap-1.5 text-sm font-medium text-gray-800">
-          <Sparkles className="h-4 w-4 text-[#2563eb]" /> Sugerir branding con IA
+          <Sparkles className="h-4 w-4 text-[var(--acc)]" /> Sugerir branding con IA
         </p>
         {previous && (
           <button type="button" onClick={undo}
@@ -135,7 +135,7 @@ export function AiBrandingSuggest({ business, current, onApply, landingSource }:
       {/* Dos botones: desde texto / desde landing (este, solo si hay .zip importado) */}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button type="button" onClick={() => generate(style.trim())} disabled={busy}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-[#2563eb] px-3 py-2 text-sm font-medium text-[#2563eb] hover:bg-[#2563eb]/10 disabled:opacity-50">
+          className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--acc)] px-3 py-2 text-sm font-medium text-[var(--acc)] hover:bg-[var(--hover-bg)] hover:text-[var(--hover-text)] disabled:opacity-50">
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Generar prompt
         </button>
         <button type="button" onClick={() => generate(landingDescription())} disabled={busy || !hasLanding}
@@ -167,7 +167,7 @@ export function AiBrandingSuggest({ business, current, onApply, landingSource }:
           {preview.rationale && <p className="mt-1 text-[11px] italic text-gray-500">{preview.rationale}</p>}
           <div className="mt-3 flex items-center gap-2">
             <button type="button" onClick={applyPreview}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-[#2563eb] px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90">
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--acc)] px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90">
               <Check className="h-3.5 w-3.5" /> Aplicar
             </button>
             <button type="button" onClick={() => setPreview(null)}

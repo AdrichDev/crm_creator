@@ -56,6 +56,13 @@ export async function importCustomers(rows: Record<string, unknown>[], force = f
   return apiFetch<ImportResult>('/customers/import', { method: 'POST', body: JSON.stringify({ rows, force }) });
 }
 
+// Re-geolocalización batch (crm-geo-real-clientes): re-intenta PENDING/FAILED con
+// dirección; force=true incluye también los OK (corrige coords sembradas a mano).
+export interface GeocodeRerunResult { ok: number; failed: number; skipped: number; }
+export async function geocodeRerun(force = false): Promise<GeocodeRerunResult> {
+  return apiFetch<GeocodeRerunResult>('/customers/geocode/rerun', { method: 'POST', body: JSON.stringify({ force }) });
+}
+
 // ---- Estados de visita ----
 export async function fetchVisitStates(): Promise<VisitStateDto[]> {
   const res = await apiFetch<Listed<VisitStateDto>>('/visit-states');
