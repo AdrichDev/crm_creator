@@ -1,6 +1,6 @@
 import { Router, type Response } from 'express';
 import { prisma } from '../prisma.js';
-import { checkAvailability, daySlots } from '../lib/availability.js';
+import { checkAvailability, daySlots, daySlotsWithAvailability } from '../lib/availability.js';
 import type { AuthedRequest } from '../middleware/types.js';
 import { BookingStatus } from '../lib/generated/prisma/client.js';
 import { assertFks, handleCrossTenant } from '../lib/tenant.js';
@@ -77,6 +77,25 @@ bookingsRouter.get('/', async (req: AuthedRequest, res: Response) => {
     page,
     limit,
   });
+});
+
+// GET /slots?date&serviceId[&employeeId][&locationId] → chips de hora para nueva
+// cita: TODOS los huecos del día (paso = duración del servicio) con disponible:true/
+// false — reutiliza la misma disponibilidad que POST/PATCH (ver daySlotsWithAvailability).
+// Registrado antes de "/:id" para que Express no confunda "slots" con un id.
+bookingsRouter.get('/slots', async (req: AuthedRequest, res: Response) => {
+  const { date, serviceId, employeeId, locationId } = req.query as Record<string, string | undefined>;
+  if (!date || !serviceId) return res.status(422).json({ error: { code: 'validation', message: 'date y serviceId requeridos' } });
+
+  let loc = locationId;
+  if (!loc) {
+    const location = await prisma.location.findFirst({ where: { businessId: req.businessId } });
+    loc = location?.id;
+  }
+  if (!loc) return res.status(422).json({ error: { code: 'validation', message: 'El negocio no tiene sucursal configurada' } });
+
+  const slots = await daySlotsWithAvailability({ businessId: req.businessId!, locationId: loc, serviceId, employeeId: employeeId || undefined, start: date, date });
+  res.json({ slots });
 });
 
 bookingsRouter.get('/:id', async (req: AuthedRequest, res: Response) => {
@@ -323,16 +342,58 @@ bookingsRouter.post('/:id/no-show', async (req: AuthedRequest, res: Response) =>
   })();
 });
 
+const VALID_BOOKING_STATUSES = new Set(Object.values(BookingStatus));
+
+// PATCH /:id → edición completa de la cita (crm-editar-cita-persistencia): además de
+// notes/employeeId acepta status (validado contra el enum, registrado en el historial
+// de estado) y serviceId (revalida disponibilidad). Reprogramación (start) o cambio de
+// servicio revalidan disponibilidad; conflicto → 409 y nada se persiste (atómico).
 bookingsRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
   const booking = await prisma.booking.findFirst({ where: { id: req.params.id, businessId: req.businessId } });
   if (!booking) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
-  // Reprogramación: revalida disponibilidad.
-  if (req.body?.start) {
-    const avail = await checkAvailability({ businessId: req.businessId!, locationId: booking.locationId, serviceId: booking.serviceId, employeeId: req.body.employeeId ?? booking.employeeId, start: req.body.start });
-    if (!avail.ok) return res.status(409).json({ error: { code: 'availability', message: 'No disponible', reason: avail.reason } });
-    const updated = await prisma.booking.update({ where: { id: booking.id }, data: { startAt: avail.startAt!, endAt: avail.endAt!, employeeId: req.body.employeeId ?? booking.employeeId, notes: req.body.notes ?? booking.notes } });
-    return res.json(updated);
+
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  if (body.status !== undefined && !VALID_BOOKING_STATUSES.has(body.status as BookingStatus)) {
+    return res.status(422).json({ error: { code: 'validation', message: 'status inválido' } });
   }
-  const updated = await prisma.booking.update({ where: { id: booking.id }, data: { notes: req.body?.notes, employeeId: req.body?.employeeId } });
+
+  try {
+    await assertFks(req.businessId, [
+      { model: 'service', id: body.serviceId as string | undefined, field: 'serviceId' },
+      { model: 'employee', id: body.employeeId as string | undefined, field: 'employeeId' },
+    ]);
+  } catch (e) {
+    if (handleCrossTenant(e, res)) return;
+    throw e;
+  }
+
+  const data: Record<string, unknown> = {
+    notes: body.notes, employeeId: body.employeeId, serviceId: body.serviceId, status: body.status,
+  };
+
+  // Reprogramación (start) o cambio de servicio: revalida disponibilidad contra el
+  // resto de la agenda antes de tocar nada.
+  if (body.start || body.serviceId) {
+    const avail = await checkAvailability({
+      businessId: req.businessId!,
+      locationId: booking.locationId,
+      serviceId: (body.serviceId as string) ?? booking.serviceId,
+      employeeId: (body.employeeId as string) ?? booking.employeeId,
+      start: (body.start as string) ?? booking.startAt,
+    });
+    if (!avail.ok) return res.status(409).json({ error: { code: 'availability', message: 'No disponible', reason: avail.reason } });
+    data.startAt = avail.startAt;
+    data.endAt = avail.endAt;
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.booking.update({ where: { id: booking.id }, data });
+    if (body.status !== undefined && body.status !== booking.status) {
+      await tx.bookingStatusHistory.create({
+        data: { bookingId: booking.id, estadoAnterior: booking.status, estadoNuevo: body.status as BookingStatus, cambiadoPor: req.userId },
+      });
+    }
+    return row;
+  });
   res.json(updated);
 });
