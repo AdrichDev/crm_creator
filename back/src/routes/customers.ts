@@ -2,14 +2,35 @@ import { Router, type Response } from 'express';
 import { Prisma } from '../lib/generated/prisma/client.js';
 import { prisma } from '../prisma.js';
 import type { AuthedRequest } from '../middleware/types.js';
+import { requireRole } from '../middleware/rbac.js';
 import { splitNombre, joinNombre, pickFields } from '../lib/nombre.js';
 import { parsePagination } from '../lib/pagination.js';
-import { resolveGeocoder, haversineKm, isValidCoord } from '../lib/geo/index.js';
+import { resolveGeocoder, setGeocoder, haversineKm, isValidCoord } from '../lib/geo/index.js';
 import { planImport, type ImportRow, type ExistingCustomer } from '../lib/comercial/import.js';
 
 // Clientes (crm.cliente) en CASTELLANO, con agregados calculados (visitas, gastoTotal,
 // ultimaVisita, segmento) y campos de comercial de campo (geo, estado de visita, ABC, tipo).
 export const customersRouter = Router();
+
+// Test-only: los e2e golpean el back ya arrancado como proceso aparte, así que
+// `setGeocoder()` importado desde el test NO llega a esta instancia — se inyecta
+// vía HTTP (mismo patrón que POST /auth/__test__/reset-rate-limits). Nunca real
+// Nominatim en tests: cualquier dirección con "FAIL" no resuelve.
+if (process.env.NODE_ENV !== 'production') {
+  customersRouter.post('/__test__/set-geocoder', (req: AuthedRequest, res: Response) => {
+    if (req.body?.mode === 'fake') {
+      setGeocoder({
+        async geocode(q) {
+          if ((q.direccion ?? '').includes('FAIL')) return null;
+          return { lat: 40.4, lng: -3.7 };
+        },
+      });
+    } else {
+      setGeocoder(null);
+    }
+    res.status(204).end();
+  });
+}
 
 // Regla de segmento (derivada; no se almacena).
 function segmentoDe(visitas: number, gastoTotal: number, ultima: Date | null): string {
@@ -125,6 +146,18 @@ customersRouter.get('/', async (req: AuthedRequest, res: Response) => {
   res.json({ items, total, page, limit });
 });
 
+// GET /:id → ficha completa de un cliente (crm-citas-ux-agenda WU6: modal de ficha
+// desde /citas). Mismo shape que las filas de GET / (agregados incluidos).
+customersRouter.get('/:id', async (req: AuthedRequest, res: Response) => {
+  const c = await prisma.customer.findFirst({
+    where: { id: req.params.id, businessId: req.businessId, eliminadoEn: null },
+    include: { estadoVisita: true },
+  });
+  if (!c) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
+  const aggs = await loadAggregates(req.businessId, [c.id]);
+  res.json(shapeCustomer(c, aggs));
+});
+
 customersRouter.post('/', async (req: AuthedRequest, res: Response) => {
   const body = (req.body ?? {}) as Record<string, unknown>;
   const data = buildData(body);
@@ -200,6 +233,48 @@ customersRouter.post('/import', async (req: AuthedRequest, res: Response) => {
     creados += 1;
   }
   res.status(201).json({ creados, duplicados: plan.duplicados, totalFilas: rows.length });
+});
+
+// Lote acotado por invocación (crm-geo-real-clientes): evita bloquear el proceso con
+// negocios grandes; el resto de candidatos queda para una invocación posterior.
+const GEOCODE_RERUN_BATCH = 60;
+
+// POST /geocode/rerun (gestor): re-geocodifica clientes PENDING/FAILED con dirección.
+// `force=true` incluye también los OK (corrige sembrados sintéticos). Secuencial —
+// reutiliza resolveGeocoder(), que ya serializa/throttlea las llamadas a Nominatim
+// (≥1s entre peticiones) en la misma instancia. Nunca lanza: un fallo de geocodificación
+// deja al cliente en FAILED, visible en "pendientes de geolocalizar" (RF-05).
+customersRouter.post('/geocode/rerun', requireRole('ADMIN', 'MANAGER'), async (req: AuthedRequest, res: Response) => {
+  const force = req.body?.force === true;
+  const candidates = await prisma.customer.findMany({
+    where: {
+      businessId: req.businessId,
+      eliminadoEn: null,
+      ...(force ? {} : { geoEstado: { in: ['PENDING', 'FAILED'] } }),
+    },
+    select: { id: true, direccion: true, localidad: true, provincia: true, codigoPostal: true },
+    orderBy: { createdAt: 'asc' },
+    take: GEOCODE_RERUN_BATCH,
+  });
+
+  const geocoder = resolveGeocoder();
+  let ok = 0;
+  let failed = 0;
+  let skipped = 0;
+  for (const c of candidates) {
+    const hasAddress = ['direccion', 'localidad', 'provincia', 'codigoPostal']
+      .some((k) => typeof c[k as keyof typeof c] === 'string' && String(c[k as keyof typeof c]).trim());
+    if (!hasAddress) { skipped += 1; continue; }
+    const geo = await geocoder.geocode({ direccion: c.direccion, localidad: c.localidad, provincia: c.provincia, codigoPostal: c.codigoPostal });
+    if (geo) {
+      await prisma.customer.update({ where: { id: c.id }, data: { latitud: geo.lat, longitud: geo.lng, geoEstado: 'OK' } });
+      ok += 1;
+    } else {
+      await prisma.customer.update({ where: { id: c.id }, data: { geoEstado: 'FAILED' } });
+      failed += 1;
+    }
+  }
+  res.json({ ok, failed, skipped });
 });
 
 // ---------- helpers ----------

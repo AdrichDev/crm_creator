@@ -6,10 +6,11 @@ import { ModuleGuard } from '@/components/layout/module-guard';
 import { useProjects, useRole, useTerm } from '@/lib/tenant-config-context';
 import { canWrite } from '@/lib/config/roles';
 import { isApiEnabled } from '@/lib/api/client';
+import { useDialog } from '@/components/ui/dialog-provider';
 import { PageHeader, Button, Badge, EmptyState } from '@/components/ui/primitives';
-import { MapPin, Upload, UserPlus, LocateFixed } from 'lucide-react';
+import { MapPin, Upload, UserPlus, LocateFixed, RefreshCw } from 'lucide-react';
 import type { ComercialCustomer, VisitStateDto, ReminderDto } from '@/lib/comercial/types';
-import { fetchCustomers, fetchVisitStates, createCustomer, fetchReminders, patchReminder } from '@/lib/comercial/api';
+import { fetchCustomers, fetchVisitStates, createCustomer, fetchReminders, patchReminder, geocodeRerun } from '@/lib/comercial/api';
 import { FichaClientePanel } from '@/components/comercial/ficha-cliente-panel';
 import { ConfigEstados } from '@/components/comercial/config-estados';
 import { ImportClientesModal } from '@/components/comercial/import-clientes-modal';
@@ -45,6 +46,7 @@ export default function Page() {
   const apiEnabled = isApiEnabled();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const dialog = useDialog();
 
   const [tab, setTab] = useState<Tab>('mapa');
   const [states, setStates] = useState<VisitStateDto[]>([]);
@@ -52,6 +54,7 @@ export default function Page() {
   const [reminders, setReminders] = useState<ReminderDto[]>([]);
   const [selected, setSelected] = useState<ComercialCustomer | null>(null);
   const [loading, setLoading] = useState(false);
+  const [geocoding, setGeocoding] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [prospectoOpen, setProspectoOpen] = useState(false);
   const [near, setNear] = useState<{ lat: number; lng: number } | null>(null);
@@ -116,6 +119,21 @@ export default function Page() {
       (pos) => setNear({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
       () => setNear(null),
     );
+  }
+
+  // Re-geolocalizar pendientes (crm-geo-real-clientes): re-intenta PENDING/FAILED con
+  // dirección contra Nominatim y refresca el mapa con el resultado.
+  async function reGeolocalizar() {
+    setGeocoding(true);
+    try {
+      const r = await geocodeRerun(false);
+      await dialog.alert(`Geolocalización: ${r.ok} ubicados, ${r.failed} no encontrados, ${r.skipped} sin dirección.`);
+      await load();
+    } catch (err) {
+      await dialog.alert(err instanceof Error ? err.message : 'No se pudo re-geolocalizar.');
+    } finally {
+      setGeocoding(false);
+    }
   }
 
   async function crearProspecto(v: Record<string, string | number>) {
@@ -207,7 +225,14 @@ export default function Page() {
               </ul>
             </div>
             <div>
-              <h3 className="mb-2 flex items-center gap-1.5 text-sm font-medium text-white"><MapPin className="h-4 w-4 text-red-400" /> Pendientes de geolocalizar ({sinGeo.length})</h3>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <h3 className="flex items-center gap-1.5 text-sm font-medium text-white"><MapPin className="h-4 w-4 text-red-400" /> Pendientes de geolocalizar ({sinGeo.length})</h3>
+                {puedeEditar && sinGeo.length > 0 && (
+                  <Button variant="outline" onClick={() => void reGeolocalizar()} disabled={geocoding}>
+                    <RefreshCw className={`h-4 w-4 ${geocoding ? 'animate-spin' : ''}`} /> {geocoding ? 'Geolocalizando…' : 'Re-geolocalizar'}
+                  </Button>
+                )}
+              </div>
               <ul className="max-h-64 space-y-1 overflow-auto">
                 {sinGeo.length === 0 && <li className="text-sm text-[var(--panel-muted)]">Todos ubicados.</li>}
                 {sinGeo.map((c) => (
