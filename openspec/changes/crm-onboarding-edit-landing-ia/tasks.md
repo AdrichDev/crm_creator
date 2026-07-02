@@ -19,12 +19,12 @@ regresión garantizado (landing? opcional). UC-1/UC-3 ya estaban.
 - [x] 1.2 Onboarding detecta modo edición (vs alta) y persiste sobre el proyecto existente (`setConfig`, no crea).
 - [x] 1.3 Verificar add/quitar módulos respeta obligatorios y no rompe nav/permiso. Quitar módulo = ocultar (flag false), datos del proyecto conservados (no borrado).
 
-## Fase 2 — Ingesta de landing (ZIP)  [POSPUESTA — fuera del alcance aprobado]
+## Fase 2 — Ingesta de landing (ZIP)  [POSPUESTA POR EL USUARIO — decisión de seguridad; fuera del alcance aprobado]
 - [ ] 2.1 Paso onboarding "Landing": dropzone ZIP (usa `jszip`), validación tamaño/tipos/anti path-traversal.
 - [ ] 2.2 Almacenar assets por proyecto (local ahora; abstracción para Supabase Storage futuro).
 - [ ] 2.3 Sanitizar HTML/JS servido (evitar XSS/scripts no confiables) — revisión `cybersec:redteam-recon` + `blueteam-hardening`.
 
-## Fase 3 — Inyección como capa pública + login  [POSPUESTA — seguridad/auth]
+## Fase 3 — Inyección como capa pública + login  [POSPUESTA POR EL USUARIO — seguridad/auth; requiere capa de servido aislada + revisión cybersec + aprobación humana]
 - [ ] 3.1 Grupo de rutas `app/(landing)/` que sirve la landing del proyecto activo.
 - [ ] 3.2 `/(landing)/login` → autentica (depende de `crm-gestion-usuarios-auth`) → entra al CRM.
 - [ ] 3.3 Sin landing subida → comportamiento actual intacto (no regresión).

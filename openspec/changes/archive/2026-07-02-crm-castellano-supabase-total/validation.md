@@ -45,7 +45,7 @@ reales.
 
 Estado: EN CURSO. Pendiente P.6 (migración localStorage→Supabase), P.7 (castellano Business/Membership/etc), cablear Employee.rol + extender soft-delete. Marcar OK solo con test verde por tarea.
 
-## Verificado (2026-07-02) — 3.2 cablear modelos core
+## Verificado (2026-07-02) — 3.2 cableware modelos core
 - Back 3.2.a-e: rutas /employees/:id/horario, /sales/:id/lineas, /documents, /notifications,
   /settings/:categoria montadas. e2e 12/12 VERDES en vivo (back local + Supabase real,
   `node --env-file=.env`): reemplazo atómico horario, 404 empleado/venta ajenos, recálculo
