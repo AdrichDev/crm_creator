@@ -33,7 +33,11 @@ export async function authenticate(req: AuthedRequest, res: Response, next: Next
 
     const wanted = req.headers['x-business-id'] as string | undefined;
     const membership = memberships.find((m) => m.businessId === wanted) ?? memberships[0];
-    if (wanted && membership.businessId !== wanted) {
+    // GET /projects lista TODOS los negocios del usuario — no depende de un negocio
+    // activo. Si x-business-id quedó obsoleto (localStorage stale, negocio borrado),
+    // no debe bloquear el propio listado que serviría para elegir uno válido.
+    const isProjectsList = req.method === 'GET' && req.path === '/projects';
+    if (wanted && membership.businessId !== wanted && !isProjectsList) {
       return res.status(403).json({ error: { code: 'wrong_business', message: 'No tienes acceso a ese negocio' } });
     }
 

@@ -12,7 +12,14 @@ import type { MemberRole } from '../generated/prisma/client.js';
 
 type FakeMembership = { userId: string; businessId: string; role: MemberRole };
 type FakePrisma = { membership: { findMany(args: { where: { userId: string } }): Promise<FakeMembership[]> } };
-type AuthedReq = { headers: Record<string, string | undefined>; userId?: string; businessId?: string; role?: MemberRole };
+type AuthedReq = {
+  headers: Record<string, string | undefined>;
+  method?: string;
+  path?: string;
+  userId?: string;
+  businessId?: string;
+  role?: MemberRole;
+};
 type Verify = (token: string) => Promise<{ sub: string; email: string; role: string }>;
 
 // Mirrors middleware/auth.ts logic; verifier injected for testability.
@@ -30,7 +37,10 @@ function makeAuthMiddleware(db: FakePrisma, verify: Verify) {
       }
       const wanted = req.headers['x-business-id'];
       const membership = memberships.find((m) => m.businessId === wanted) ?? memberships[0];
-      if (wanted && membership.businessId !== wanted) {
+      // GET /projects lista todos los negocios del usuario; un x-business-id
+      // obsoleto (negocio borrado, localStorage stale) no debe bloquearla.
+      const isProjectsList = req.method === 'GET' && req.path === '/projects';
+      if (wanted && membership.businessId !== wanted && !isProjectsList) {
         return res.status(403).json({ error: { code: 'wrong_business', message: 'No tienes acceso' } });
       }
       req.userId = sub;
@@ -115,6 +125,20 @@ describe('authenticate middleware', () => {
     assert.equal(res.getStatus(), 403);
     assert.equal((res.getBody() as { error: { code: string } }).error.code, 'wrong_business');
     assert.ok(!nextCalled);
+  });
+
+  test('GET /projects with stale x-business-id → does NOT 403, falls back to first membership', async () => {
+    const userId = 'uuid-fff';
+    const db: FakePrisma = { membership: { findMany: async () => [{ userId, businessId: 'biz-real', role: 'ADMIN' }] } };
+    const req: AuthedReq = {
+      headers: { authorization: 'Bearer tok', 'x-business-id': 'biz-deleted-or-stale' },
+      method: 'GET',
+      path: '/projects',
+    };
+    const res = makeRes();
+    await makeAuthMiddleware(db, verifyAs(userId))(req, res, next);
+    assert.ok(nextCalled, 'next should be called, not blocked with 403');
+    assert.equal(req.businessId, 'biz-real');
   });
 
   test('no x-business-id → falls back to first membership', async () => {
