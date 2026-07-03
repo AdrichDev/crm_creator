@@ -128,7 +128,11 @@ export function configFromVertical(vertical: VerticalId, name = ''): TenantConfi
   };
 }
 
-export const DEFAULT_CONFIG: TenantConfig = configFromVertical('peluqueria', 'Mi Negocio');
+const baseDefaultConfig = configFromVertical('peluqueria', 'OperaOS · Consola');
+export const DEFAULT_CONFIG: TenantConfig = {
+  ...baseDefaultConfig,
+  branding: { ...baseDefaultConfig.branding, logoImage: '/favicon.svg' },
+};
 
 export const STORAGE_KEY = 'saas-negocios.config.v1';
 
