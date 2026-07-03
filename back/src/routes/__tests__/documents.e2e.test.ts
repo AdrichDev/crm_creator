@@ -4,6 +4,7 @@
 // Requires the back running at localhost:4001 + live Supabase credentials.
 //
 // Runner: node --import tsx --test
+import 'dotenv/config'; // el runner de tests no pasa por src/env.ts; sin esto el cleanup de prisma no tiene DATABASE_URL
 import { test, before, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -58,8 +59,8 @@ beforeEach(async () => {
 after(async () => {
   if (!backUp || !SB_URL) return;
   const cleanup = createClient(SB_URL, SB_SRK, { auth: { persistSession: false } });
-  for (const id of created.userIds) await cleanup.auth.admin.deleteUser(id).catch(() => {});
-  for (const id of created.businessIds) await prisma.business.delete({ where: { id } }).catch(() => {});
+  for (const id of created.userIds) await cleanup.auth.admin.deleteUser(id).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
+  for (const id of created.businessIds) await prisma.business.delete({ where: { id } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
   await prisma.$disconnect();
 });
 
@@ -94,7 +95,7 @@ test('POST /documents con employeeId ajeno → 422 cross_tenant', async (t) => {
   assert.equal(r.status, 422, `expected 422, got ${r.status}: ${JSON.stringify(r.body)}`);
   assert.equal((r.body!.error as { code: string }).code, 'cross_tenant');
 
-  await prisma.employee.delete({ where: { id: empB.id } }).catch(() => {});
+  await prisma.employee.delete({ where: { id: empB.id } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
 });
 
 // 3.2.c — DELETE hard: el documento desaparece físicamente

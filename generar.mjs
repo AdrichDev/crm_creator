@@ -24,10 +24,13 @@ import { stdin as input, stdout as output } from 'node:process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
-const rl = createInterface({ input, output });
+// Guard de ejecución directa: al importar desde tests no se arranca el CLI ni
+// se abre readline (dejaría el proceso colgado esperando stdin).
+const IS_MAIN = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+const rl = IS_MAIN ? createInterface({ input, output }) : null;
 
 // Modo: DEPLOY por defecto; LOCAL solo con --local.
 const LOCAL = process.argv.includes('--local');
@@ -87,12 +90,37 @@ async function askYesNo(q, def = true) {
 }
 function section(title) { console.log(`\n\x1b[1m\x1b[33m${title}\x1b[0m`); }
 
-// Copia recursiva excluyendo artefactos.
-const EXCLUDE = new Set(['node_modules', '.next', 'dist', '.git', '.turbo', 'generated', '.env', '.env.local']);
-function copyDir(src, dest) {
+// Copia recursiva excluyendo artefactos de build y material sensible (dumps,
+// backups, logs, credenciales). El paquete generado va a un cliente: nada de
+// datos de producción ni secretos debe cruzar esta frontera.
+const EXCLUDE_DIRS = new Set(['node_modules', '.next', 'dist', '.git', '.turbo', 'generated', 'backups', 'coverage', 'tmp']);
+// Extensiones sensibles como SEGMENTO del nombre (no solo sufijo final): cubre
+// tanto el caso simple (backup.sql, app.log) como el compuesto por rotación o
+// compresión (backup.sql.gz, dump.sql.bak, error.log.1). endsWith() plano se
+// queda corto ahí porque el nombre no termina literalmente en ".sql"/".log".
+// Ante la duda, prefiere pecar de exclusión (paquete va a un cliente externo).
+const SENSITIVE_EXT_RE = /\.(sql|dump|log)(\.|$)/i;
+// .env* en cualquier posición del nombre: cubre TANTO los que EMPIEZAN por
+// .env (.env, .env.local, .env.docker) COMO los que TERMINAN en .env
+// (production.env, secrets.env, sin punto inicial) — startsWith('.env') solo
+// cazaba el primer caso y dejaba pasar el segundo íntegro. Sin falsos
+// positivos: "myenvfile.txt" y "environment.ts" no llevan ".env" como
+// segmento propio y no matchean.
+const ENV_NAME_RE = /(^|\.)env(\.|$)/i;
+const EXCLUDE_FILE_SUFFIXES = ['.pem', '.key'];
+export function shouldCopy(name, isDir) {
+  if (isDir) return !EXCLUDE_DIRS.has(name);
+  const lower = name.toLowerCase();
+  if (EXCLUDE_FILE_SUFFIXES.some((suffix) => lower.endsWith(suffix))) return false;
+  if (SENSITIVE_EXT_RE.test(lower)) return false;
+  // .env* nunca se copia, salvo las plantillas *.example (intencionales).
+  if (ENV_NAME_RE.test(lower) && !lower.endsWith('.example')) return false;
+  return true;
+}
+export function copyDir(src, dest) {
   fs.mkdirSync(dest, { recursive: true });
   for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-    if (EXCLUDE.has(entry.name)) continue;
+    if (!shouldCopy(entry.name, entry.isDirectory())) continue;
     const s = path.join(src, entry.name);
     const d = path.join(dest, entry.name);
     if (entry.isDirectory()) copyDir(s, d);
@@ -373,4 +401,4 @@ un \`.env\` listo para \`npm run dev\`).
 `);
 }
 
-main().catch((e) => { console.error(e); rl.close(); process.exit(1); });
+if (IS_MAIN) main().catch((e) => { console.error(e); rl.close(); process.exit(1); });

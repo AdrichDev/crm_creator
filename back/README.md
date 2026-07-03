@@ -97,12 +97,24 @@ y **aforo** de cada recurso. `daySlots()` genera los huecos válidos de un día.
 ## Tests
 
 ```bash
-npm test         # node:test (node --import tsx --test "src/**/*.test.ts")
+npm test          # SOLO tests puros (excluye *.e2e.test.ts) — seguro, no toca la BD
 npm run test:unit # solo src/lib/__tests__/*.test.ts
+npm run test:e2e  # SOLO e2e live (*.e2e.test.ts) — opt-in, escribe en la BD real vía el back
+npm run test:all  # todo (puros + e2e)
 ```
 
-Los tests marcados "live only" se saltan sin entorno Supabase; los unitarios
-(gate de tenancy, nombre, password, rate-limit, auth middleware) corren siempre.
+- `npm test` es el comando por defecto y NO ejecuta ningún e2e: cero conexiones
+  o escrituras a la base de datos.
+- `npm run test:e2e` requiere el back vivo (`TEST_API_URL` o `localhost:4001`) y
+  un `SUPABASE_SERVICE_ROLE_KEY` real; sin ellos los e2e se auto-saltan o fallan
+  rápido sin dejar datos. Cada fichero limpia lo que crea en su `after()`; si un
+  cleanup falla, el error sale por consola con el prefijo `[e2e cleanup]`.
+- Residuos de runs antiguos (negocios `Biz …`/`TzBiz…`, usuarios `*@test.local`):
+
+```bash
+node --import tsx scripts/purge-test-residue.mjs           # dry-run: lista, no borra
+node --import tsx scripts/purge-test-residue.mjs --apply   # borra y reporta conteos
+```
 
 ## Conexión con el front
 

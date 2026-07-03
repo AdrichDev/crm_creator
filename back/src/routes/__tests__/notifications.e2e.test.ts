@@ -3,6 +3,7 @@
 // Requires the back running at localhost:4001 + live Supabase credentials.
 //
 // Runner: node --import tsx --test
+import 'dotenv/config'; // el runner de tests no pasa por src/env.ts; sin esto el cleanup de prisma no tiene DATABASE_URL
 import { test, before, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -57,8 +58,8 @@ beforeEach(async () => {
 after(async () => {
   if (!backUp || !SB_URL) return;
   const cleanup = createClient(SB_URL, SB_SRK, { auth: { persistSession: false } });
-  for (const id of created.userIds) await cleanup.auth.admin.deleteUser(id).catch(() => {});
-  for (const id of created.businessIds) await prisma.business.delete({ where: { id } }).catch(() => {});
+  for (const id of created.userIds) await cleanup.auth.admin.deleteUser(id).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
+  for (const id of created.businessIds) await prisma.business.delete({ where: { id } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
   await prisma.$disconnect();
 });
 
@@ -87,5 +88,5 @@ test('GET /notifications devuelve solo las del negocio activo y filtra por estad
   assert.equal(pendItems.length, 1, 'filtro estado=pending → 1');
   assert.ok(pendItems.every((n) => n.estado === 'pending'));
 
-  await prisma.notification.deleteMany({ where: { businessId: { in: [a.businessId, b.businessId] } } }).catch(() => {});
+  await prisma.notification.deleteMany({ where: { businessId: { in: [a.businessId, b.businessId] } } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
 });

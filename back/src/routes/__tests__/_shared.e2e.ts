@@ -16,6 +16,10 @@
 //     false negative caused by infra.
 //
 // Runner: node --import tsx --test
+//
+// dotenv: el proceso de node:test NO pasa por src/env.ts, así que sin esto el
+// cleanup de prisma lanzaría sin DATABASE_URL y dejaría filas huérfanas en la BD.
+import 'dotenv/config';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import type { TestContext } from 'node:test';
@@ -142,8 +146,8 @@ export async function cleanup(backUp: boolean): Promise<void> {
   sharedAuthPromise = null;
   if (!backUp || !SB_URL) { tracked.userIds.clear(); tracked.businessIds.clear(); return; }
   const sb = createClient(SB_URL, SB_SRK, { auth: { persistSession: false } });
-  for (const id of tracked.userIds) await sb.auth.admin.deleteUser(id).catch(() => {});
-  for (const id of tracked.businessIds) await prisma.business.delete({ where: { id } }).catch(() => {});
+  for (const id of tracked.userIds) await sb.auth.admin.deleteUser(id).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
+  for (const id of tracked.businessIds) await prisma.business.delete({ where: { id } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
   tracked.userIds.clear();
   tracked.businessIds.clear();
   await prisma.$disconnect();

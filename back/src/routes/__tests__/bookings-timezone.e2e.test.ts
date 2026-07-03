@@ -153,8 +153,8 @@ test('AC0 (TZ forzada): idéntico resultado en una instancia aislada del back co
     child?.kill();
     if (userId) {
       const sb = createClient(SB_URL, SB_SRK, { auth: { persistSession: false } });
-      await sb.auth.admin.deleteUser(userId).catch(() => {});
+      await sb.auth.admin.deleteUser(userId).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
     }
-    if (businessId) await prisma.business.delete({ where: { id: businessId } }).catch(() => {});
+    if (businessId) await prisma.business.delete({ where: { id: businessId } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
   }
 });

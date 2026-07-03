@@ -18,8 +18,8 @@ before(async () => { backUp = await probeBack(); if (!backUp) console.warn('[e2e
 beforeEach(async () => { if (backUp) await resetRateLimits('register'); });
 after(async () => {
   if (backUp) {
-    await prisma.reminder.deleteMany({ where: { customerId: { in: [...customerIds] } } }).catch(() => {});
-    await prisma.customer.deleteMany({ where: { id: { in: [...customerIds] } } }).catch(() => {});
+    await prisma.reminder.deleteMany({ where: { customerId: { in: [...customerIds] } } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
+    await prisma.customer.deleteMany({ where: { id: { in: [...customerIds] } } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
   }
   await cleanup(backUp);
 });

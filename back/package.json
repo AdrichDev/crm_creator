@@ -12,8 +12,10 @@
     "prisma:validate": "prisma validate",
     "db:push": "prisma db push",
     "seed": "tsx src/seed.ts",
-    "test": "node --import tsx --test \"src/**/*.test.ts\"",
-    "test:unit": "node --import tsx --test \"src/lib/__tests__/*.test.ts\""
+    "test": "node --import tsx --test \"src/**/!(*.e2e).test.ts\"",
+    "test:unit": "node --import tsx --test \"src/lib/__tests__/*.test.ts\"",
+    "test:e2e": "node --import tsx --test \"src/**/*.e2e.test.ts\"",
+    "test:all": "node --import tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

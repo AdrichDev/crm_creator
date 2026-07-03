@@ -4,6 +4,7 @@
 // Requires the back running at localhost:4001 + live Supabase credentials.
 //
 // Runner: node --import tsx --test
+import 'dotenv/config'; // el runner de tests no pasa por src/env.ts; sin esto el cleanup de prisma no tiene DATABASE_URL
 import { test, before, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -58,8 +59,8 @@ beforeEach(async () => {
 after(async () => {
   if (!backUp || !SB_URL) return;
   const cleanup = createClient(SB_URL, SB_SRK, { auth: { persistSession: false } });
-  for (const id of created.userIds) await cleanup.auth.admin.deleteUser(id).catch(() => {});
-  for (const id of created.businessIds) await prisma.business.delete({ where: { id } }).catch(() => {});
+  for (const id of created.userIds) await cleanup.auth.admin.deleteUser(id).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
+  for (const id of created.businessIds) await prisma.business.delete({ where: { id } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
   await prisma.$disconnect();
 });
 
@@ -92,7 +93,7 @@ test('POST /sales/:id/lineas calcula subtotal y Sale.total = Σ; DELETE recalcul
   const list = await api(`/sales/${sale.id}/lineas`, {}, token, businessId);
   assert.equal((list.body!.lineas as unknown[]).length, 1);
 
-  await prisma.sale.delete({ where: { id: sale.id } }).catch(() => {});
+  await prisma.sale.delete({ where: { id: sale.id } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
 });
 
 // Regresión (2026-07-02): carrera en el recálculo de total. Sin el lock FOR UPDATE
@@ -118,7 +119,7 @@ test('N líneas concurrentes → total = Σ (lock por venta)', async (t) => {
   const list = await api(`/sales/${sale.id}/lineas`, {}, token, businessId);
   assert.equal((list.body!.lineas as unknown[]).length, N);
 
-  await prisma.sale.delete({ where: { id: sale.id } }).catch(() => {});
+  await prisma.sale.delete({ where: { id: sale.id } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
 });
 
 // 3.2.b — venta de otro negocio → 404
@@ -133,5 +134,5 @@ test('POST /sales/:id/lineas sobre venta ajena → 404', async (t) => {
   const r = await api(`/sales/${saleB.id}/lineas`, { method: 'POST', body: JSON.stringify({ concepto: 'X', cantidad: 1, precioUnitario: 1 }) }, a.token, a.businessId);
   assert.equal(r.status, 404, `expected 404, got ${r.status}: ${JSON.stringify(r.body)}`);
 
-  await prisma.sale.delete({ where: { id: saleB.id } }).catch(() => {});
+  await prisma.sale.delete({ where: { id: saleB.id } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
 });

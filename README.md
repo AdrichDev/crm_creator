@@ -39,7 +39,8 @@ el asistente guiado en terminal:
 node generar.mjs            # te pregunta nombre BD, conexión, puertos… y escribe el .env
 ```
 
-Detalle completo en `GENERAR.md`.
+Detalle completo en `GENERAR.md`. Tests del generador (filtro de exclusiones):
+`node --test generar.test.mjs` desde esta carpeta.
 
 El front se conecta al backend definiendo `NEXT_PUBLIC_API_URL` en
 `front/.env.local` (prioridad de datos: API REST > Supabase > local). Arranque del

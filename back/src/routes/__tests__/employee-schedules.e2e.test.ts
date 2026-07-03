@@ -4,6 +4,7 @@
 // Requires the back running at localhost:4001 + live Supabase credentials.
 //
 // Runner: node --import tsx --test
+import 'dotenv/config'; // el runner de tests no pasa por src/env.ts; sin esto el cleanup de prisma no tiene DATABASE_URL
 import { test, before, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -58,8 +59,8 @@ beforeEach(async () => {
 after(async () => {
   if (!backUp || !SB_URL) return;
   const cleanup = createClient(SB_URL, SB_SRK, { auth: { persistSession: false } });
-  for (const id of created.userIds) await cleanup.auth.admin.deleteUser(id).catch(() => {});
-  for (const id of created.businessIds) await prisma.business.delete({ where: { id } }).catch(() => {});
+  for (const id of created.userIds) await cleanup.auth.admin.deleteUser(id).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
+  for (const id of created.businessIds) await prisma.business.delete({ where: { id } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
   await prisma.$disconnect();
 });
 
@@ -86,7 +87,7 @@ test('PUT /employees/:id/horario con 3 tramos → GET devuelve exactamente esos'
   const got = (get.body!.tramos as { diaSemana: number; inicio: string; fin: string }[]).map((x) => ({ diaSemana: x.diaSemana, inicio: x.inicio, fin: x.fin }));
   assert.deepEqual(got, tramos, 'GET debe devolver exactamente los 3 tramos del PUT (ordenados por dia/inicio)');
 
-  await prisma.employee.delete({ where: { id: emp.id } }).catch(() => {});
+  await prisma.employee.delete({ where: { id: emp.id } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
 });
 
 // 3.2.a — validación de formato (diaSemana fuera de rango / HH:MM inválido → 400)
@@ -103,7 +104,7 @@ test('PUT /employees/:id/horario con diaSemana o HH:MM inválido → 400', async
   const badHora = await api(`/employees/${emp.id}/horario`, { method: 'PUT', body: JSON.stringify({ tramos: [{ diaSemana: 2, inicio: '9am', fin: '10:00' }] }) }, token, businessId);
   assert.equal(badHora.status, 400, `expected 400 hora, got ${badHora.status}`);
 
-  await prisma.employee.delete({ where: { id: emp.id } }).catch(() => {});
+  await prisma.employee.delete({ where: { id: emp.id } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
 });
 
 // 3.2.a — empleado de OTRO negocio → 404 (scoping tenant)
@@ -119,5 +120,5 @@ test('PUT /employees/:id/horario de empleado ajeno → 404', async (t) => {
   const put = await api(`/employees/${empB.id}/horario`, { method: 'PUT', body: JSON.stringify({ tramos: [] }) }, a.token, a.businessId);
   assert.equal(put.status, 404, `expected 404, got ${put.status}: ${JSON.stringify(put.body)}`);
 
-  await prisma.employee.delete({ where: { id: empB.id } }).catch(() => {});
+  await prisma.employee.delete({ where: { id: empB.id } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
 });

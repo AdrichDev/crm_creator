@@ -5,6 +5,7 @@
 //
 // Llama a la API viva (localhost:4001). Salta si el back está caído o si
 // SUPABASE_SERVICE_ROLE_KEY es placeholder. Runner: node --import tsx --test
+import 'dotenv/config'; // el runner de tests no pasa por src/env.ts; sin esto el cleanup de prisma no tiene DATABASE_URL
 import { test, before, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -61,8 +62,8 @@ beforeEach(async () => {
 after(async () => {
   if (!backUp || !SB_URL) return;
   const cleanup = createClient(SB_URL, SB_SRK, { auth: { persistSession: false } });
-  for (const id of created.userIds) await cleanup.auth.admin.deleteUser(id).catch(() => {});
-  for (const id of created.businessIds) await prisma.business.delete({ where: { id } }).catch(() => {});
+  for (const id of created.userIds) await cleanup.auth.admin.deleteUser(id).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
+  for (const id of created.businessIds) await prisma.business.delete({ where: { id } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
   await prisma.$disconnect();
 });
 

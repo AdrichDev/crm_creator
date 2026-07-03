@@ -3,6 +3,7 @@
 // Requires the back running at localhost:4001 + live Supabase credentials.
 //
 // Runner: node --import tsx --test
+import 'dotenv/config'; // el runner de tests no pasa por src/env.ts; sin esto el cleanup de prisma no tiene DATABASE_URL
 import { test, before, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -78,8 +79,8 @@ beforeEach(async () => {
 after(async () => {
   if (!backUp || !SB_URL) return;
   const cleanup = createClient(SB_URL, SB_SRK, { auth: { persistSession: false } });
-  for (const id of created.userIds) await cleanup.auth.admin.deleteUser(id).catch(() => {});
-  for (const id of created.businessIds) await prisma.business.delete({ where: { id } }).catch(() => {});
+  for (const id of created.userIds) await cleanup.auth.admin.deleteUser(id).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
+  for (const id of created.businessIds) await prisma.business.delete({ where: { id } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
   await prisma.$disconnect();
 });
 
@@ -141,8 +142,8 @@ test('POST /members con employeeId + customerId a la vez → 400 XOR_REQUIRED', 
   assert.equal((r.body!.error as { code: string }).code, 'XOR_REQUIRED');
 
   // Cleanup
-  await prisma.employee.delete({ where: { id: employee.id } }).catch(() => {});
-  await prisma.customer.delete({ where: { id: customer.id } }).catch(() => {});
+  await prisma.employee.delete({ where: { id: employee.id } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
+  await prisma.customer.delete({ where: { id: customer.id } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
 });
 
 // ---------------------------------------------------------------------------
@@ -177,8 +178,8 @@ test('POST /members solo customerId (adulto) → 201', async (t) => {
   assert.ok(memberId, 'response should include id');
 
   // Cleanup
-  await prisma.teamMember.delete({ where: { id: memberId } }).catch(() => {});
-  await prisma.customer.delete({ where: { id: customer.id } }).catch(() => {});
+  await prisma.teamMember.delete({ where: { id: memberId } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
+  await prisma.customer.delete({ where: { id: customer.id } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
 });
 
 // ---------------------------------------------------------------------------
@@ -212,7 +213,7 @@ test('POST /members customerId menor de edad, 0 contactos → 422 MINOR_NO_CONTA
   assert.equal((r.body!.error as { code: string }).code, 'MINOR_NO_CONTACTS');
 
   // Cleanup
-  await prisma.customer.delete({ where: { id: customer.id } }).catch(() => {});
+  await prisma.customer.delete({ where: { id: customer.id } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
 });
 
 // ---------------------------------------------------------------------------
@@ -247,8 +248,8 @@ test('POST /members customerId mayor de edad, 0 contactos → 201', async (t) =>
 
   // Cleanup
   const memberId = (r.body as { id: string }).id;
-  await prisma.teamMember.delete({ where: { id: memberId } }).catch(() => {});
-  await prisma.customer.delete({ where: { id: customer.id } }).catch(() => {});
+  await prisma.teamMember.delete({ where: { id: memberId } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
+  await prisma.customer.delete({ where: { id: customer.id } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
 });
 
 // ---------------------------------------------------------------------------
@@ -291,8 +292,8 @@ test('soft-delete equipo → Customer y Employee siguen existiendo en BD', async
   assert.ok(stillEmployee, 'Employee debe seguir existiendo tras soft-delete del equipo');
 
   // Cleanup
-  await prisma.teamMember.deleteMany({ where: { teamId } }).catch(() => {});
-  await prisma.team.delete({ where: { id: teamId } }).catch(() => {});
-  await prisma.customer.delete({ where: { id: customer.id } }).catch(() => {});
-  await prisma.employee.delete({ where: { id: employee.id } }).catch(() => {});
+  await prisma.teamMember.deleteMany({ where: { teamId } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
+  await prisma.team.delete({ where: { id: teamId } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
+  await prisma.customer.delete({ where: { id: customer.id } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
+  await prisma.employee.delete({ where: { id: employee.id } }).catch((e) => console.error('[e2e cleanup]', e instanceof Error ? e.message : e));
 });
