@@ -163,6 +163,7 @@ model Business {
   marcaSecundario String   @default("#8cc63f") @map("marca_secundario")
   logoUrl         String?  @map("logo_url") // URL pública en Supabase Storage (bucket 'branding'); usada en emails
   eliminadoEn     DateTime? @map("eliminado_en") // soft delete: null = activo; fecha = borrado (hard delete en prod)
+  generadoEn      DateTime? @map("generado_en") // null = solo configurado; fecha = paquete del proyecto ya generado
   createdAt       DateTime @default(now()) @map("creado_en")
   updatedAt       DateTime @updatedAt @map("actualizado_en")
 

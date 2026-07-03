@@ -2,26 +2,26 @@ import { Router, type Response } from 'express';
 import { prisma } from '../prisma.js';
 import { Prisma } from '../lib/generated/prisma/client.js';
 import type { AuthedRequest } from '../middleware/types.js';
-import { DEFAULT_VISIT_STATES } from '../lib/comercial/visit-states.js';
+import {
+  CONFIG_CATEGORY,
+  createProjectService,
+  tenantExists,
+  type CreateProjectDeps,
+  type ProjectConfig,
+} from '../lib/projects/create-project-service.js';
 
 // Proyectos = crm.Business (1-1 con aa.tenant vía tenant_id). La config del
 // onboarding (módulos/terminología/branding…) se guarda íntegra en BusinessSetting
 // (categoria='config', Json) y se espeja a columnas de Business (nombre/vertical/marca)
 // para consultas y emails. Tenancy row-level. Soft delete (eliminadoEn).
+// El create vive en lib/projects/create-project-service.ts (compartido con el
+// operador, F8-T3); aquí solo queda el mapeo HTTP.
 export const projectsRouter = Router();
 
-type Cfg = Record<string, unknown> & {
-  business?: { name?: string; vertical?: string; clienteId?: string };
-  branding?: { primary?: string; secondary?: string; logoImage?: string };
-};
+// Re-export para los tests de caracterización del alta (importan desde la ruta).
+export type { CreateProjectDeps, ProjectTxClient, CreatedBusiness } from '../lib/projects/create-project-service.js';
 
-const CONFIG_CATEGORY = 'config';
-
-async function tenantExists(tenantId: string): Promise<boolean> {
-  const rows = await prisma.$queryRaw<{ id: string }[]>`
-    SELECT id FROM aa.tenant WHERE id = ${tenantId} AND activo = true LIMIT 1`;
-  return rows.length > 0;
-}
+type Cfg = ProjectConfig;
 
 interface BusinessRow {
   id: string;
@@ -71,59 +71,39 @@ projectsRouter.get('/', async (req: AuthedRequest, res: Response) => {
   res.json(businesses.map(toProject));
 });
 
-type Tx = Prisma.TransactionClient;
-
-// Calcula las columnas espejo (nombre/vertical/marca…) a partir de la config.
-function mirrorColumns(config: Cfg) {
-  return {
-    nombre: config.business?.name ?? 'Nuevo proyecto',
-    vertical: config.business?.vertical ?? 'custom',
-    ...(config.branding?.primary ? { marcaPrimario: config.branding.primary } : {}),
-    ...(config.branding?.secondary ? { marcaSecundario: config.branding.secondary } : {}),
-    ...(config.branding?.logoImage ? { logoUrl: config.branding.logoImage } : {}),
-  };
-}
-
-// Crea el proyecto desde cero: Business + sede + config + membership OWNER.
-async function createProject(
-  tx: Tx,
-  tenantId: string,
-  userId: string,
-  config: Cfg,
-  mirror: ReturnType<typeof mirrorColumns>,
-) {
-  const b = await tx.business.create({ data: { tenantId, ...mirror } });
-  await tx.location.create({ data: { businessId: b.id, nombre: config.business?.name ?? 'Sede' } });
-  await tx.businessSetting.create({ data: { businessId: b.id, categoria: CONFIG_CATEGORY, datos: config as Prisma.InputJsonValue } });
-  await tx.membership.create({ data: { userId, businessId: b.id, role: 'ADMIN' } });
-  // Comercial de campo: estados de visita base del negocio (idempotente por negocio nuevo).
-  await tx.visitState.createMany({ data: DEFAULT_VISIT_STATES.map((s) => ({ ...s, businessId: b.id, esSistema: true })) });
-  return b;
-}
-
-// POST / → crea proyecto. Exige tenant existente en AA. Un tenant puede tener N proyectos.
-projectsRouter.post('/', async (req: AuthedRequest, res: Response) => {
+/**
+ * Handler del alta de proyecto con deps inyectables (tenantExists + transaction).
+ * Exportado para tests de caracterización; el router lo enlaza con Prisma real.
+ * La lógica de creación vive en createProjectService (compartida con el operador).
+ */
+export async function createProjectHandler(deps: CreateProjectDeps, req: AuthedRequest, res: Response) {
   const config = (req.body?.config ?? {}) as Cfg;
   const tenantId: string | undefined = req.body?.tenantId ?? config.business?.clienteId;
   if (!tenantId) {
     return res.status(422).json({ error: { code: 'tenant_required', message: 'Selecciona un cliente (tenant) existente' } });
   }
-  if (!(await tenantExists(tenantId))) {
-    return res.status(422).json({ error: { code: 'tenant_not_found', message: 'El cliente (tenant) no existe en agents-agency' } });
-  }
-
-  const mirror = mirrorColumns(config);
 
   try {
-    const business = await prisma.$transaction((tx) =>
-      createProject(tx, tenantId, req.userId!, config, mirror),
-    );
-    res.status(201).json({ id: business.id, config, createdAt: business.createdAt.toISOString() });
+    // El service valida el tenant (una sola vez) y crea el alta en 1 transacción.
+    const result = await createProjectService({ tenantId, userId: req.userId!, config }, deps);
+    if (!result.ok) {
+      return res.status(422).json({ error: { code: 'tenant_not_found', message: 'El cliente (tenant) no existe en agents-agency' } });
+    }
+    res.status(201).json({ id: result.business.id, config, createdAt: result.business.createdAt.toISOString() });
   } catch (e) {
     console.error('[projects] create error:', e);
     return res.status(500).json({ error: { code: 'server_error', message: 'No se pudo crear el proyecto' } });
   }
-});
+}
+
+// Dependencias reales: Prisma satisface las interfaces estrechas estructuralmente.
+const defaultCreateDeps: CreateProjectDeps = {
+  tenantExists: (tenantId) => tenantExists(prisma, tenantId),
+  transaction: (fn) => prisma.$transaction(fn),
+};
+
+// POST / → crea proyecto. Exige tenant existente en AA. Un tenant puede tener N proyectos.
+projectsRouter.post('/', (req: AuthedRequest, res: Response) => createProjectHandler(defaultCreateDeps, req, res));
 
 // PATCH /:id → actualiza config (modo edición). Espeja a columnas + BusinessSetting.
 projectsRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {

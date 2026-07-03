@@ -3,6 +3,7 @@ import cors from 'cors';
 import swaggerUi from 'swagger-ui-express';
 import { env, assertConfig } from './env.js';
 import { api } from './routes/index.js';
+import { serviceOperatorRouter } from './routes/service-operator.js';
 import { notFound, errorHandler } from './middleware/error.js';
 import { startReminderDrainer } from './lib/reminderDrainer.js';
 import { startDigestScheduler } from './lib/digestScheduler.js';
@@ -25,6 +26,10 @@ if (process.env.NODE_ENV !== 'production') {
   app.get('/api/docs/swagger.json', (_req, res) => res.json(swaggerSpec));
   app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 }
+
+// Operator Agent (F1 aa-operator-agent): manos server-side de solo lectura,
+// protegidas SOLO por service token. FUERA de /api → no pasa por el gate de usuario.
+app.use('/service/operator', serviceOperatorRouter);
 
 app.use('/api', api);
 app.use(notFound);
