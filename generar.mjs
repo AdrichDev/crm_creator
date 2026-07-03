@@ -100,6 +100,12 @@ const EXCLUDE_DIRS = new Set(['node_modules', '.next', 'dist', '.git', '.turbo',
 // queda corto ahí porque el nombre no termina literalmente en ".sql"/".log".
 // Ante la duda, prefiere pecar de exclusión (paquete va a un cliente externo).
 const SENSITIVE_EXT_RE = /\.(sql|dump|log)(\.|$)/i;
+// Excepción al bloqueo de .sql: migraciones legítimas de Prisma bajo
+// prisma/migrations/**/migration.sql (necesarias para `prisma migrate deploy`
+// en el paquete generado). Cualquier otro .sql (dumps, scripts sueltos como
+// prisma/migrate-negocio-generado.sql) sigue excluido. .dump y .log NUNCA
+// llevan excepción.
+const MIGRATIONS_DIR_RE = /(^|\/)prisma\/migrations(\/|$)/;
 // .env* en cualquier posición del nombre: cubre TANTO los que EMPIEZAN por
 // .env (.env, .env.local, .env.docker) COMO los que TERMINAN en .env
 // (production.env, secrets.env, sin punto inicial) — startsWith('.env') solo
@@ -108,22 +114,30 @@ const SENSITIVE_EXT_RE = /\.(sql|dump|log)(\.|$)/i;
 // segmento propio y no matchean.
 const ENV_NAME_RE = /(^|\.)env(\.|$)/i;
 const EXCLUDE_FILE_SUFFIXES = ['.pem', '.key'];
-export function shouldCopy(name, isDir) {
+// `relDir` es la ruta relativa (separador '/', sin barra inicial) del directorio
+// PADRE del entry dentro del árbol que se está copiando (p. ej. "prisma/migrations/20260616_x"
+// cuando el entry es "migration.sql"). Parámetro explícito (no estado de módulo)
+// para que la función siga siendo trivialmente testeable.
+export function shouldCopy(name, isDir, relDir = '') {
   if (isDir) return !EXCLUDE_DIRS.has(name);
   const lower = name.toLowerCase();
   if (EXCLUDE_FILE_SUFFIXES.some((suffix) => lower.endsWith(suffix))) return false;
-  if (SENSITIVE_EXT_RE.test(lower)) return false;
+  if (SENSITIVE_EXT_RE.test(lower)) {
+    // Excepción: migration.sql legítimo de Prisma bajo prisma/migrations/**.
+    const isMigrationSql = lower.endsWith('.sql') && MIGRATIONS_DIR_RE.test(relDir);
+    if (!isMigrationSql) return false;
+  }
   // .env* nunca se copia, salvo las plantillas *.example (intencionales).
   if (ENV_NAME_RE.test(lower) && !lower.endsWith('.example')) return false;
   return true;
 }
-export function copyDir(src, dest) {
+export function copyDir(src, dest, relDir = '') {
   fs.mkdirSync(dest, { recursive: true });
   for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-    if (!shouldCopy(entry.name, entry.isDirectory())) continue;
+    if (!shouldCopy(entry.name, entry.isDirectory(), relDir)) continue;
     const s = path.join(src, entry.name);
     const d = path.join(dest, entry.name);
-    if (entry.isDirectory()) copyDir(s, d);
+    if (entry.isDirectory()) copyDir(s, d, relDir ? `${relDir}/${entry.name}` : entry.name);
     else fs.copyFileSync(s, d);
   }
 }
