@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { prisma } from '../../prisma.js';
 import { createClient } from '@supabase/supabase-js';
+import { registerAndToken } from './_shared.e2e.js';
 
 const BASE = process.env.TEST_API_URL ?? 'http://localhost:4001';
 // prisma: singleton compartido (con adapter P7), importado arriba.
@@ -110,16 +111,13 @@ test('register-client creates CLIENT + Customer (live only)', async (t) => {
   if (!backUp) return t.skip('back down');
   if (!SUPABASE_LIVE) return t.skip('SUPABASE_SERVICE_ROLE_KEY is placeholder — skipping live Supabase test');
 
-  // First create a business via register.
+  // First create a business by direct insertion (fixture; POST /auth/register was retired).
   const ownerEmail = `owner_${uniq()}@test.local`;
-  const bizR = await api('/auth/register', {
-    method: 'POST',
-    body: JSON.stringify({ businessName: `Biz ${uniq()}`, email: ownerEmail, password: 'Owner-pass-1234', firstName: 'Owner' }),
-  });
-  assert.equal(bizR.status, 201, `register failed: ${JSON.stringify(bizR.body)}`);
-  const businessId = (bizR.body!.business as { id: string }).id;
+  const owner = await registerAndToken(ownerEmail, 'Owner-pass-1234', t);
+  if (!owner) return;
+  const businessId = owner.businessId;
   created.businessIds.add(businessId);
-  created.userIds.add((bizR.body!.user as { id: string }).id);
+  created.userIds.add(owner.userId);
 
   const email = `cli_${uniq()}@test.local`;
   const username = `cli_${uniq()}`;
@@ -151,13 +149,11 @@ test('register-client with duplicate email responds neutral (live only)', async 
   if (!SUPABASE_LIVE) return t.skip('SUPABASE_SERVICE_ROLE_KEY is placeholder');
 
   const ownerEmail = `owner_${uniq()}@test.local`;
-  const bizR = await api('/auth/register', {
-    method: 'POST',
-    body: JSON.stringify({ businessName: `Biz ${uniq()}`, email: ownerEmail, password: 'Owner-pass-1234', firstName: 'Owner' }),
-  });
-  const businessId = (bizR.body!.business as { id: string }).id;
+  const owner = await registerAndToken(ownerEmail, 'Owner-pass-1234', t);
+  if (!owner) return;
+  const businessId = owner.businessId;
   created.businessIds.add(businessId);
-  created.userIds.add((bizR.body!.user as { id: string }).id);
+  created.userIds.add(owner.userId);
 
   const email = `dup_${uniq()}@test.local`;
   const r1 = await api('/auth/register-client', {

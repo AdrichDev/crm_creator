@@ -112,22 +112,17 @@ test('AC0 (TZ forzada): idéntico resultado en una instancia aislada del back co
     const up = await waitForHealth(base, 20000);
     if (!up) return t.skip('no se pudo arrancar la instancia aislada del back con TZ forzada');
 
+    // Fixture creado por inserción directa (Supabase admin + Prisma), NO vía HTTP
+    // contra la instancia aislada: POST /auth/register fue retirado
+    // (crm-retirar-auth-register). El sign-in es directo contra Supabase, así que
+    // es independiente de qué instancia del back esté arrancada.
     const email = `tz_forced_${uniq()}@test.local`;
     const password = 'Tz-pass-1234';
-    const reg = await fetch(`${base}/api/auth/register`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ businessName: `TzBiz ${uniq()}`, email, password, firstName: 'Tz' }),
-    });
-    const regText = await reg.text();
-    assert.equal(reg.status, 201, `register failed: ${regText}`);
-    const regBody = JSON.parse(regText) as { business: { id: string }; user: { id: string } };
-    businessId = regBody.business.id;
-    userId = regBody.user.id;
-
-    const sb = createClient(SB_URL, SB_SRK, { auth: { persistSession: false } });
-    const { data, error } = await sb.auth.signInWithPassword({ email, password });
-    assert.ok(!error && data.session, `signIn failed: ${error?.message}`);
-    const token = data.session!.access_token;
+    const auth = await registerAndToken(email, password, t);
+    if (!auth) return;
+    businessId = auth.businessId;
+    userId = auth.userId;
+    const token = auth.token;
 
     const location = await prisma.location.create({ data: { businessId, nombre: 'Sede TZ' } });
     const { date, dow } = futureDate(31);

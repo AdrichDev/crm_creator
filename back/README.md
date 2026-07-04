@@ -70,7 +70,6 @@ y **aforo** de cada recurso. `daySlots()` genera los huecos válidos de un día.
 
 ## Auth (Supabase)
 
-- `POST /auth/register` (crea empresa+owner+sede; compensación SAGA si falla el tx).
 - `POST /auth/register-client` (alta de cliente; `Customer.userId` enlaza a `auth.uid()`).
 - `GET /auth/me` (perfil + memberships + negocio activo).
 - `POST /auth/login`, `/set-password`, `/reset-password`, `/verify-email`,

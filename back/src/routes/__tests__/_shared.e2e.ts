@@ -93,27 +93,58 @@ export async function signInWithRetry(email: string, password: string, t: TestCo
   return null;
 }
 
+// Admin client used only to create/compensate auth.users entries by direct
+// insertion (no HTTP call to the retired POST /auth/register endpoint).
+const sbAdmin = () => createClient(SB_URL, SB_SRK, { auth: { persistSession: false } });
+
 /**
  * Registers a fresh business + ADMIN owner and returns a signed-in token.
  * Ids are tracked for central cleanup. Returns null (and skips the test) when
- * Supabase throttles either the register or the signIn.
+ * Supabase throttles either the createUser call or the signIn.
  * Use for tests that NEED an isolated business (cross-tenant, auth mutations).
+ *
+ * Creates the business by DIRECT insertion (Supabase admin.createUser + Prisma),
+ * replicating the transaction the retired `POST /auth/register` endpoint used to
+ * run, without going through HTTP. See crm-retirar-auth-register.
  */
 export async function registerAndToken(email: string, password: string, t: TestContext): Promise<Auth | null> {
-  const reg = await api('/auth/register', {
-    method: 'POST',
-    body: JSON.stringify({ businessName: `Biz ${uniq()}`, email, password, firstName: 'Own' }),
+  const businessName = `Biz ${uniq()}`;
+  const admin = sbAdmin();
+  const { data: authData, error: authError } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: { firstName: 'Own', businessName, brandPrimary: '#1b431c' },
   });
-  // 429 here means an auth rate limit (express bucket or Supabase createUser) — skip, don't fail.
-  if (reg.status === 429) { t.skip('rate limit en register'); return null; }
-  assert.equal(reg.status, 201, `register failed: ${JSON.stringify(reg.body)}`);
-  const businessId = (reg.body!.business as { id: string }).id;
-  const userId = (reg.body!.user as { id: string }).id;
-  tracked.businessIds.add(businessId);
-  tracked.userIds.add(userId);
+  if (authError) {
+    // Rate-limit here means an auth-provider throttle — skip, don't fail (same policy as signInWithRetry).
+    if (isRateLimit(authError.message)) { t.skip('rate limit en createUser'); return null; }
+    assert.fail(`createUser failed: ${authError.message}`);
+  }
+  const supabaseUserId = authData.user.id;
+
+  // Business + Location + crm.User profile + Membership, in one tx — same shape as
+  // the retired endpoint's transaction. SAGA compensation: if the tx fails, delete
+  // the just-created auth.users entry so the email is not orphaned.
+  let result;
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      const business = await tx.business.create({ data: { nombre: businessName, vertical: 'custom' } });
+      await tx.location.create({ data: { businessId: business.id, nombre: businessName } });
+      const user = await tx.user.create({ data: { id: supabaseUserId, email, firstName: 'Own' } });
+      await tx.membership.create({ data: { userId: user.id, businessId: business.id, role: 'ADMIN' } });
+      return { business, user };
+    });
+  } catch (e) {
+    await admin.auth.admin.deleteUser(supabaseUserId).catch(() => { /* best-effort compensation */ });
+    throw e;
+  }
+
+  tracked.businessIds.add(result.business.id);
+  tracked.userIds.add(result.user.id);
   const token = await signInWithRetry(email, password, t);
   if (!token) return null;
-  return { token, businessId, userId };
+  return { token, businessId: result.business.id, userId: result.user.id };
 }
 
 // One owner per process. node:test runs each file in its own process, so this
