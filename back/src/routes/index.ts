@@ -64,9 +64,15 @@ api.use('/resources', crudRouter('resource', { fields: ['locationId', 'nombre', 
 // Líneas de venta anidadas (/:id/lineas) ANTES del crud de ventas: rutas distintas, sin colisión.
 api.use('/sales', saleLinesRouter);
 api.use('/sales', crudRouter('sale', { fields: ['customerId', 'cliente', 'fecha', 'metodo', 'total'], include: { lines: true }, fkFields: { customerId: 'customer' } }));
-api.use('/invoices', crudRouter('invoice', { fields: ['numero', 'cliente', 'servicio', 'fecha', 'total', 'estado', 'documentos'] }));
+// crm-paridad-facturas-pedidos-aa (PR-2b): el alta manual genérica por esta ruta se CIERRA
+// (disableCreate → POST /invoices responde 405). La factura se crea automáticamente al
+// aceptar un pedido (PUT /pedidos/:id/status → ensureInvoiceForPedido). GET/PATCH/DELETE
+// siguen abiertos para el listado/detalle/edición. NOTA: /service/operator/invoices (bot de
+// Telegram, numeración F00001) es OTRO router y NO se ve afectado — usa prisma.invoice.create
+// directamente, no este crudRouter.
+api.use('/invoices', crudRouter('invoice', { fields: ['numero', 'cliente', 'servicio', 'fecha', 'total', 'estado', 'documentos'], disableCreate: true }));
 // Presupuestos/Pedidos documentales (crm-paridad-facturas-pedidos-aa): superficie NUEVA,
-// separada de /sales (TPV). La factura se auto-crea al aceptar en PR-2b.
+// separada de /sales (TPV). La factura se auto-crea al aceptar (PR-2b).
 api.use('/pedidos', pedidosRouter);
 api.use('/campaigns', crudRouter('campaign', { fields: ['nombre', 'canal', 'estado', 'enviados', 'aperturas'] }));
 api.use('/fichajes', crudRouter('fichaje', { fields: ['employeeId', 'empleado', 'fecha', 'entrada', 'salida', 'horas'], fkFields: { employeeId: 'employee' } }));

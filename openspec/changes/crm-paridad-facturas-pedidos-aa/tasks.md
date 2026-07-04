@@ -62,12 +62,29 @@ Riesgo de superar 400 líneas: Alto (motivo por el que se encadena)
       El efecto factura-al-aceptar + cierre del alta manual `POST /api/invoices` van en
       **PR-2b** (tocan la tabla compartida `factura` y retiran una superficie de API viva —
       ver design.md § División de PR-2).
-- [ ] 1.2b (PR-2b) Auto-factura al aceptar pedido + cierre de `POST /api/invoices` manual.
-      Columna `pedido_id @unique` en `factura` (migración a tabla compartida),
-      `ensureInvoiceForPedido()` idempotente (único + comprobación de `target` del P2002, NO
-      catch ciego) enganchado a la transición `aceptada`, y cierre del alta manual genérica
-      `POST /api/invoices` (crudRouter) — conservando GET/PATCH/DELETE. `service-operator`
-      intacto. **PENDIENTE.**
+- [x] 1.2b (PR-2b) Auto-factura al aceptar pedido + cierre de `POST /api/invoices` manual. **DONE (PR-2b, 04/07/2026).**
+      Migración ADITIVA `back/prisma/migrations/20260704020000_factura_pedido_link/migration.sql`
+      (columna `crm.factura.pedido_id` NULLABLE + UNIQUE + FK `ON DELETE SET NULL`) —
+      **ESCRITA, NO APLICADA** (convención PR-1/PR-2; el humano corre `migrate deploy`).
+      Modelo: `Invoice.pedidoId @unique` + `Invoice.pedido` / `Pedido.invoice` en
+      `schema.prisma` (cliente Prisma regenerado). Lógica en `back/src/lib/pedidos/invoice.ts`:
+      `ensureInvoiceForPedido()` idempotente vía `factura.pedido_id @unique` +
+      `isPedidoUniqueConflict()` (comprobación del `target` del P2002 — NO catch ciego;
+      relanza colisiones de otras columnas), `deriveInvoiceNumberFromPedido()`
+      (ver design.md § Derivación del `numero`). Enganchado a la transición `aceptada` en
+      `back/src/routes/pedidos.ts` (`pedidoStatusHandler`, DI para tests) dentro de una
+      `prisma.$transaction` junto al cambio de estado + guard de des-aceptación (salir de
+      `aceptada` con factura vinculada → 400). Cierre del alta manual genérica:
+      `crudRouter` gana la opción `disableCreate` (`back/src/lib/crud.ts`) → `POST /api/invoices`
+      responde **405**; GET/PATCH/DELETE intactos (`routes/index.ts`).
+      **`service-operator.ts` (bot Telegram, numeración `F00001`) NO se toca** (diff = 0 bytes,
+      usa `prisma.invoice.create` directo, no este crudRouter). **`ventas`/`sales` NO se tocan.**
+      Tests: unitarios `back/src/lib/pedidos/__tests__/invoice.test.ts` (derivación + discriminador
+      P2002 + swallow/rethrow) y `back/src/routes/__tests__/pedidos-status.test.ts` (guard +
+      transacción + hook, DI mockeado) — corren en `npm test`. e2e `pedidos.e2e.test.ts`
+      (aceptar→factura idempotente + guard des-aceptación) e `invoices.e2e.test.ts` (POST 405 +
+      fixtures por `prisma.invoice.create`) — excluidos de `npm test`, verdes al aplicar migración.
+      `npm test`: **410 pass / 0 fail** (baseline 390 + 20 nuevos). Typecheck limpio.
 - [x] 1.3 Definir mapeo de estados `Pendiente/Pagada/Anulada` a métricas. **DONE (PR-1, 04/07/2026).**
       `back/src/lib/invoices/metrics.ts`: función pura `computeInvoiceMetrics()`
       (mismo nombre que su equivalente en `agents-agency/back/src/lib/invoices.ts`,

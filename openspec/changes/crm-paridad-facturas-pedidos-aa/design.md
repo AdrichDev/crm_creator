@@ -128,4 +128,46 @@ La 1.2 combina tres superficies de riesgo distintas, así que se parte:
   concentra el riesgo de ALTERAR `factura` (que el bot vivo escribe) y RETIRAR una
   superficie de API viva. Juntas superarían con holgura las 400-500 líneas.
 
+### PR-2b implementada (04/07/2026) — decisiones de implementación
+
+- **Idempotencia por constraint REAL, no a nivel de app.** `crm.factura.pedido_id` es
+  `NULLABLE + @unique` (migración `20260704020000_factura_pedido_link`, escrita, NO aplicada).
+  Postgres permite múltiples NULL bajo un índice único → las facturas manuales/del operador
+  (`pedido_id` NULL) conviven; sólo se garantiza ≤1 factura por pedido. `ensureInvoiceForPedido`
+  captura P2002 pero **sólo lo trata como "ya facturado" si `err.meta.target` es la columna
+  `pedido_id`** (`isPedidoUniqueConflict`, contempla `pedido_id`/`pedidoId`/nombre del índice);
+  un P2002 de OTRA columna se RELANZA (no se traga en silencio — evita el bug de catch ciego
+  que Devil's Advocate detectó en AA). Cambio de estado + creación de factura van en una
+  `prisma.$transaction`: si la factura falla, el pedido no queda `aceptada` sin factura.
+  Guard de des-aceptación: salir de `aceptada` con factura vinculada → 400 (no huérfana la
+  factura). `onDelete: SET NULL` en la FK: la factura (registro financiero) sobrevive a un
+  borrado en duro del pedido, y no crea conflicto con el CASCADE de negocio→pedido/factura.
+
+- **Derivación del `numero` de la auto-factura (decisión contenida, sin fork).**
+  `deriveInvoiceNumberFromPedido(pedidoNumero)` intercambia el prefijo de tipo de documento
+  por `"FAC - "`, misma idea que `deriveInvoiceNumber` de AA (`"AD-2026-001" → "FAC - 2026-001"`).
+  Diferencia con AA: AA quita el prefijo fijo `AD-`; aquí se quita **cualquier** prefijo
+  alfabético inicial seguido de guion (`/^[A-Za-z]+-/`) para no acoplarse a un prefijo concreto,
+  ya que el `numero` del pedido lo teclea el formulario (como en AA) y puede variar por tenant
+  (`P-17 → FAC - 17`, `2026-007 → FAC - 2026-007`). Estable/idempotente: mismo `numero` de
+  pedido ⇒ mismo `numero` de factura, sin secuencia ni carrera. **NO se exige unicidad de este
+  `numero`** (la idempotencia real es `pedido_id @unique`): así se respeta el contrato del CRM,
+  donde el `numero` de factura NO es único (caracterización 1.1). Por qué es contenido y no un
+  fork que requiera firma humana: es un detalle de nomenclatura reversible, sin impacto en
+  datos existentes ni en el contrato del operador; se documenta aquí y en el código.
+
+- **`total` de la auto-factura = `totalImpl + totalMant`** (ambos con IVA). No es un fork:
+  sigue la convención de agregación ya fijada por `computeInvoiceMetrics` (task 1.3,
+  `back/src/lib/invoices/metrics.ts`, y su equivalente en AA), donde el importe de una factura
+  es `totalImpl + totalMaint`. `cliente` se deriva de `clienteSnapshot.nombre` (fallback `''`);
+  `servicio` = null (el detalle documental vive en las líneas del pedido enlazado); `estado`
+  inicial `'Pendiente'` (modelo de 3 estados del CRM); `fecha` = hoy `YYYY-MM-DD`.
+
+- **Cierre del alta manual sólo en la superficie genérica.** `crudRouter` gana la opción
+  `disableCreate` → `POST /api/invoices` responde **405** (`method_not_allowed`); GET/PATCH/DELETE
+  intactos para el listado/detalle/edición. **`POST /service/operator/invoices` NO se toca**:
+  es otro router y usa `prisma.invoice.create` directamente, no este crudRouter (diff de
+  `service-operator.ts` = 0 bytes). El front (`facturas → /invoices`) pierde el alta manual por
+  diseño del dueño: la factura nace al aceptar un pedido.
+
 

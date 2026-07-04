@@ -671,6 +671,17 @@ model Invoice {
   total      Decimal  @default(0) @map("total")
   estado     String   @default("Pendiente") @map("estado")
   documentos Json?    @map("documentos")
+  // crm-paridad-facturas-pedidos-aa (PR-2b): vínculo idempotente factura↔pedido.
+  // NULLABLE + @unique = clave de idempotencia de la auto-factura al aceptar un pedido
+  // (espejo de Invoice.budgetId en agents-agency). Postgres permite múltiples NULL bajo
+  // un índice único, así que las facturas manuales/del operador (pedido_id NULL) conviven
+  // sin colisión; solo hay 1 factura como máximo por pedido. NO se pone `numero` como
+  // único: rompería el contrato vigente (operador admite numero duplicado entre negocios).
+  // onDelete: SetNull — la factura es el registro financiero durable: si el pedido se
+  // borra en duro, la factura sobrevive con pedido_id NULL en vez de bloquear el borrado
+  // (Restrict) o perderse (Cascade). Compatible con el Cascade de negocio→pedido/factura.
+  pedidoId   String?  @unique @map("pedido_id")
+  pedido     Pedido?  @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
   createdAt  DateTime @default(now()) @map("creado_en")
   @@index([businessId])
   eliminadoEn DateTime? @map("eliminado_en")
@@ -703,6 +714,9 @@ model Pedido {
   diasValidez    Int       @default(30) @map("dias_validez")
   notas          String?   @map("notas")
   lines          PedidoLine[]
+  // crm-paridad-facturas-pedidos-aa (PR-2b): factura auto-creada al aceptar (0..1).
+  // Espejo de Budget.invoice en agents-agency. La FK/@unique vive en Invoice.pedidoId.
+  invoice        Invoice?
   createdAt      DateTime  @default(now()) @map("creado_en")
   updatedAt      DateTime  @updatedAt @map("actualizado_en")
   eliminadoEn    DateTime? @map("eliminado_en")

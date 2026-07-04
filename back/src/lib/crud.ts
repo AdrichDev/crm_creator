@@ -25,6 +25,12 @@ interface CrudOptions {
   fkFields?: Record<string, TenantModel>;
   /** Campos de texto para búsqueda ILIKE (OR). Si está vacío no se aplica filtro. */
   searchFields?: string[];
+  /**
+   * Cierra la creación por esta superficie: en vez de registrar POST /, responde 405.
+   * Se usa para `/invoices` (crm-paridad-facturas-pedidos-aa, PR-2b): la creación de
+   * facturas pasa a ser automática al aceptar un pedido; GET/PATCH/DELETE siguen abiertos.
+   */
+  disableCreate?: boolean;
 }
 
 // Valida cada FK presente en el body contra el negocio activo. Lanza CrossTenantError.
@@ -72,17 +78,27 @@ export function crudRouter(model: string, opts: CrudOptions): Router {
     res.json(row);
   });
 
-  router.post('/', async (req: AuthedRequest, res: Response) => {
-    try {
-      await validateFks(req.body ?? {}, req.businessId, opts.fkFields);
-    } catch (e) {
-      if (handleCrossTenant(e, res)) return;
-      throw e;
-    }
-    const data = pickFields(req.body ?? {}, opts.fields);
-    const row = await delegate.create({ data: { ...data, businessId: req.businessId } });
-    res.status(201).json(row);
-  });
+  if (opts.disableCreate) {
+    // Superficie de creación cerrada (p. ej. facturas: se crean al aceptar un pedido).
+    // 405 Method Not Allowed, explícito, en vez de un 404 confuso de ruta inexistente.
+    router.post('/', (_req: AuthedRequest, res: Response) => {
+      res.status(405).json({
+        error: { code: 'method_not_allowed', message: 'La creación por esta ruta está deshabilitada' },
+      });
+    });
+  } else {
+    router.post('/', async (req: AuthedRequest, res: Response) => {
+      try {
+        await validateFks(req.body ?? {}, req.businessId, opts.fkFields);
+      } catch (e) {
+        if (handleCrossTenant(e, res)) return;
+        throw e;
+      }
+      const data = pickFields(req.body ?? {}, opts.fields);
+      const row = await delegate.create({ data: { ...data, businessId: req.businessId } });
+      res.status(201).json(row);
+    });
+  }
 
   router.patch('/:id', async (req: AuthedRequest, res: Response) => {
     const existing = await delegate.findFirst({ where: { id: req.params.id, businessId: req.businessId, eliminadoEn: null } });
