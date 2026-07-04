@@ -17,10 +17,28 @@ import { test, before, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { prisma } from '../../prisma.js';
 import {
-  api, probeBack, resetRateLimits, registerAndToken, cleanup, uniq, SUPABASE_LIVE,
+  BASE, api, probeBack, resetRateLimits, registerAndToken, cleanup, uniq, SUPABASE_LIVE,
 } from './_shared.e2e.js';
 
 let backUp = false;
+
+// Token del Operator Agent (bot de Telegram). Cargado por dotenv en _shared.e2e.ts.
+// Si no está configurado en el entorno del runner, el test de regresión del operador
+// se salta (skip honesto) en lugar de fallar por infra.
+const OPERATOR_TOKEN = process.env.OPERATOR_SERVICE_TOKEN ?? '';
+
+/** POST contra el router del operador (montado FUERA de /api, auth por x-service-token). */
+async function operatorPost(path: string, body: unknown): Promise<{ status: number; body: Record<string, unknown> | undefined }> {
+  const res = await fetch(`${BASE}/service/operator${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-service-token': OPERATOR_TOKEN },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  let parsed: unknown;
+  try { parsed = text ? JSON.parse(text) : undefined; } catch { parsed = text; }
+  return { status: res.status, body: parsed as Record<string, unknown> | undefined };
+}
 
 before(async () => { backUp = await probeBack(); if (!backUp) console.warn('[e2e] back no responde — tests saltados'); });
 beforeEach(async () => { if (backUp) await resetRateLimits('register'); });
@@ -114,6 +132,59 @@ test('POST /invoices está cerrado: responde 405 (la factura se crea al aceptar 
 
   // No se creó nada por el camino cerrado.
   assert.equal(await prisma.invoice.count({ where: { businessId } }), 0);
+});
+
+// ---------------------------------------------------------------------------
+// Fase 4 (4.1): regresión de numeración F00001 EN VIVO — el cierre de
+// POST /api/invoices (405, PR-2b) no afecta al camino del operador.
+// La suite unitaria (service-operator-write-ops.test.ts) ya fija el algoritmo
+// (F00001 base, secuencia desde count, lock FOR UPDATE, concurrencia) con DI;
+// este es el primer test que ejercita POST /service/operator/invoices contra el
+// stack REAL (servidor + middleware x-service-token + Postgres), y prueba la
+// COEXISTENCIA: mismo negocio, superficie genérica cerrada, camino del bot vivo.
+// ---------------------------------------------------------------------------
+test('regresión F00001: el operador numera F00001/F00002 en vivo aunque POST /api/invoices esté cerrado (405)', async (t) => {
+  if (!backUp) return t.skip('back down');
+  if (!SUPABASE_LIVE) return t.skip('SUPABASE_SERVICE_ROLE_KEY is placeholder');
+  if (!OPERATOR_TOKEN) return t.skip('OPERATOR_SERVICE_TOKEN no configurado');
+
+  const auth = await registerAndToken(`inv_op_${uniq()}@test.local`, 'Inv-pass-1234', t);
+  if (!auth) return;
+  const { token, businessId } = auth;
+
+  // 1) La superficie genérica sigue cerrada para el mismo negocio (PR-2b).
+  const closed = await api('/invoices', {
+    method: 'POST',
+    body: JSON.stringify({ numero: 'X-1', cliente: 'Ana', fecha: '2026-07-01', total: 1 }),
+  }, token, businessId);
+  assert.equal(closed.status, 405);
+
+  // 2) El bot crea con numeración secuencial server-side, intacta: primera → F00001.
+  const first = await operatorPost('/invoices', { businessId, cliente: 'Op Ana', servicio: 'Corte', total: 30 });
+  assert.equal(first.status, 201, `operator create failed: ${JSON.stringify(first.body)}`);
+  assert.equal(first.body?.numero, 'F00001', 'la primera factura del negocio recibe F00001');
+
+  // 3) Segunda del mismo negocio → F00002 (la secuencia avanza en BD real, no en un mock).
+  const second = await operatorPost('/invoices', { businessId, cliente: 'Op Bea', total: 45 });
+  assert.equal(second.status, 201, `operator create failed: ${JSON.stringify(second.body)}`);
+  assert.equal(second.body?.numero, 'F00002');
+
+  // 4) Las facturas del operador aparecen en el listado del tenant (GET /api/invoices)
+  //    con pedidoId null (no vienen de un pedido) y las métricas las cuentan.
+  const list = await api('/invoices', {}, token, businessId);
+  assert.equal(list.status, 200);
+  const body = list.body as {
+    total: number;
+    items: Array<{ numero: string; pedidoId: string | null }>;
+    metrics: { totalFacturas: number; importeTotal: number };
+  };
+  assert.equal(body.total, 2);
+  assert.deepEqual(body.items.map((i) => i.numero).sort(), ['F00001', 'F00002']);
+  assert.ok(body.items.every((i) => i.pedidoId === null), 'las facturas del operador no tienen pedido vinculado');
+  assert.equal(body.metrics.totalFacturas, 2);
+  assert.equal(body.metrics.importeTotal, 75);
+
+  await prisma.invoice.deleteMany({ where: { businessId } }).catch(() => {});
 });
 
 // ---------------------------------------------------------------------------

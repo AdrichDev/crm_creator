@@ -1,4 +1,4 @@
-﻿# Tareas: Paridad CRM con facturas y pedidos AA
+# Tareas: Paridad CRM con facturas y pedidos AA
 
 ## Previsión de carga de revisión
 
@@ -216,8 +216,9 @@ Riesgo de superar 400 líneas: Alto (motivo por el que se encadena)
 
 ## Fase 4: Pruebas
 
-- [ ] 4.1 Probar numeración `F00001` sin regresión.
-- [ ] 4.2 Probar métricas y documentos de facturas.
-- [ ] 4.3 Probar flujo de pedido/presupuesto con vista previa imprimible.
+- [x] 4.1 Probar numeración `F00001` sin regresión. **DONE (PR-5, 05/07/2026).**
+- [x] 4.2 Probar métricas y documentos de facturas. **DONE (PR-5, 05/07/2026).**
+- [x] 4.3 Probar flujo de pedido/presupuesto con vista previa imprimible. **DONE (PR-5, 05/07/2026).**
+
 
 

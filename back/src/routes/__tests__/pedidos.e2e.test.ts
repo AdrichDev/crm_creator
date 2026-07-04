@@ -200,6 +200,87 @@ test('PUT /pedidos/:id/status aceptar auto-crea UNA factura vinculada; reaceptar
 });
 
 // ---------------------------------------------------------------------------
+// Fase 4 (4.2 + 4.3): flujo completo SOLO por API real, en una sola cadena.
+// Los tests anteriores verifican la auto-factura consultando prisma directamente;
+// este cierra el hueco: crear pedido → aceptar → la factura APARECE en GET
+// /invoices (la superficie que consume el front documental) con métricas
+// actualizadas y con el vínculo pedidoId haciendo round-trip en ambos sentidos.
+// La "vista previa imprimible" (4.3) es frontend: su render está cubierto por
+// front/tests/pedido-preview.test.tsx y factura-preview.test.tsx; aquí se prueba
+// que los DATOS que esa vista consume son consistentes de punta a punta.
+// ---------------------------------------------------------------------------
+test('flujo completo: crear pedido → aceptar → factura visible en GET /invoices con metrics y pedidoId round-trip', async (t) => {
+  if (!backUp) return t.skip('back down');
+  if (!SUPABASE_LIVE) return t.skip('SUPABASE_SERVICE_ROLE_KEY is placeholder');
+
+  const auth = await registerAndToken(`ped_flow_${uniq()}@test.local`, 'Ped-pass-1234', t);
+  if (!auth) return;
+  const { token, businessId } = auth;
+
+  // 0) Línea base: negocio recién creado, sin facturas → métricas a cero.
+  const before = await api('/invoices', {}, token, businessId);
+  assert.equal(before.status, 200);
+  assert.equal((before.body as { metrics: { totalFacturas: number } }).metrics.totalFacturas, 0);
+
+  // 1) Alta del pedido vía API real (mismo payload que envía el formulario del front).
+  const created = await api('/pedidos', {
+    method: 'POST',
+    body: JSON.stringify({
+      numero: 'AD-2026-100',
+      clienteSnapshot: { nombre: 'Flujo Ana' },
+      tasaIva: 0.21,
+      lines: [{ servicioId: 's1', nombre: 'Implantación', cantidad: 1, precioImpl: 200, precioMant: 0 }],
+    }),
+  }, token, businessId);
+  assert.equal(created.status, 201, `create failed: ${JSON.stringify(created.body)}`);
+  const pedidoId = (created.body as { id: string }).id;
+  assert.equal((created.body as { estado: string }).estado, 'generada');
+
+  // 2) Transición a `aceptada` vía API → dispara la auto-factura (PR-2b) en la misma tx.
+  const accepted = await api(`/pedidos/${pedidoId}/status`, { method: 'PUT', body: JSON.stringify({ estado: 'aceptada' }) }, token, businessId);
+  assert.equal(accepted.status, 200, `accept failed: ${JSON.stringify(accepted.body)}`);
+
+  // 3) Estado consistente del pedido, leído por API (no por prisma): aceptada + KPIs al día.
+  const pedido = await api(`/pedidos/${pedidoId}`, {}, token, businessId);
+  assert.equal(pedido.status, 200);
+  assert.equal((pedido.body as { estado: string }).estado, 'aceptada');
+  const pedidosList = await api('/pedidos', {}, token, businessId);
+  const pMetrics = (pedidosList.body as { metrics: { totalPedidos: number; aceptados: number } }).metrics;
+  assert.equal(pMetrics.totalPedidos, 1);
+  assert.equal(pMetrics.aceptados, 1, 'los KPIs de pedidos reflejan la aceptación');
+
+  // 4) La factura auto-creada aparece en GET /invoices (lo que pinta el front documental):
+  //    número derivado, cliente del snapshot, estado inicial, vínculo pedidoId y métricas
+  //    recalculadas sobre el conjunto real del negocio.
+  const after = await api('/invoices', {}, token, businessId);
+  assert.equal(after.status, 200);
+  const afterBody = after.body as {
+    total: number;
+    items: Array<{ id: string; numero: string; cliente: string; estado: string; total: unknown; pedidoId: string | null }>;
+    metrics: { totalFacturas: number; pendientes: number; importeTotal: number; importePendiente: number };
+  };
+  assert.equal(afterBody.total, 1, 'la factura auto-creada debe aparecer en el listado');
+  const factura = afterBody.items[0];
+  assert.equal(factura.numero, 'FAC - 2026-100', 'numero derivado del pedido (AD- → FAC - )');
+  assert.equal(factura.cliente, 'Flujo Ana', 'cliente derivado del clienteSnapshot');
+  assert.equal(factura.estado, 'Pendiente');
+  assert.equal(factura.pedidoId, pedidoId, 'el listado expone el vínculo pedidoId (round-trip)');
+  assert.equal(Number(factura.total), 242); // totalImpl = 200 * 1.21; totalMant = 0
+  assert.equal(afterBody.metrics.totalFacturas, 1, 'metrics se actualizan con la auto-factura');
+  assert.equal(afterBody.metrics.pendientes, 1);
+  assert.equal(afterBody.metrics.importeTotal, 242);
+  assert.equal(afterBody.metrics.importePendiente, 242);
+
+  // 5) Round-trip también por el detalle: GET /invoices/:id conserva pedidoId → pedido.
+  const detail = await api(`/invoices/${factura.id}`, {}, token, businessId);
+  assert.equal(detail.status, 200);
+  assert.equal((detail.body as { pedidoId: string | null }).pedidoId, pedidoId);
+
+  await prisma.invoice.deleteMany({ where: { businessId } }).catch(() => {});
+  await prisma.pedido.deleteMany({ where: { businessId } }).catch(() => {});
+});
+
+// ---------------------------------------------------------------------------
 // PUT /pedidos/:id/status — guard de des-aceptación (PR-2b)
 // ---------------------------------------------------------------------------
 test('PUT /pedidos/:id/status NO deja salir de aceptada si ya hay factura vinculada (400)', async (t) => {
