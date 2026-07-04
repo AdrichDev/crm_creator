@@ -7,7 +7,7 @@
 - [x] T1.4 `tests/model-effort.test.tsx`: ambas variantes pintan modelos/efforts; effort `disabled` cuando el modelo no lo soporta. 7 tests verde.
 
 ## WU2 — projects POST (back)
-- [x] T2.1 `reviveProject` y `createProject` extraídas como funciones privadas en `routes/projects.ts`; `POST /` delega. Respuesta/estado/códigos sin cambio.
+- [x] T2.1 Lógica de creación extraída a `createProjectService` (compartida con el operador, `lib/projects/create-project-service.ts`); `routes/projects.ts` solo tiene `createProjectHandler`, que delega. Respuesta/estado/códigos sin cambio.
 - [x] T2.2 `$transaction` + espejo config→columnas (`mirrorColumns`) + membership conservados.
 
 ## Verificación
