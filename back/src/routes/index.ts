@@ -22,6 +22,7 @@ import { visitsRouter } from './visits.js';
 import { customerNotesRouter } from './customer-notes.js';
 import { remindersRouter } from './reminders.js';
 import { saleLinesRouter } from './sale-lines.js';
+import { pedidosRouter } from './pedidos.js';
 import { documentsRouter } from './documents.js';
 import { notificationsRouter } from './notifications.js';
 import { settingsRouter } from './settings.js';
@@ -64,6 +65,9 @@ api.use('/resources', crudRouter('resource', { fields: ['locationId', 'nombre', 
 api.use('/sales', saleLinesRouter);
 api.use('/sales', crudRouter('sale', { fields: ['customerId', 'cliente', 'fecha', 'metodo', 'total'], include: { lines: true }, fkFields: { customerId: 'customer' } }));
 api.use('/invoices', crudRouter('invoice', { fields: ['numero', 'cliente', 'servicio', 'fecha', 'total', 'estado', 'documentos'] }));
+// Presupuestos/Pedidos documentales (crm-paridad-facturas-pedidos-aa): superficie NUEVA,
+// separada de /sales (TPV). La factura se auto-crea al aceptar en PR-2b.
+api.use('/pedidos', pedidosRouter);
 api.use('/campaigns', crudRouter('campaign', { fields: ['nombre', 'canal', 'estado', 'enviados', 'aperturas'] }));
 api.use('/fichajes', crudRouter('fichaje', { fields: ['employeeId', 'empleado', 'fecha', 'entrada', 'salida', 'horas'], fkFields: { employeeId: 'employee' } }));
 api.use('/tags', crudRouter('tag', { fields: ['nombre', 'color'], searchFields: ['nombre'] }));

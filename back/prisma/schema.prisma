@@ -194,6 +194,7 @@ model Business {
   settings     BusinessSetting[]
   notifications Notification[]
   invoices     Invoice[]
+  pedidos      Pedido[]
   teams        Team[]
   visitStates  VisitState[]
   visits       Visit[]
@@ -389,6 +390,7 @@ model Customer {
   bookings    Booking[]
   packages    CustomerPackage[]
   sales       Sale[]
+  pedidos     Pedido[]
   teamMembers TeamMember[]
   historialNotas CustomerNote[]
   visitas     Visit[]
@@ -673,6 +675,56 @@ model Invoice {
   @@index([businessId])
   eliminadoEn DateTime? @map("eliminado_en")
   @@map("factura")
+}
+
+// Presupuesto/Pedido documental (crm-paridad-facturas-pedidos-aa, Fase 1.2).
+// Espejo del modelo `Budget` de agents-agency (agents-agency/back/prisma/schema.prisma)
+// adaptado a las convenciones del CRM: multi-tenencia por `businessId`, dinero en `Decimal`,
+// columnas castellano snake_case y soft-delete `eliminado_en`. Superficie NUEVA e
+// independiente de `venta` (TPV/carrito), que no se toca. Los totales se calculan SIEMPRE
+// server-side desde las líneas (nunca se confían al cliente), igual que en AA.
+// La factura se auto-crea al aceptar el pedido — eso va en PR-2b (columna `pedido_id`
+// @unique en `factura` + ensureInvoiceForPedido), no en este modelo.
+model Pedido {
+  id             String    @id @default(cuid())
+  businessId     String    @map("negocio_id")
+  business       Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  numero         String    @map("numero")                      // Nº presupuesto/pedido; lo envía el form (como AA), ej. AD-2026-001
+  customerId     String?   @map("cliente_id")
+  customer       Customer? @relation(fields: [customerId], references: [id])
+  clienteSnapshot Json     @default("{}") @map("snapshot_cliente") // Snapshot del cliente al generar
+  emisorSnapshot  Json     @default("{}") @map("snapshot_emisor")  // Snapshot del emisor (datos fiscales)
+  estado         String    @default("generada") @map("estado")  // generada | aceptada | rechazada | caducada
+  subtotalImpl   Decimal   @default(0) @map("subtotal_impl")     // Base pago único (sin IVA)
+  subtotalMant   Decimal   @default(0) @map("subtotal_mant")     // Base mensual (sin IVA)
+  totalImpl      Decimal   @default(0) @map("total_impl")        // Pago único con IVA
+  totalMant      Decimal   @default(0) @map("total_mant")        // Mensual con IVA
+  tasaIva        Decimal   @default(0.21) @map("tasa_iva")
+  diasValidez    Int       @default(30) @map("dias_validez")
+  notas          String?   @map("notas")
+  lines          PedidoLine[]
+  createdAt      DateTime  @default(now()) @map("creado_en")
+  updatedAt      DateTime  @updatedAt @map("actualizado_en")
+  eliminadoEn    DateTime? @map("eliminado_en")
+
+  @@index([businessId, createdAt])
+  @@map("pedido")
+}
+
+model PedidoLine {
+  id          String  @id @default(cuid())
+  pedidoId    String  @map("pedido_id")
+  pedido      Pedido  @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  servicioId  String  @default("") @map("servicio_id")   // id del servicio del catálogo (o "")
+  nombre      String  @map("nombre")
+  descripcion String? @map("descripcion")
+  cantidad    Int     @default(1) @map("cantidad")
+  precioImpl  Decimal @default(0) @map("precio_impl")     // Precio puesta en marcha por unidad
+  precioMant  Decimal @default(0) @map("precio_mant")     // Precio mensual por unidad
+  posicion    Int     @default(0) @map("posicion")        // Orden en la tabla
+
+  @@index([pedidoId])
+  @@map("linea_pedido")
 }
 
 model Campaign {

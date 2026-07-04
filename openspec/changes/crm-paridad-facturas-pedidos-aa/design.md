@@ -74,4 +74,58 @@ las fases siguientes (1.2 pedidos, 2 UI facturas, 3 UI pedidos) no las vuelvan a
    (caracterización de contratos) + 1.3 (mapeo puro estado→métricas). Fases 1.2/2/3 son
    PRs futuras separadas, cada una a revisar antes de continuar con la siguiente.
 
+## Decisiones adicionales resueltas (04/07/2026 — desbloquean 1.2 / Pedidos y Facturas)
+
+Fijadas por el dueño del proyecto para que 1.2 (Pedidos), Fase 2 (UI facturas) y Fase 3
+(UI pedidos) no las vuelvan a discutir:
+
+4. **El alta de Presupuesto/Pedido es idéntica a la de AA (visual y funcionalmente).**
+   Mismos campos, mismo layout y mismo patrón de UX que
+   `agents-agency/front/components/facturacion/BudgetForm.tsx` (emisor editable inline,
+   combobox de vinculación de cliente, datos de cliente, conceptos/servicios con
+   cantidad, totales pago único + mensualidad con IVA). Por tanto el modelo de datos de
+   Pedido en CRM es un **espejo del modelo `Budget`/`BudgetLine` de AA**
+   (`agents-agency/back/prisma/schema.prisma`), adaptado a las convenciones del CRM
+   (multi-tenencia por `businessId`, dinero en `Decimal`, columnas castellano snake_case,
+   soft-delete `eliminado_en`). Ciclo de estados idéntico al de AA:
+   `generada | aceptada | rechazada | caducada`. **Única divergencia permitida:** el logo
+   de la empresa en los documentos impresos es específico por tenant (por diseño, no es un
+   gap de paridad).
+
+5. **La factura pasa de alta manual (CRUD) a automática, espejo exacto de AA.** Al aceptar
+   un Presupuesto/Pedido (transición a `aceptada`) se auto-crea una factura `crm.factura`,
+   con el MISMO patrón que `ensureInvoiceForBudget` en
+   `agents-agency/back/src/routes/budgets.ts`: idempotencia por **constraint único +
+   comprobación del `target` del P2002** (NO un `catch` ciego — una revisión de Devil's
+   Advocate previa en este proyecto detectó justamente ese bug en la primera versión de AA;
+   no repetirlo). La clave de idempotencia en CRM es una columna `pedido_id @unique` en
+   `factura` (NO se pone `numero` como único: rompería el contrato vigente y el camino del
+   operador, que admite `numero` duplicado entre negocios — ver caracterización 1.1).
+   - `POST /service/operator/invoices` (bot de Telegram, `routes/service-operator.ts`, con
+     su numeración secuencial `F00001`) **NO se toca**: es un consumidor vivo y sigue
+     funcionando exactamente igual. El dueño eligió explícitamente NO cerrar ese camino.
+   - El alta manual genérica `POST /api/invoices` (crudRouter) **se cierra como superficie
+     de creación** una vez exista el camino automático (elección explícita del dueño).
+     Se conservan GET/PATCH/DELETE de `/api/invoices`.
+
+### División de PR-2 (auto-scoping, misma disciplina que PR-1)
+
+La 1.2 combina tres superficies de riesgo distintas, así que se parte:
+
+- **PR-2 (esta entrega): fundación aislada y ADITIVA.** Modelos `Pedido` + `PedidoLine`
+  (tablas nuevas `crm.pedido` / `crm.linea_pedido`), migración aditiva (escrita, **NO
+  aplicada**), función pura `computePedidoTotals()` + test, y la ruta `/pedidos`
+  (GET listado, GET :id, POST alta, PUT :id/status como máquina de estados). **Cero
+  ediciones a `factura`, `venta` ni al operador.** La transición a `aceptada` funciona y se
+  testea como máquina de estados pura, SIN efecto factura todavía.
+- **PR-2b (siguiente): efecto factura + cierre del alta manual.** Columna
+  `pedido_id @unique` en `factura` (migración que toca la tabla COMPARTIDA), `ensureInvoiceForPedido()`
+  idempotente enganchado a la transición `aceptada`, y cierre de `POST /api/invoices`
+  (crudRouter) como superficie de creación. `service-operator` intacto.
+
+  Motivo del corte: PR-2 queda puramente aditiva y aislada (tablas nuevas + ruta nueva,
+  sin tocar tablas/rutas vivas), revisable y reversible de forma independiente; PR-2b
+  concentra el riesgo de ALTERAR `factura` (que el bot vivo escribe) y RETIRAR una
+  superficie de API viva. Juntas superarían con holgura las 400-500 líneas.
+
 

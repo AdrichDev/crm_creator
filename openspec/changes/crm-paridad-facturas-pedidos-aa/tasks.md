@@ -44,7 +44,30 @@ Riesgo de superar 400 líneas: Alto (motivo por el que se encadena)
       (ya existía con cobertura amplia de GET/POST /service/operator/invoices,
       lock+transacción, concurrencia) + 1 test nuevo que fija explícitamente el
       caso base: primera factura de un negocio (count=0) → `numero: "F00001"`.
-- [ ] 1.2 Añadir migración aditiva para pedidos/presupuestos si el modelo actual no alcanza. **PENDIENTE — PR-2, próxima fase. Depende de definir el modelo de Pedidos (ruta `/pedidos` nueva, ver design.md).**
+- [x] 1.2 Añadir migración aditiva para pedidos/presupuestos + modelo y ruta `/pedidos`. **DONE (PR-2, 04/07/2026).**
+      Modelos `Pedido` + `PedidoLine` (espejo de `Budget`/`BudgetLine` de AA adaptado al CRM:
+      `businessId`, `Decimal`, columnas castellano, soft-delete, estados
+      `generada|aceptada|rechazada|caducada`) en `back/prisma/schema.prisma`. Migración
+      ADITIVA `back/prisma/migrations/20260704010000_pedido/migration.sql` (crea
+      `crm.pedido` + `crm.linea_pedido`) — **ESCRITA, NO APLICADA** (misma convención que
+      PR-1: se escribe, se marca, no se hace `db push` desde aquí). Función pura
+      `back/src/lib/pedidos/totals.ts` (`computePedidoTotals`, espejo de `computeBudgetTotals`
+      de AA) + test unitario `back/src/lib/pedidos/__tests__/totals.test.ts` (corre en
+      `npm test`). Ruta `back/src/routes/pedidos.ts`: GET listado paginado, GET :id (con
+      líneas), POST alta (zod, totales server-side, líneas anidadas), PUT :id/status
+      (máquina de estados, SIN efecto factura). Registrada `/pedidos` bajo `staffOnly` en
+      `routes/index.ts`. e2e de contrato `back/src/routes/__tests__/pedidos.e2e.test.ts`
+      (gated en back vivo; excluido de `npm test`; se ejercita cuando se aplique la migración).
+      **`ventas` y `/service/operator/invoices` NO se tocan** (verificado por diff/grep).
+      El efecto factura-al-aceptar + cierre del alta manual `POST /api/invoices` van en
+      **PR-2b** (tocan la tabla compartida `factura` y retiran una superficie de API viva —
+      ver design.md § División de PR-2).
+- [ ] 1.2b (PR-2b) Auto-factura al aceptar pedido + cierre de `POST /api/invoices` manual.
+      Columna `pedido_id @unique` en `factura` (migración a tabla compartida),
+      `ensureInvoiceForPedido()` idempotente (único + comprobación de `target` del P2002, NO
+      catch ciego) enganchado a la transición `aceptada`, y cierre del alta manual genérica
+      `POST /api/invoices` (crudRouter) — conservando GET/PATCH/DELETE. `service-operator`
+      intacto. **PENDIENTE.**
 - [x] 1.3 Definir mapeo de estados `Pendiente/Pagada/Anulada` a métricas. **DONE (PR-1, 04/07/2026).**
       `back/src/lib/invoices/metrics.ts`: función pura `computeInvoiceMetrics()`
       (mismo nombre que su equivalente en `agents-agency/back/src/lib/invoices.ts`,
