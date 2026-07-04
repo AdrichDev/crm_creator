@@ -58,6 +58,7 @@ const API_PATH: Record<string, string> = {
   vacaciones: '/time-off',
   productos: '/products',
   ventas: '/sales',
+  pedidos: '/pedidos',
   facturas: '/invoices',
   marketing: '/campaigns',
 };
@@ -67,7 +68,7 @@ function activeRole(): string | null {
   try { return typeof window !== 'undefined' ? window.localStorage.getItem('saas.role.v1') : null; } catch { return null; }
 }
 // Datos de staff que el rol cliente NO debe pedir (recibiría 403). Devolvemos vacío.
-const CLIENT_DENY = new Set(['clientes', 'empleados', 'ventas', 'fichaje', 'vacaciones', 'marketing', 'facturas']);
+const CLIENT_DENY = new Set(['clientes', 'empleados', 'ventas', 'pedidos', 'fichaje', 'vacaciones', 'marketing', 'facturas']);
 
 const apiBackend: DataBackend = {
   remote: true,

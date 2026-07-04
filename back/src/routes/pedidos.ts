@@ -4,6 +4,7 @@ import { prisma } from '../prisma.js';
 import type { AuthedRequest } from '../middleware/types.js';
 import { parsePagination } from '../lib/pagination.js';
 import { computePedidoTotals } from '../lib/pedidos/totals.js';
+import { computeBusinessPedidoMetrics, type PedidoMetricsDelegate } from '../lib/pedidos/metrics.js';
 import { ensureInvoiceForPedido, type InvoiceCreateTx, type PedidoForInvoice } from '../lib/pedidos/invoice.js';
 
 // Presupuestos/Pedidos documentales (crm-paridad-facturas-pedidos-aa, Fase 1.2 / PR-2 + PR-2b).
@@ -55,7 +56,7 @@ pedidosRouter.get('/', async (req: AuthedRequest, res: Response) => {
     : {};
   const where = { businessId: req.businessId, eliminadoEn: null, ...searchWhere };
 
-  const [items, total] = await Promise.all([
+  const [items, total, metrics] = await Promise.all([
     prisma.pedido.findMany({
       where,
       include: { lines: { orderBy: { posicion: 'asc' } } },
@@ -64,9 +65,12 @@ pedidosRouter.get('/', async (req: AuthedRequest, res: Response) => {
       take: limit,
     }),
     prisma.pedido.count({ where }),
+    // Métricas sobre el conjunto COMPLETO del negocio (sin skip/take ni filtro search):
+    // mismo fix que GET /invoices en PR-3. Ver computeBusinessPedidoMetrics.
+    computeBusinessPedidoMetrics(prisma.pedido as unknown as PedidoMetricsDelegate, req.businessId),
   ]);
 
-  res.json({ items, total, page, limit });
+  res.json({ items, total, page, limit, metrics });
 });
 
 /* ---------- GET /:id (con líneas, scoping por negocio) ---------- */

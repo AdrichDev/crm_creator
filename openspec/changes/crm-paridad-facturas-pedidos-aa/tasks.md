@@ -149,11 +149,70 @@ Riesgo de superar 400 líneas: Alto (motivo por el que se encadena)
       `include: { pedido: true }` en la ruta `/invoices` (cambio de back) — se dejó fuera para
       mantener esta PR estrictamente UI-only; hoy la nota de origen no expone el cuid.
 
-## Fase 3: Pedidos y presupuestos CRM
+## Fase 3: Pedidos y presupuestos CRM (PR-4, 04/07/2026 — UI-only, sin cambios de back/schema)
 
-- [ ] 3.1 Adaptar o crear UI de pedidos con flujo visual equivalente a AA.
-- [ ] 3.2 Implementar rutas o servicios para guardar líneas, cliente, totales y estado.
-- [ ] 3.3 Evitar que el TPV/carrito sea el flujo obligatorio de pedidos comerciales.
+- [x] 3.1 Adaptar o crear UI de pedidos con flujo visual equivalente a AA. **DONE (PR-4).**
+      Nueva ruta `front/app/(crm)/pedidos/page.tsx` (máquina de vistas listado | alta | preview,
+      espejo de `agents-agency/front/app/facturacion/page.tsx`). `components/facturacion/pedido-form.tsx`
+      es el espejo visual+funcional del `BudgetForm` de AA (emisor con edición inline persistido en
+      `localStorage` `saas.emisor.v1`, combobox de vinculación de cliente, datos de cliente, conceptos
+      con cantidad, totales pago único + mensualidad con IVA) adaptado al sistema de diseño del CRM
+      (clases `opera-*`, `panel`, primitivas). `components/facturacion/pedido-preview.tsx` es el espejo
+      del `BudgetPreview` (cabecera PRESUPUESTO, emisor/cliente, tabla de conceptos, totales con IVA,
+      condiciones, barra Volver/Imprimir con aislamiento `@media print`). **Única divergencia permitida
+      (design.md §4): logo por tenant fuera de alcance.** Adaptación documentada: el catálogo del CRM
+      (`servicios`) es de precio único → se usa como pago único (precioImpl); la columna mensual se
+      conserva por paridad de modelo. Ciclo de estados `generada→aceptada→rechazada→caducada` por clic
+      en el badge (como AA). **NO se necesitó endpoint PATCH/edición**: la "edición" en AA es una nueva
+      versión vía POST (no edita in situ), así que el `/pedidos` existente (PR-2/2b) es suficiente.
+- [x] 3.2 Implementar rutas o servicios para guardar líneas, cliente, totales y estado. **DONE (PR-4).**
+      La ruta back `/pedidos` ya existía (PR-2/2b: GET listado, GET :id, POST alta con líneas anidadas,
+      PUT :id/status con auto-factura). El front se conecta vía el backend conmutable existente:
+      `front/lib/data/backend.ts` gana `pedidos: '/pedidos'` en `API_PATH` (alta = POST /pedidos con el
+      payload del formulario; el back RECALCULA totales server-side) y `pedidos` en `CLIENT_DENY` (rol
+      cliente recibiría 403). El listado y la persistencia local (demo) usan `useCollection<Pedido>`; la
+      transición de estado usa un `updateEstado` dedicado (API: PUT /pedidos/:id/status → refetch, con
+      captura del guard de des-aceptación 400; local: `update(id,{estado})`). Un pedido aceptado
+      muestra en el preview que ya generó su factura (PR-2b), SIN duplicar la pantalla Facturas.
+      Semillas mock (`front/lib/mock/data.ts`: tipos `Pedido`/`PedidoLinea` + 3 pedidos de ejemplo).
+- [x] 3.3 Evitar que el TPV/carrito sea el flujo obligatorio de pedidos comerciales. **DONE (PR-4).**
+      Hoy `ventas` (TPV) era la única superficie de menú para generar un documento comercial. Se añade
+      `pedidos` como módulo de PRIMER NIVEL en el sidebar (`lib/config/modules.ts`: nuevo `ModuleId`
+      `pedidos`, categoría `retail`, entre Ventas y Facturas; `lib/config/icons.ts` emoji; `shared/
+      generate/tenant-types.ts` union), visible/escribible para staff (`lib/config/roles.ts`) y activo
+      por defecto en los verticales comerciales + `comerciales` (`lib/config/verticals.ts`). Así crear
+      un pedido/presupuesto es una alternativa real y alcanzable al TPV. **`ventas`/`sales`/`service-
+      operator.ts` NO se tocan** (adición, no sustitución — design.md §2).
+- [x] 3.3b (PR-4 fix) Calcular los KPIs de Pedidos SERVER-SIDE sobre TODOS los pedidos del negocio. **DONE (04/07/2026, gate Devil's Advocate/verify).**
+      MISMO BUG que 2.2b, reintroducido en PR-4: `pedidos/page.tsx` derivaba los KPIs
+      (Pedidos/Aceptados/Importe) con filter/reduce sobre `items` de `useCollection` → `GET /pedidos`,
+      que está PAGINADO (`back/src/lib/pagination.ts`, default 20) → subconteo silencioso con más
+      pedidos que una página. Invisible en demo/local (array completo sin paginar). Fix idéntico al
+      patrón de PR-3:
+      • Back: `back/src/lib/pedidos/metrics.ts` (nuevo): `computePedidoMetrics()` pura +
+        `computeBusinessPedidoMetrics()` (un `findMany` APARTE sin `skip`/`take`, scoping
+        `businessId` + `eliminadoEn: null`, sin filtro `search` — KPIs del negocio, no de la
+        búsqueda). Las métricas replican EXACTAMENTE los 3 KPIs que la página ya mostraba
+        (`totalPedidos`, `aceptados` por igualdad exacta, `importeTotal` = suma de `totalImpl` de
+        TODOS los estados) — no se inventan métricas nuevas. `GET /pedidos`
+        (`back/src/routes/pedidos.ts`) adjunta `metrics` a `{ items, total, page, limit }`.
+      • Front: `front/lib/pedidos/metrics.ts` (espejo exacto, fallback SOLO local/demo, documentado) +
+        `front/lib/data/use-pedido-metrics.ts` (hook espejo de `use-invoice-metrics.ts`: API lee
+        `metrics` del server; local calcula sobre el array completo). `pedidos/page.tsx` consume el
+        hook y refresca métricas tras crear/cambiar estado.
+      • También (flag menor del reviewer): la sugerencia de `numero` en `startCreate` usaba
+        `items.length + 1` (solo la página → sugerencias repetidas con 2+ páginas); ahora deriva de
+        `metrics.totalPedidos + 1` (sigue siendo solo una sugerencia editable; el back no exige
+        unicidad de `numero`).
+      • Tests: back `back/src/lib/pedidos/__tests__/metrics.test.ts` (4) +
+        `__tests__/business-metrics.test.ts` (4: 57 pedidos > page size 20, query sin skip/take,
+        Decimal, vacío) en `npm test`; `pedidos.e2e.test.ts` +1 (metrics sobre 25 > page size, live
+        back, excluido de `npm test`); front `tests/pedidos-metrics.test.ts` (4) y
+        `tests/pedidos-page.test.tsx` +2 y KPIs reforzados (modo API muestra 57/21/€12345.00 del
+        server y NO el subconteo 2/1 de la página; sugerencia de nº P-{año}-058 desde el total).
+      • Suites: back `npm test` **424 pass / 0 fail** (416 + 8); front vitest **457 pass / 0 fail**
+        (451 + 6). Typecheck back y front limpios. Sin migración (solo query nueva).
+        **`ventas`/`service-operator.ts` NO se tocan.**
 
 ## Fase 4: Pruebas
 

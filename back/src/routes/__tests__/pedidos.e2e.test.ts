@@ -84,6 +84,46 @@ test('GET /pedidos devuelve { items, total, page, limit } solo del negocio activ
 });
 
 // ---------------------------------------------------------------------------
+// GET /pedidos — `metrics` server-side sobre TODOS los pedidos (fix post-PR-4)
+// ---------------------------------------------------------------------------
+test('GET /pedidos adjunta metrics calculadas sobre TODO el negocio, aunque haya más pedidos que el page size', async (t) => {
+  if (!backUp) return t.skip('back down');
+  if (!SUPABASE_LIVE) return t.skip('SUPABASE_SERVICE_ROLE_KEY is placeholder');
+
+  const auth = await registerAndToken(`ped_metrics_${uniq()}@test.local`, 'Ped-pass-1234', t);
+  if (!auth) return;
+  const { token, businessId } = auth;
+
+  // 25 pedidos > page size por defecto (20). Antes del fix, los KPIs del front se
+  // calculaban sobre la página (máx. 20) → subconteo. Ahora vienen del back sobre los 25.
+  // Mismo fix que GET /invoices en PR-3.
+  const data = [
+    ...Array.from({ length: 15 }, (_v, i) => ({ businessId, numero: `PM-G-${i}`, estado: 'generada', totalImpl: 100 })),
+    ...Array.from({ length: 10 }, (_v, i) => ({ businessId, numero: `PM-A-${i}`, estado: 'aceptada', totalImpl: 200 })),
+  ];
+  await prisma.pedido.createMany({ data });
+
+  const list = await api('/pedidos', {}, token, businessId);
+  assert.equal(list.status, 200);
+  const body = list.body as {
+    items: unknown[]; total: number; limit: number;
+    metrics: { totalPedidos: number; aceptados: number; importeTotal: number };
+  };
+
+  // El listado sigue paginado: como mucho `limit` filas (20 por defecto), NO los 25.
+  assert.ok(body.items.length <= body.limit, 'el listado sigue paginado');
+  assert.equal(body.total, 25);
+
+  // Las métricas reflejan el conjunto COMPLETO (25), no la página.
+  assert.ok(body.metrics, 'la respuesta debe incluir metrics');
+  assert.equal(body.metrics.totalPedidos, 25, 'metrics cuenta TODOS los pedidos, no solo la página');
+  assert.equal(body.metrics.aceptados, 10);
+  assert.equal(body.metrics.importeTotal, 15 * 100 + 10 * 200); // 1500 + 2000 = 3500
+
+  await prisma.pedido.deleteMany({ where: { businessId } }).catch(() => {});
+});
+
+// ---------------------------------------------------------------------------
 // GET /pedidos/:id — 404 para inexistente o de otro negocio
 // ---------------------------------------------------------------------------
 test('GET /pedidos/:id → 404 si no existe o pertenece a otro negocio', async (t) => {

@@ -27,6 +27,7 @@ export type ModuleId =
   | 'vacaciones'
   | 'productos'
   | 'ventas'
+  | 'pedidos'
   | 'facturas'
   | 'marketing'
   | 'estadisticas'

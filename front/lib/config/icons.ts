@@ -14,6 +14,7 @@ const DEFAULT_EMOJI: Record<ModuleId, string> = {
   vacaciones: '🏖️',
   productos: '📦',
   ventas: '🧾',
+  pedidos: '📋',
   facturas: '💶',
   marketing: '📣',
   estadisticas: '📈',

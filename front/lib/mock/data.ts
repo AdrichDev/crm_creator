@@ -9,6 +9,26 @@ export interface Cliente { id: number; nombre: string; email: string; telefono: 
 // la API en modo remoto (columna crm.factura.pedido_id); null/undefined en facturas manuales,
 // del operador (bot Telegram) o del mock local. La vista previa lo muestra solo si existe.
 export interface Factura { id: number; numero: string; cliente: string; servicio?: string; fecha: string; total: number; estado: string; documentos?: Documento[]; pedidoId?: string | null; }
+// Pedido/Presupuesto documental (crm-paridad-facturas-pedidos-aa, Fase 3 / PR-4). Espejo del
+// modelo `Budget`/`BudgetLine` de AA adaptado al CRM: totales pago único (impl) + mensualidad
+// (mant) con IVA, snapshots de cliente/emisor, ciclo `generada|aceptada|rechazada|caducada`.
+// Los campos Decimal del back llegan como string en JSON → coaccionar con Number() al mostrar.
+export interface PedidoLinea { id?: number | string; servicioId?: string; nombre: string; descripcion?: string | null; cantidad: number; precioImpl: number; precioMant: number; }
+export interface Pedido {
+  id: number | string;
+  numero: string;
+  customerId?: string | null;
+  clienteSnapshot?: Record<string, string>;
+  emisorSnapshot?: Record<string, string>;
+  estado: string;
+  subtotalImpl: number; subtotalMant: number;
+  totalImpl: number; totalMant: number;
+  tasaIva: number;
+  diasValidez?: number;
+  notas?: string | null;
+  lines: PedidoLinea[];
+  createdAt: string;
+}
 export interface Cita { id: number; cliente: string; servicio: string; empleado: string; fecha: string; hora: string; estado: string; }
 export interface Servicio { id: number; nombre: string; duracion: number; precio: number; categoria: string; }
 export interface Empleado { id: number; nombre: string; rol: string; especialidad: string; estado: string; email: string; }
@@ -86,6 +106,40 @@ export const resenas: Resena[] = [
   { id: 1, autor: 'Ana G.', estrellas: 5, texto: 'El mejor sitio, repito seguro.', fecha: '2026-06-12' },
   { id: 2, autor: 'Marcos R.', estrellas: 4, texto: 'Muy buen trato y puntuales.', fecha: '2026-06-09' },
   { id: 3, autor: 'Elena P.', estrellas: 5, texto: 'Encantada con el resultado.', fecha: '2026-06-15' },
+];
+
+export const pedidos: Pedido[] = [
+  {
+    id: 3101, numero: 'P-2026-001', estado: 'generada', createdAt: '2026-06-14T09:00:00.000Z',
+    clienteSnapshot: { nombre: 'Ana Gómez', cif: 'B12345678', direccion: 'C/ Mayor 3, Madrid', email: 'ana@mail.com', telefono: '600 555 666', contacto: 'Ana Gómez' },
+    emisorSnapshot: { empresa: 'Estudio 3A', cif: 'B87654321', direccion: 'Av. del Sol 10', email: 'hola@estudio3a.com', telefono: '910 000 000' },
+    tasaIva: 0.21, diasValidez: 30, notas: null,
+    lines: [
+      { id: 1, nombre: 'Implantación CRM', descripcion: 'Puesta en marcha y migración', cantidad: 1, precioImpl: 1200, precioMant: 0 },
+      { id: 2, nombre: 'Soporte mensual', descripcion: 'Mantenimiento y actualizaciones', cantidad: 1, precioImpl: 0, precioMant: 90 },
+    ],
+    subtotalImpl: 1200, subtotalMant: 90, totalImpl: 1452, totalMant: 108.9,
+  },
+  {
+    id: 3102, numero: 'P-2026-002', estado: 'aceptada', createdAt: '2026-06-12T11:30:00.000Z',
+    clienteSnapshot: { nombre: 'Lucía Fernández', cif: 'B22223333', direccion: 'C/ Luna 5, Madrid', email: 'lucia@mail.com', telefono: '600 111 222', contacto: 'Lucía Fernández' },
+    emisorSnapshot: { empresa: 'Estudio 3A', cif: 'B87654321', direccion: 'Av. del Sol 10', email: 'hola@estudio3a.com', telefono: '910 000 000' },
+    tasaIva: 0.21, diasValidez: 30, notas: null,
+    lines: [
+      { id: 1, nombre: 'Página web corporativa', descripcion: 'Diseño y desarrollo', cantidad: 1, precioImpl: 850, precioMant: 0 },
+    ],
+    subtotalImpl: 850, subtotalMant: 0, totalImpl: 1028.5, totalMant: 0,
+  },
+  {
+    id: 3103, numero: 'P-2026-003', estado: 'rechazada', createdAt: '2026-06-09T16:00:00.000Z',
+    clienteSnapshot: { nombre: 'David Soler', cif: '', direccion: '', email: 'david@mail.com', telefono: '600 777 888', contacto: 'David Soler' },
+    emisorSnapshot: { empresa: 'Estudio 3A', cif: 'B87654321', direccion: 'Av. del Sol 10', email: 'hola@estudio3a.com', telefono: '910 000 000' },
+    tasaIva: 0.21, diasValidez: 30, notas: null,
+    lines: [
+      { id: 1, nombre: 'Campaña de marketing', descripcion: 'Gestión de RRSS', cantidad: 3, precioImpl: 0, precioMant: 120 },
+    ],
+    subtotalImpl: 0, subtotalMant: 360, totalImpl: 0, totalMant: 435.6,
+  },
 ];
 
 export const facturas: Factura[] = [

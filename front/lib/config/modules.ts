@@ -11,6 +11,7 @@ export type ModuleId =
   | 'vacaciones'
   | 'productos'
   | 'ventas'
+  | 'pedidos'
   | 'facturas'
   | 'marketing'
   | 'estadisticas'
@@ -49,6 +50,7 @@ export const MODULES: ModuleDef[] = [
   { id: 'vacaciones', termKey: 'vacaciones', defaultLabel: 'Vacaciones', description: 'Solicitudes y aprobación de ausencias.', category: 'personas', icon: 'Plane', href: '/vacaciones', recommends: ['empleados'], requiresWorkerView: true },
   { id: 'productos', termKey: 'productos', defaultLabel: 'Productos', description: 'Inventario: stock, categorías y proveedores.', category: 'retail', icon: 'Package', href: '/productos' },
   { id: 'ventas', termKey: 'ventas', defaultLabel: 'Ventas / TPV', description: 'Tickets, métodos de pago y caja.', category: 'retail', icon: 'Receipt', href: '/ventas', recommends: ['productos'] },
+  { id: 'pedidos', termKey: 'pedidos', defaultLabel: 'Pedidos', description: 'Presupuestos y pedidos comerciales documentales, con vista previa imprimible.', category: 'retail', icon: 'ClipboardList', href: '/pedidos', recommends: ['clientes'] },
   { id: 'facturas', termKey: 'facturas', defaultLabel: 'Facturas', description: 'Facturación y documentos del cliente.', category: 'retail', icon: 'Euro', href: '/facturas', recommends: ['clientes'] },
   { id: 'marketing', termKey: 'marketing', defaultLabel: 'Marketing', description: 'Campañas, fidelización y notificaciones.', category: 'marketing', icon: 'Megaphone', href: '/marketing', recommends: ['clientes'] },
   { id: 'estadisticas', termKey: 'estadisticas', defaultLabel: 'Estadísticas', description: 'Estudios de mercado e informes con IA.', category: 'marketing', icon: 'BarChart3', href: '/estadisticas', recommends: ['clientes'] },
