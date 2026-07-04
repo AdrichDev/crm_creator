@@ -53,6 +53,48 @@ test('GET /invoices devuelve { items, total, page, limit } y solo facturas del n
 });
 
 // ---------------------------------------------------------------------------
+// GET /invoices — `metrics` server-side sobre TODAS las facturas (fix PR-3)
+// ---------------------------------------------------------------------------
+test('GET /invoices adjunta metrics calculadas sobre TODO el negocio, aunque haya más facturas que el page size', async (t) => {
+  if (!backUp) return t.skip('back down');
+  if (!SUPABASE_LIVE) return t.skip('SUPABASE_SERVICE_ROLE_KEY is placeholder');
+
+  const auth = await registerAndToken(`inv_metrics_${uniq()}@test.local`, 'Inv-pass-1234', t);
+  if (!auth) return;
+  const { token, businessId } = auth;
+
+  // 25 facturas > page size por defecto (20). Antes del fix, las métricas del front se
+  // calculaban sobre la página (máx. 20) → subconteo. Ahora vienen del back sobre las 25.
+  const data = [
+    ...Array.from({ length: 15 }, (_v, i) => ({ businessId, numero: `FP-${i}`, cliente: 'Ana', fecha: '2026-07-01', total: 100, estado: 'Pendiente' })),
+    ...Array.from({ length: 10 }, (_v, i) => ({ businessId, numero: `FG-${i}`, cliente: 'Bea', fecha: '2026-07-01', total: 200, estado: 'Pagada' })),
+  ];
+  await prisma.invoice.createMany({ data });
+
+  const list = await api('/invoices', {}, token, businessId);
+  assert.equal(list.status, 200);
+  const body = list.body as {
+    items: unknown[]; total: number; limit: number;
+    metrics: { totalFacturas: number; importeTotal: number; pendientes: number; importePendiente: number; pagadas: number; importePagado: number };
+  };
+
+  // El listado sigue paginado: como mucho `limit` filas (20 por defecto), NO las 25.
+  assert.ok(body.items.length <= body.limit, 'el listado sigue paginado');
+  assert.equal(body.total, 25);
+
+  // Las métricas reflejan el conjunto COMPLETO (25), no la página.
+  assert.ok(body.metrics, 'la respuesta debe incluir metrics');
+  assert.equal(body.metrics.totalFacturas, 25, 'metrics cuenta TODAS las facturas, no solo la página');
+  assert.equal(body.metrics.importeTotal, 15 * 100 + 10 * 200); // 1500 + 2000 = 3500
+  assert.equal(body.metrics.pendientes, 15);
+  assert.equal(body.metrics.importePendiente, 1500);
+  assert.equal(body.metrics.pagadas, 10);
+  assert.equal(body.metrics.importePagado, 2000);
+
+  await prisma.invoice.deleteMany({ where: { businessId } }).catch(() => {});
+});
+
+// ---------------------------------------------------------------------------
 // POST /invoices — CERRADO (PR-2b): la creación por esta superficie responde 405
 // ---------------------------------------------------------------------------
 test('POST /invoices está cerrado: responde 405 (la factura se crea al aceptar un pedido)', async (t) => {

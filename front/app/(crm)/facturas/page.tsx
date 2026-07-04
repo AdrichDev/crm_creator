@@ -3,47 +3,47 @@ import { useState } from 'react';
 import { ModuleGuard } from '@/components/layout/module-guard';
 import { useTerm, useRole } from '@/lib/tenant-config-context';
 import { canWrite } from '@/lib/config/roles';
-import { PageHeader, Stat, Table, Td, Badge, Button, IconButton } from '@/components/ui/primitives';
-import { EntityModal, type Field } from '@/components/ui/entity-modal';
-import { Modal } from '@/components/ui/modal';
-import { DocumentosPanel } from '@/components/ui/documentos-panel';
+import { PageHeader, Stat, Table, Td, Badge, EmptyState } from '@/components/ui/primitives';
 import { useCollection } from '@/lib/data/use-collection';
 import { useDocumentos } from '@/lib/data/use-documents';
 import { facturas as seed, type Factura, type Documento } from '@/lib/mock/data';
-import { Plus, Info } from 'lucide-react';
 import { isApiEnabled } from '@/lib/api/client';
+import { useInvoiceMetrics } from '@/lib/data/use-invoice-metrics';
+import { FacturaPreview } from '@/components/facturacion/factura-preview';
 
-const FIELDS: Field[] = [
-  { name: 'numero', label: 'Nº de factura', required: true },
-  { name: 'cliente', label: 'Cliente', required: true },
-  { name: 'servicio', label: 'Tratamiento / servicio' },
-  { name: 'fecha', label: 'Fecha', type: 'date', required: true },
-  { name: 'total', label: 'Total (€)', type: 'number', step: '0.01', required: true },
-  { name: 'estado', label: 'Estado', type: 'select', options: ['Pendiente', 'Pagada', 'Anulada'] },
-];
+const tone = (s: string) => (s === 'Pagada' ? 'green' : s === 'Anulada' ? 'red' : 'amber');
+const eur = (n: number) => '€' + n.toFixed(2);
 
-const tone = (s: string) => s === 'Pagada' ? 'green' : s === 'Anulada' ? 'red' : 'amber';
-
+/**
+ * Pantalla `Facturas` documental (crm-paridad-facturas-pedidos-aa, Fase 2).
+ *
+ * Paridad con AA (`agents-agency/front/app/facturas/page.tsx`): listado + métricas +
+ * acción `Ver / Imprimir` que abre una vista previa imprimible. SIN alta manual: la
+ * creación se cerró en PR-2b (POST /api/invoices → 405); las facturas nacen al aceptar
+ * un pedido (PUT /pedidos/:id/status → ensureInvoiceForPedido). Las métricas se derivan
+ * con `computeInvoiceMetrics` (mismo criterio que el cálculo inline anterior).
+ */
 export default function Page() {
   const term = useTerm('facturas', 'Facturas');
   const { role } = useRole();
   const puedeEditar = canWrite(role, 'facturas');
-  // Vista cliente: todas las facturas son suyas → no se muestra el cliente,
-  // sino el tratamiento/servicio recibido. Igual para todos los verticales.
+  // Vista cliente: todas las facturas son suyas → se muestra el servicio recibido, no el cliente.
   const vistaCliente = role === 'cliente';
   const apiEnabled = isApiEnabled();
-  const { items, create, update } = useCollection<Factura>('facturas', seed);
+  const { items, update } = useCollection<Factura>('facturas', seed);
   // Modo API: documentos respaldados por /api/documents (scoped por negocio).
   const apiDocs = useDocumentos(apiEnabled);
-  const [open, setOpen] = useState(false);
-  const [info, setInfo] = useState<Factura | null>(null);
+  const [preview, setPreview] = useState<Factura | null>(null);
 
-  const actual = info ? items.find((f) => f.id === info.id) ?? info : null;
+  const actual = preview ? items.find((f) => f.id === preview.id) ?? preview : null;
 
-  function onSubmit(v: Record<string, string | number>) {
-    create({ estado: 'Pendiente', documentos: [], ...v } as unknown as Omit<Factura, 'id'>);
-    setOpen(false);
-  }
+  // KPIs: en modo API (staff) se leen del back, que los calcula sobre TODAS las facturas del
+  // negocio (fix subconteo por paginación, PR-3). El rol cliente recibe 403 en /invoices
+  // (staffOnly) y ve lista vacía → no se pide al server, se deriva del array local (vacío).
+  // En local/demo no hay paginación → cálculo cliente sobre el array completo.
+  const serverMetrics = apiEnabled && !vistaCliente;
+  const { metrics } = useInvoiceMetrics(serverMetrics, items.map((f) => ({ estado: f.estado, total: Number(f.total) })));
+
   function addDoc(d: Documento) {
     if (!actual) return;
     update(actual.id, { documentos: [...(actual.documentos ?? []), d] });
@@ -53,65 +53,60 @@ export default function Page() {
     update(actual.id, { documentos: (actual.documentos ?? []).filter((x) => x.id !== id) });
   }
 
-  const total = items.reduce((a, f) => a + Number(f.total), 0);
+  // Vista previa / impresión de una factura (task 2.3).
+  if (actual) {
+    return (
+      <ModuleGuard module="facturas">
+        <FacturaPreview
+          factura={actual}
+          vistaCliente={vistaCliente}
+          onBack={() => setPreview(null)}
+          docs={apiEnabled ? apiDocs.docs : (actual.documentos ?? [])}
+          canUpload={puedeEditar}
+          onAddDoc={apiEnabled ? apiDocs.add : addDoc}
+          onRemoveDoc={apiEnabled ? apiDocs.remove : removeDoc}
+        />
+      </ModuleGuard>
+    );
+  }
 
   return (
     <ModuleGuard module="facturas">
-      <PageHeader title={term} subtitle="Facturación y documentos de clientes."
-        action={<Button onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> Nueva factura</Button>} />
+      {/* SIN botón de alta: la factura nace al aceptar un pedido (PR-2b cerró el alta manual). */}
+      <PageHeader title={term} subtitle="Se generan automáticamente al aceptar un pedido." />
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <Stat label="Facturas" value={items.length} accent />
-        <Stat label="Importe total" value={'€' + total.toFixed(2)} />
-        <Stat label="Pendientes" value={items.filter((f) => f.estado === 'Pendiente').length} />
+      {/* Métricas documentales (task 2.2) derivadas por computeInvoiceMetrics (task 1.3). */}
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Stat label="Facturas" value={metrics.totalFacturas} accent />
+        <Stat label="Pendientes" value={metrics.pendientes} />
+        <Stat label="Importe total" value={eur(metrics.importeTotal)} />
+        <Stat label="Importe pendiente" value={eur(metrics.importePendiente)} />
       </div>
 
-      <Table head={['Nº', vistaCliente ? 'Tratamiento' : 'Cliente', 'Fecha', 'Total', 'Estado', 'Docs', '']}>
-        {items.map((f) => (
-          <tr key={f.id}>
-            <Td className="font-medium text-[var(--panel-text)]">{f.numero}</Td>
-            <Td>{vistaCliente ? (f.servicio || '—') : f.cliente}</Td>
-            <Td>{f.fecha}</Td>
-            <Td className="font-medium">€{Number(f.total).toFixed(2)}</Td>
-            <Td><Badge tone={tone(f.estado)}>{f.estado}</Badge></Td>
-            <Td>{f.documentos?.length ?? 0}</Td>
-            <Td>
-              <div className="flex justify-end">
-                <IconButton title="Ver detalles" onClick={() => setInfo(f)}>
-                  <Info className="h-4 w-4" />
-                </IconButton>
-              </div>
-            </Td>
-          </tr>
-        ))}
-      </Table>
-
-      {/* Modal info: todos los datos + documentos */}
-      <Modal open={!!actual} title={`Factura ${actual?.numero ?? ''}`} onClose={() => setInfo(null)}
-        footer={<Button variant="outline" onClick={() => setInfo(null)}>Cerrar</Button>}>
-        {actual && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              {vistaCliente
-                ? <div><span className="text-[var(--panel-muted)]">Tratamiento</span><p className="text-[var(--panel-text)]">{actual.servicio || '—'}</p></div>
-                : <div><span className="text-[var(--panel-muted)]">Cliente</span><p className="text-[var(--panel-text)]">{actual.cliente}</p></div>}
-              <div><span className="text-[var(--panel-muted)]">Fecha</span><p className="text-[var(--panel-text)]">{actual.fecha}</p></div>
-              <div><span className="text-[var(--panel-muted)]">Total</span><p className="text-[var(--panel-text)]">€{Number(actual.total).toFixed(2)}</p></div>
-              <div><span className="text-[var(--panel-muted)]">Estado</span><p><Badge tone={tone(actual.estado)}>{actual.estado}</Badge></p></div>
-            </div>
-            <div className="border-t border-white/10 pt-4">
-              <DocumentosPanel
-                docs={apiEnabled ? apiDocs.docs : (actual.documentos ?? [])}
-                canUpload={puedeEditar}
-                onAdd={apiEnabled ? apiDocs.add : addDoc}
-                onRemove={apiEnabled ? apiDocs.remove : removeDoc} />
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      <EntityModal open={open} title="Nueva factura" fields={FIELDS}
-        initial={{ estado: 'Pendiente' }} onSubmit={onSubmit} onClose={() => setOpen(false)} />
+      {items.length === 0 ? (
+        <EmptyState
+          title="Aún no hay facturas"
+          hint="Las facturas se crean automáticamente cuando un pedido pasa a «aceptada»."
+        />
+      ) : (
+        <Table head={['Nº', vistaCliente ? 'Tratamiento' : 'Cliente', 'Fecha', 'Total', 'Estado', 'Docs', '']}>
+          {items.map((f) => (
+            <tr key={f.id}>
+              <Td className="font-medium text-[var(--panel-text)]">{f.numero}</Td>
+              <Td>{vistaCliente ? (f.servicio || '—') : f.cliente}</Td>
+              <Td>{f.fecha}</Td>
+              <Td className="font-medium">{eur(Number(f.total))}</Td>
+              <Td><Badge tone={tone(f.estado)}>{f.estado}</Badge></Td>
+              <Td>{f.documentos?.length ?? 0}</Td>
+              <Td>
+                <div className="flex justify-end">
+                  <button className="row-action edit" onClick={() => setPreview(f)}>Ver / Imprimir</button>
+                </div>
+              </Td>
+            </tr>
+          ))}
+        </Table>
+      )}
     </ModuleGuard>
   );
 }

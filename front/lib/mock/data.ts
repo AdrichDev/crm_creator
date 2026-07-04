@@ -5,7 +5,10 @@
 // las semillas y archivos grandes (> límite localStorage) guardan solo metadatos.
 export interface Documento { id: number | string; nombre: string; tipo: string; tam: number; fecha: string; datos?: string; }
 export interface Cliente { id: number; nombre: string; email: string; telefono: string; visitas: number; gastoTotal: number; segmento: string; ultimaVisita: string; cif?: string; direccion?: string; contacto?: string; documentos?: Documento[]; extra?: Record<string, string>; }
-export interface Factura { id: number; numero: string; cliente: string; servicio?: string; fecha: string; total: number; estado: string; documentos?: Documento[]; }
+// `pedidoId`: vínculo al pedido origen (crm-paridad-facturas-pedidos-aa, PR-2b). Lo puebla
+// la API en modo remoto (columna crm.factura.pedido_id); null/undefined en facturas manuales,
+// del operador (bot Telegram) o del mock local. La vista previa lo muestra solo si existe.
+export interface Factura { id: number; numero: string; cliente: string; servicio?: string; fecha: string; total: number; estado: string; documentos?: Documento[]; pedidoId?: string | null; }
 export interface Cita { id: number; cliente: string; servicio: string; empleado: string; fecha: string; hora: string; estado: string; }
 export interface Servicio { id: number; nombre: string; duracion: number; precio: number; categoria: string; }
 export interface Empleado { id: number; nombre: string; rol: string; especialidad: string; estado: string; email: string; }

@@ -22,6 +22,7 @@ import { visitsRouter } from './visits.js';
 import { customerNotesRouter } from './customer-notes.js';
 import { remindersRouter } from './reminders.js';
 import { saleLinesRouter } from './sale-lines.js';
+import { invoicesRouter } from './invoices.js';
 import { pedidosRouter } from './pedidos.js';
 import { documentsRouter } from './documents.js';
 import { notificationsRouter } from './notifications.js';
@@ -64,13 +65,14 @@ api.use('/resources', crudRouter('resource', { fields: ['locationId', 'nombre', 
 // Líneas de venta anidadas (/:id/lineas) ANTES del crud de ventas: rutas distintas, sin colisión.
 api.use('/sales', saleLinesRouter);
 api.use('/sales', crudRouter('sale', { fields: ['customerId', 'cliente', 'fecha', 'metodo', 'total'], include: { lines: true }, fkFields: { customerId: 'customer' } }));
-// crm-paridad-facturas-pedidos-aa (PR-2b): el alta manual genérica por esta ruta se CIERRA
-// (disableCreate → POST /invoices responde 405). La factura se crea automáticamente al
-// aceptar un pedido (PUT /pedidos/:id/status → ensureInvoiceForPedido). GET/PATCH/DELETE
-// siguen abiertos para el listado/detalle/edición. NOTA: /service/operator/invoices (bot de
-// Telegram, numeración F00001) es OTRO router y NO se ve afectado — usa prisma.invoice.create
-// directamente, no este crudRouter.
-api.use('/invoices', crudRouter('invoice', { fields: ['numero', 'cliente', 'servicio', 'fecha', 'total', 'estado', 'documentos'], disableCreate: true }));
+// crm-paridad-facturas-pedidos-aa: GET /invoices devuelve `{ items, total, page, limit, metrics }`
+// — las `metrics` se calculan SERVER-SIDE sobre TODAS las facturas del negocio (no solo la
+// página), corrigiendo el subconteo de KPIs por paginación (PR-3). PR-2b sigue vigente: el
+// alta manual está CERRADA (POST → 405), la factura nace al aceptar un pedido
+// (PUT /pedidos/:id/status → ensureInvoiceForPedido); GET/:id, PATCH y DELETE siguen abiertos.
+// NOTA: /service/operator/invoices (bot de Telegram, numeración F00001) es OTRO router y NO se
+// ve afectado — usa prisma.invoice.create directamente, no este router.
+api.use('/invoices', invoicesRouter());
 // Presupuestos/Pedidos documentales (crm-paridad-facturas-pedidos-aa): superficie NUEVA,
 // separada de /sales (TPV). La factura se auto-crea al aceptar (PR-2b).
 api.use('/pedidos', pedidosRouter);

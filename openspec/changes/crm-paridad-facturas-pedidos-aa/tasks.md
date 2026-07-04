@@ -94,11 +94,60 @@ Riesgo de superar 400 líneas: Alto (motivo por el que se encadena)
       sin excluir Anuladas (mismo criterio que hoy). Test: `back/src/lib/invoices/__tests__/metrics.test.ts`.
       Aún NO conectada a ningún endpoint — eso es Fase 2 (UI documental de Facturas).
 
-## Fase 2: Facturas CRM
+## Fase 2: Facturas CRM (PR-3, 04/07/2026 — UI-only, sin cambios de back/schema)
 
-- [ ] 2.1 Sustituir la experiencia principal de `facturas/page.tsx` por un listado documental.
-- [ ] 2.2 Agregar métricas de facturas, pendientes e importes.
-- [ ] 2.3 Agregar vista previa e impresión conservando documentos adjuntos.
+- [x] 2.1 Sustituir la experiencia principal de `facturas/page.tsx` por un listado documental. **DONE (PR-3).**
+      `front/app/(crm)/facturas/page.tsx` reescrita al patrón documental de AA
+      (`agents-agency/front/app/facturas/page.tsx`): listado + métricas + acción `Ver / Imprimir`
+      que alterna a la vista previa; SIN botón "+ Nueva factura" (el alta manual se cerró en
+      PR-2b, `POST /api/invoices` → 405; la factura nace al aceptar un pedido). Estado vacío
+      cuando no hay facturas. Se conserva la vista cliente (muestra servicio, oculta cliente).
+- [x] 2.2 Agregar métricas de facturas, pendientes e importes. **DONE (PR-3).**
+      Se consume `computeInvoiceMetrics` (task 1.3, antes sin llamadores). Al ser `front` y
+      `back` paquetes SEPARADOS (sin workspace; el front nunca importa de back), se replica la
+      función pura idéntica en `front/lib/invoices/metrics.ts` (espejo exacto de
+      `back/src/lib/invoices/metrics.ts`; cualquier cambio de criterio debe aplicarse en ambas).
+      La página muestra 4 métricas: Facturas, Pendientes, Importe total, Importe pendiente.
+- [x] 2.2b (PR-3 fix) Calcular las métricas SERVER-SIDE sobre TODAS las facturas del negocio. **DONE (PR-3, gate Devil's Advocate).**
+      BUG detectado en revisión (Devil's Advocate): la task 2.2 derivaba los KPIs en el front con
+      `computeInvoiceMetrics(items)`, pero `items` viene de `useCollection` → `GET /invoices`, que
+      está PAGINADO (`back/src/lib/pagination.ts`: `limit` por defecto 20, tope 100). Un negocio con
+      más facturas que una página veía los KPIs subcontados sin aviso visual. Invisible en demo/local
+      (`localBackend.list()` devuelve el array completo sin paginar) → pasaba toda QA manual y solo
+      rompía en tenants reales con volumen. Además `back/src/lib/invoices/metrics.ts` (task 1.3) no
+      tenía ningún llamador en `back/src` salvo su test. Fix (paridad exacta con AA
+      `agents-agency/back/src/routes/invoices.ts`, que emite `{ invoices, metrics }`):
+      • Back: `back/src/routes/invoices.ts` (nuevo) separa `GET /invoices` del crudRouter genérico y
+        adjunta `metrics` calculadas por `computeBusinessInvoiceMetrics` (nueva, en
+        `back/src/lib/invoices/metrics.ts`) sobre TODAS las facturas no eliminadas del negocio (un
+        `findMany` aparte SIN `skip`/`take`, mismo scoping `businessId` + `eliminadoEn: null`). GET/:id,
+        PATCH, DELETE y POST→405 se heredan sin cambios del crud. `routes/index.ts` monta
+        `invoicesRouter()` en vez del crud genérico.
+      • Front: `front/lib/data/use-invoice-metrics.ts` (nuevo, espejo del patrón `useDocumentos`). En
+        modo API (staff) LEE `metrics` del back; en local/demo (o rol cliente, que recibe 403 en
+        `/invoices`) usa `computeInvoiceMetrics` sobre el array completo — correcto porque ahí NO hay
+        paginación. `front/lib/invoices/metrics.ts` se conserva SOLO como fallback local (documentado).
+        `facturas/page.tsx` consume el hook en vez de calcular sobre `items`.
+      • Tests: `back/src/lib/invoices/__tests__/business-metrics.test.ts` (4, en `npm test`) prueba que
+        las métricas cuentan 57 facturas aunque superen el page size y que la query NO pagina;
+        `invoices.e2e.test.ts` +1 (metrics sobre 25 > page size, live back); front
+        `tests/facturas-api-metrics.test.tsx` (1) prueba que la página muestra 57/€7350.00 (server) y
+        NO 20/€200.00 (la página). `facturas-documental.test.tsx` (local) sigue verde.
+      • Suites: back `npm test` **416 pass / 0 fail**; front vitest **437 pass / 0 fail**. Typecheck back limpio.
+- [x] 2.3 Agregar vista previa e impresión conservando documentos adjuntos. **DONE (PR-3).**
+      `front/components/facturacion/factura-preview.tsx`: documento imprimible (barra
+      Volver/Imprimir con `window.print()`, aislamiento `@media print`, estilos en línea como AA).
+      Paridad DELIBERADAMENTE LIGERA: sin tabla de líneas ni desglose de IVA (modelo `crm.factura`
+      plano, decisión del dueño en design.md §1); logo por tenant fuera de alcance. Muestra número,
+      cliente/servicio, total, estado, y nota "Generada al aceptar un pedido" SOLO si `pedidoId`
+      existe (null en facturas manuales/operador/mock — `pedidoId?` añadido a `type Factura`).
+      Documentos adjuntos conservados vía `DocumentosPanel` fuera de impresión.
+      Tests (vitest + @testing-library, convención del repo): `front/tests/facturas-metrics.test.ts`
+      (4), `front/tests/facturas-documental.test.tsx` (5), `front/tests/factura-preview.test.tsx` (6)
+      — 15 nuevos, verdes. Suite front completa: **436 pass / 0 fail** (baseline 421 + 15). Typecheck limpio.
+      NOTA (deferido, no bloqueante): mostrar el `numero` humano del pedido origen requeriría
+      `include: { pedido: true }` en la ruta `/invoices` (cambio de back) — se dejó fuera para
+      mantener esta PR estrictamente UI-only; hoy la nota de origen no expone el cuid.
 
 ## Fase 3: Pedidos y presupuestos CRM
 

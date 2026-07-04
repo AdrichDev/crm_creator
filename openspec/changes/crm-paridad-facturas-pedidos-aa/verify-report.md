@@ -1,3 +1,59 @@
+# Verification Report — crm-paridad-facturas-pedidos-aa (PR-3 / Fase 2, tasks 2.1-2.3)
+
+**Mode**: OpenSpec, Standard verify (front: vitest + @testing-library; no strict TDD). Scope: PR-3 (documental Facturas UI). UI-only, no back/schema.
+**Verdict**: **PASS WITH RISK** — implementation is correct, independently test-proven, and backend is provably untouched. Non-blocking risks: metrics logic now duplicated front/back (no shared module) and an untracked 0-byte junk file sits in the working tree.
+
+## Completeness (Fase 2)
+| Task | State | Evidence |
+|---|---|---|
+| 2.1 Documental facturas list (no manual create) | Done | `front/app/(crm)/facturas/page.tsx` rewritten; list + Ver/Imprimir; no "+ Nueva factura" |
+| 2.2 Invoice metrics wired via computeInvoiceMetrics | Done | `front/lib/invoices/metrics.ts` (port); 4 Stats rendered |
+| 2.3 Printable preview keeping attached documents | Done | `front/components/facturacion/factura-preview.tsx`; window.print + DocumentosPanel |
+| Fase 3 (UI pedidos), Fase 4 (flujo completo) | Not started (correctly `[ ]`) | Out of PR-3 scope |
+
+## Build / Tests evidence (independently re-run)
+- `npm test` (front): **436 pass / 0 fail** across **65 test files**. Matches report exactly (baseline 421 + 15 new). Framework confirmed genuine: `package.json` `test` = `vitest run`, deps `@testing-library/react` + `jest-dom`. NOT misreported.
+- New tests present and non-vacuous:
+  - `tests/facturas-metrics.test.ts` (4): empty→zeros, aggregation **includes Anuladas** in importeTotal (247.5 with a 10 Anulada), free-state no counter, **NaN/Infinity→0** guard.
+  - `tests/facturas-documental.test.tsx` (5): metrics render, **asserts NO "Nueva factura"** (`queryByText` null), list + Ver/Imprimir count = rows, Ver/Imprimir opens preview, empty state.
+  - `tests/factura-preview.test.tsx` (6): fields render, Imprimir→window.print, Volver→onBack, **pedidoId both branches** (null hides note / present shows note), vista cliente hides cliente.
+- `npx tsc --noEmit` (front): exit 0, clean. Confirmed independently.
+
+## Spec compliance matrix
+| AC | Requirement | Status | Note |
+|---|---|---|---|
+| AC1 | Facturas = listado + métricas + estados + doc imprimible como experiencia principal | COMPLIANT (test-proven) | page + preview, covered by documental + preview tests |
+| AC2 | Pedidos/presupuestos UI equivalente AA | DEFERRED (Fase 3) | Correctly out of PR-3 |
+| AC3 | Numeración por servidor conservada | NOT REGRESSED | PR-3 touches no numbering; operator F00001 path untouched |
+| AC4 | Estados coherentes para cálculo + documento | COMPLIANT | same 3 literals in `tone()` + metrics; NaN guard tested |
+| AC5 | Endpoints existentes compatibles | COMPLIANT | UI-only, zero endpoint changes |
+
+## Independent findings vs. report claims
+1. **No manual-create path** — CONFIRMED. `page.tsx` has no "+ Nueva factura" button, no EntityModal, no create form/route. `useCollection`'s `create` is never invoked; `update` used only for documentos. Only mutation surface is doc add/remove. Test asserts the absence.
+2. **Metrics port is behaviorally identical** — CONFIRMED. `front/lib/invoices/metrics.ts` and `back/src/lib/invoices/metrics.ts` are line-for-line equivalent in logic: same `Number.isFinite() ? total : 0` NaN-guard, same totals-include-Anuladas semantics, same exact-literal switch with no-op default. Not a subtly different reimplementation. (The back file's stale comment about "diverging from the front" refers to the OLD inline calc that PR-3 replaced — now moot.)
+3. **Preview degrades gracefully on null pedidoId** — CONFIRMED. Origin note gated by `{f.pedidoId && (...)}`; null/undefined → renders nothing, no crash, no misleading "from pedido" text. No line-items table or IVA breakdown fabricated — flat model only (numero/fecha/estado/cliente/servicio/total). Both branches tested.
+4. **Backend provably untouched** — CONFIRMED. `git diff --name-only -- back/` is EMPTY. No schema, migration, route, service-operator, or ventas file changed. Diff scope = `page.tsx`, `lib/mock/data.ts` (+`pedidoId?: string|null` on `type Factura`), 2 new source files, 3 new tests.
+
+## PR-3 split assessment (2.1/2.2/2.3 as one PR)
+Correct call. Production diff ~371 lines is WITHIN the 400-line review budget; only tests (~210) push the combined figure to ~580. The 400 budget targets reviewer cognitive load, where test code reviews lighter than production. Splitting 2.1/2.2/2.3 has no autonomous slice: metrics with no consumer, or a list whose sole action (Ver/Imprimir) targets a preview component that would not yet exist. The coupling argument is genuine, not scope-hiding. Keep as single PR-3.
+
+## Issues
+### CRITICAL
+- None. No blocker to archiving PR-3.
+
+### WARNING
+1. **Metrics logic duplicated front/back with no shared module.** `computeInvoiceMetrics` exists identically in two packages; any future criteria change (e.g. excluding Anuladas from importeTotal) must edit BOTH or they silently drift. Documented deviation, guarded by tests on both sides, but real maintenance debt. A shared module would de-dupe.
+
+### SUGGESTION
+1. **Untracked 0-byte junk file `l├¡mite`** in repo root (created 21:56 during PR-3, broken shell-redirect artifact — the known "ficheros basura heredoc" gotcha). Untracked, NOT committed. Delete before commit; use explicit path adds (not `git add -A`) so it never reaches a commit.
+2. **Origin pedido `numero` not surfaced** in preview — deliberate to keep PR UI-only (would need `include: { pedido: true }` on the `/invoices` route). Note says "Generada automáticamente al aceptar un pedido" without the cuid. Acceptable; revisit if humans need the origin number.
+3. **Metrics computed client-side over loaded (paginated) invoices only** — pre-existing limitation inherited from the prior inline calc, not introduced by PR-3. If dashboards need global totals, compute server-side later.
+
+## Final Verdict
+**PASS WITH RISK for PR-3.** Every headline claim verified independently: 436/436 vitest green, typecheck clean, no manual-create path, metrics port behaviorally identical to back, preview graceful on null pedidoId with no fabricated line-items/IVA, and zero backend files touched. The single-PR decision is the right call given genuine list→metrics→preview coupling and production staying within the 400-line budget. No CRITICAL blockers to archive. Two hygiene/debt items to resolve before/at commit: delete the untracked junk file and track the front/back metrics duplication.
+
+---
+
 # Verification Report — crm-paridad-facturas-pedidos-aa (PR-2 / task 1.2)
 
 **Mode**: OpenSpec, Standard verify (node:test, no strict TDD). Scope: PR-2 only (Pedido/PedidoLine model + `/pedidos` route). PR-2b deliberately deferred.

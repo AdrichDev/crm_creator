@@ -88,3 +88,39 @@ export function computeInvoiceMetrics(invoices: InvoiceForMetrics[]): InvoiceMet
 
   return metrics;
 }
+
+/**
+ * Delegate mínimo (subconjunto de `PrismaClient.invoice`) que necesita la métrica
+ * server-side: solo un `findMany` que devuelva `estado` + `total`.
+ */
+export interface InvoiceMetricsDelegate {
+  findMany(args: {
+    where: { businessId: string | undefined; eliminadoEn: null };
+    select: { estado: true; total: true };
+  }): Promise<Array<{ estado: string; total: unknown }>>;
+}
+
+/**
+ * Calcula las métricas documentales sobre TODAS las facturas no eliminadas del negocio
+ * (el conjunto COMPLETO, no solo la página devuelta por el listado).
+ *
+ * Este es el núcleo del fix de PR-3: `GET /invoices` pagina el listado (`skip`/`take`, tope
+ * de 100 por página vía `parsePagination`), pero las métricas se calculaban antes en el
+ * front sobre esa página. Un negocio con más facturas que el page size veía los KPIs
+ * subcontados sin ningún aviso visual. Aquí se hace un `findMany` APARTE, SIN `skip`/`take`,
+ * con el mismo scoping por `businessId` + `eliminadoEn: null` que el listado. Paridad con AA
+ * (`agents-agency/back/src/routes/invoices.ts`, que devuelve `{ invoices, metrics }`).
+ *
+ * `total` es un `Decimal` en BD → se normaliza con `Number(...)` (mismo criterio que el
+ * front hacía con `Number(f.total)`) antes de delegar en `computeInvoiceMetrics`.
+ */
+export async function computeBusinessInvoiceMetrics(
+  delegate: InvoiceMetricsDelegate,
+  businessId: string | undefined,
+): Promise<InvoiceMetrics> {
+  const rows = await delegate.findMany({
+    where: { businessId, eliminadoEn: null },
+    select: { estado: true, total: true },
+  });
+  return computeInvoiceMetrics(rows.map((r) => ({ estado: r.estado, total: Number(r.total) })));
+}
