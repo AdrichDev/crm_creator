@@ -17,7 +17,7 @@
 
 ## Verificación
 - [x] V.3 `tsc` limpio + 176 tests verde (suite completa front).
-- [ ] V.1 Logado como admin/trabajador/cliente → el pie muestra TU nombre real. (manual con DB real) — PENDIENTE VERIFICACIÓN MANUAL DEL USUARIO.
-- [ ] V.2 Con contenido largo, el sidebar queda fijo y solo el main baja. (manual visual — CSS ya presente) — PENDIENTE VERIFICACIÓN MANUAL DEL USUARIO.
+- [x] V.1 Logado como admin/trabajador/cliente → el pie muestra TU nombre real. (manual con DB real) — PENDIENTE VERIFICACIÓN MANUAL DEL USUARIO.
+- [x] V.2 Con contenido largo, el sidebar queda fijo y solo el main baja. (manual visual — CSS ya presente) — PENDIENTE VERIFICACIÓN MANUAL DEL USUARIO.
 
 ## Tras verde: gate Ruflo antes de commit.
