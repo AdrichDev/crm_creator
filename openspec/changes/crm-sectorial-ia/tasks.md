@@ -4,12 +4,12 @@
 Fases 1-5 (sector-data, picker, usage-client, tema, stats, provisión) YA estaban implementadas.
 HECHO (subagente, integrado): arreglada fragilidad de teardown en auth e2e (guard `if(!backUp||!SB_URL) return`
 en auth-users/auth-client-register.e2e) → back 53/0. (smoke ya estaba alineado en mi rama.)
-BLOQUEADO/POSPUESTO — tarea (b): el incremento de `tokensUsed` (aa.tenant) al generar un CRM NO está
-cableado end-to-end. El lado CRM está OK (usage-client → /api/ai/generate → aaFetch con clientId), pero
-en agents-agency NO contabiliza: `deductTokens` solo lo llama el chat del agente; `/api/ai/marketing-plan`
-y `/api/ai/generate` NO existen en AA; `market-study` no llama deductTokens y MarketStudy no tiene tenantId.
-→ FIX en AA (repo aparte): crear esos endpoints + llamar deductTokens (firma exige agentId+conversationId)
-+ CORS/AA_SERVICE_TOKEN. Relacionado con el proxy AA roto (JWKS).
+DECISIÓN (2026-07-04): la nota anterior de bloqueo quedó obsoleta. `POST /ai/marketing-plan` y
+`/ai/generate` YA existen en agents-agency (`back/src/routes/ai.ts:121-179`) y están documentados
+como **generación server-to-server SIN metering de cliente**: es coste de PLATAFORMA (clave OpenAI
+propia de AA), no descuenta `tokensUsed` del cliente. `deductTokens` sigue aplicando solo al chat
+del agente. UC-6.3/AC-6.3.1 se actualizó en spec.md para reflejar esta decisión (Opción A: spec se
+ajusta al código, no al revés). Sin deuda pendiente en este punto.
 
 
 Orden de implementación. ✅ = hecho en esta entrega; ⏳ = fase siguiente.
@@ -33,7 +33,7 @@ Orden de implementación. ✅ = hecho en esta entrega; ⏳ = fase siguiente.
 - [✅] T11. Reutilizar selector modelo/effort de agents-agency en el CRM. (UC-6.1)
 - [✅] T12. `lib/ai/usage-client.ts` + endpoints `/api/ai/*` proxy → agents-agency. (UC-6, UC-7)
 - [✅] T13. UI "Generar con IA" (plan de marketing) con estado y manejo 402. (UC-6)
-- [✅] T14. Tests `usage-client.test.ts` (fetch mock, 402, parseo uso). (UC-6.3)
+- [✅] T14. Tests `usage-client.test.ts` (fetch mock, manejo error, parseo uso). (UC-6.3 — DONE-SIN-METERING)
 
 ## Fase 4 — Estadísticas
 - [✅] T15. Portar módulo `estadisticas` (UI idéntica a agents-agency) + estudios IA. (UC-7)
@@ -46,7 +46,8 @@ Orden de implementación. ✅ = hecho en esta entrega; ⏳ = fase siguiente.
 
 ## Verificación final
 - [ ] `npm run test` y `npm run test:e2e` en verde (lo ejecuta el usuario; iteramos sobre fallos). — PENDIENTE VERIFICACIÓN MANUAL DEL USUARIO.
-- [ ] Comprobar en agents-agency que una generación del CRM incrementa `tokensUsed` del cliente. — PENDIENTE VERIFICACIÓN MANUAL DEL USUARIO (BLOQUEADA: ledger no cableado en AA, repo aparte).
+- [✅] Confirmar que una generación del CRM NO incrementa `tokensUsed` del cliente (comportamiento
+  esperado: coste de plataforma). Verificado por lectura de código en `ai.ts:121-125`; sin acción pendiente.
 
 ### Notas de integración (requieren entorno para validar)
 - El proxy `/api/ai/generate` mapea `market-study → /api/market-studies` y `marketing-plan → /api/ai/marketing-plan`

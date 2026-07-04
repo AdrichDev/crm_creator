@@ -60,19 +60,22 @@ email, teléfono, dirección) obtenidos del endpoint.
 _Tests:_ `lib/clients/__tests__/client-picker.test.ts` (orden/paginación/filtro puro);
 _E2E:_ `e2e/onboarding-cliente.spec.ts`.
 
-## UC-6 — Generar Plan de Marketing con IA (modelo + effort, tokens compartidos)
+## UC-6 — Generar Plan de Marketing con IA (modelo + effort, sin metering de cliente)
 
 **AC-6.1** El usuario elige **modelo** y **effort** (la misma lista que `agents-agency`).
-**AC-6.2** Al generar, la petición va al backend de `agents-agency` con `clientId`.
-**AC-6.3** Tras la respuesta, `tokensUsed` del cliente se incrementa y se crea una fila en `tokenUsage`
-(mismo ledger global). Si el cliente está sin cupo, devuelve 402 y el CRM lo muestra.
+**AC-6.2** Al generar, la petición va al backend de `agents-agency` (`POST /ai/marketing-plan`),
+autenticada con `AA_SERVICE_TOKEN` (server-to-server, sin `clientId`).
+**AC-6.3** La generación es **coste de plataforma**: NO descuenta `tokensUsed` del cliente ni crea
+fila en `tokenUsage` (decisión documentada en `agents-agency/back/src/routes/ai.ts:121-125`; el
+ledger de AA solo aplica al chat del agente vía `deductTokens`). No hay respuesta 402 por cupo de
+cliente en este flujo; solo errores 400/500 de generación.
 
-_Tests:_ `lib/ai/__tests__/usage-client.test.ts` (fetch mockeado: payload, manejo 402, parseo de uso).
+_Tests:_ `lib/ai/__tests__/usage-client.test.ts` (fetch mockeado: payload, manejo de error, parseo de uso).
 
 ## UC-7 — Estudio de Mercado (Estadísticas) con IA
 
 **AC-7.1** El módulo `estadisticas` es seleccionable y replica el panel de `agents-agency`.
-**AC-7.2** Generar un estudio usa el mismo flujo IA/tokens de UC-6.
+**AC-7.2** Generar un estudio usa el mismo flujo IA de UC-6 (sin metering de cliente).
 
 _Tests:_ `usage-client.test.ts` (endpoint estudios); _E2E:_ `e2e/estadisticas.spec.ts`.
 
