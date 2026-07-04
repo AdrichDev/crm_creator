@@ -215,6 +215,29 @@ describe('POST /invoices', () => {
     assert.equal(created.data?.estado, 'Pendiente');
   });
 
+  // crm-paridad-facturas-pedidos-aa (Fase 1.1): fija explícitamente el caso base
+  // de la numeración F00001 — la primera factura de un negocio (count=0) recibe
+  // literalmente 'F00001', no 'F00000' ni 'F1'. El resto de la suite ya cubre
+  // el caso general (count=N → F0000N+1) y la exclusividad bajo concurrencia.
+  test('primera factura de un negocio (sin facturas previas) recibe numero "F00001"', async () => {
+    const created: { numero?: string } = {};
+    const db = fakeDb({
+      invoice: {
+        findMany: async () => [],
+        count: async () => 0, // negocio sin facturas todavía
+        create: async (args) => {
+          created.numero = (args.data as Record<string, unknown>).numero as string;
+          return { id: 'inv-first', numero: created.numero! };
+        },
+      },
+    });
+    const res = mockRes();
+    await invoicesCreateHandler(db, mockReq({ body: { businessId: ACTIVE_BUSINESS, cliente: 'Ana', total: 30 } }), res);
+    assert.equal(res.statusCode, 201);
+    assert.equal(created.numero, 'F00001');
+    assert.deepEqual(res.body, { id: 'inv-first', numero: 'F00001' });
+  });
+
   test('404 si businessId no existe', async () => {
     const db = fakeDb();
     const res = mockRes();
