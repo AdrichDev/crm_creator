@@ -54,11 +54,11 @@
 **Y** tras hacer click y elegir carpeta, la ruta aparece como texto junto al botón
 
 ## Tareas de verificación
-- [ ] Cambiar a modo claro y navegar todo el onboarding — revisar contraste
-- [ ] Cambiar a modo oscuro y verificar onboarding dorado
-- [ ] Verificar hover del logout en consola (rojo)
-- [ ] Verificar selección de sector (VerticalPicker dorado)
-- [ ] Verificar activación de módulo (ModuleToggleGrid dorado)
-- [ ] Verificar botón Exportar activo en modo oscuro (gris/blanco)
-- [ ] Verificar que las cards no muestran ID
-- [ ] Verificar pestaña "Proyecto"
+- [x] Cambiar a modo claro y navegar todo el onboarding — revisar contraste
+- [x] Cambiar a modo oscuro y verificar onboarding dorado
+- [x] Verificar hover del logout en consola (rojo)
+- [x] Verificar selección de sector (VerticalPicker dorado)
+- [x] Verificar activación de módulo (ModuleToggleGrid dorado)
+- [x] Verificar botón Exportar activo en modo oscuro (gris/blanco)
+- [x] Verificar que las cards no muestran ID
+- [x] Verificar pestaña "Proyecto"
