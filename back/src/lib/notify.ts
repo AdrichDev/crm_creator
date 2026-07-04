@@ -79,25 +79,30 @@ export async function notifyBookingConfirmed(
   data: BookingNotifyData,
   deps: NotifyDeps = defaultDeps(),
 ): Promise<boolean> {
-  if (deps.webhookUrl) {
-    const r = await deps.emit('booking.confirmed', toEventData(data), {
-      businessId: data.businessId,
-      eventId: `${data.bookingId}:confirmed`,
+  try {
+    if (deps.webhookUrl) {
+      const r = await deps.emit('booking.confirmed', toEventData(data), {
+        businessId: data.businessId,
+        eventId: `${data.bookingId}:confirmed`,
+      });
+      return emitDispatched(r);
+    }
+    const html = confirmedTemplate({
+      customerName: data.customerName,
+      serviceName: data.serviceName,
+      startsAt: data.startsAt,
+      employeeName: data.employeeName,
+      businessName: data.businessName,
     });
-    return emitDispatched(r);
+    return await deps.sendEmail({
+      to: data.email,
+      subject: `Cita confirmada — ${data.serviceName || 'tu servicio'}`,
+      html,
+    });
+  } catch (err) {
+    console.error(`[notify] booking.confirmed soft-fail (${data.bookingId})`, (err as Error).message);
+    return false;
   }
-  const html = confirmedTemplate({
-    customerName: data.customerName,
-    serviceName: data.serviceName,
-    startsAt: data.startsAt,
-    employeeName: data.employeeName,
-    businessName: data.businessName,
-  });
-  return deps.sendEmail({
-    to: data.email,
-    subject: `Cita confirmada — ${data.serviceName || 'tu servicio'}`,
-    html,
-  });
 }
 
 /**
@@ -110,28 +115,33 @@ export async function notifyBookingReminder(
   eventId: string,
   deps: NotifyDeps = defaultDeps(),
 ): Promise<boolean> {
-  if (deps.webhookUrl) {
-    const eventName = ventana === '24h' ? 'booking.reminder.24h' : 'booking.reminder.2h';
-    const r = await deps.emit(eventName, toEventData(data), {
-      businessId: data.businessId,
-      eventId,
-    });
-    return emitDispatched(r);
+  try {
+    if (deps.webhookUrl) {
+      const eventName = ventana === '24h' ? 'booking.reminder.24h' : 'booking.reminder.2h';
+      const r = await deps.emit(eventName, toEventData(data), {
+        businessId: data.businessId,
+        eventId,
+      });
+      return emitDispatched(r);
+    }
+    const html = reminderTemplate(
+      {
+        customerName: data.customerName,
+        serviceName: data.serviceName,
+        startsAt: data.startsAt,
+        employeeName: data.employeeName,
+        businessName: data.businessName,
+      },
+      ventana,
+    );
+    const subject = ventana === '24h'
+      ? `Recordatorio: tu cita de mañana — ${data.serviceName}`
+      : `Recordatorio: tu cita es en 2 horas — ${data.serviceName}`;
+    return await deps.sendEmail({ to: data.email, subject, html });
+  } catch (err) {
+    console.error(`[notify] booking.reminder.${ventana} soft-fail (${data.bookingId})`, (err as Error).message);
+    return false;
   }
-  const html = reminderTemplate(
-    {
-      customerName: data.customerName,
-      serviceName: data.serviceName,
-      startsAt: data.startsAt,
-      employeeName: data.employeeName,
-      businessName: data.businessName,
-    },
-    ventana,
-  );
-  const subject = ventana === '24h'
-    ? `Recordatorio: tu cita de mañana — ${data.serviceName}`
-    : `Recordatorio: tu cita es en 2 horas — ${data.serviceName}`;
-  return deps.sendEmail({ to: data.email, subject, html });
 }
 
 /**
@@ -141,22 +151,27 @@ export async function notifyBookingNoShow(
   data: BookingNotifyData,
   deps: NotifyDeps = defaultDeps(),
 ): Promise<boolean> {
-  if (deps.webhookUrl) {
-    const r = await deps.emit('booking.no_show', toEventData(data), {
-      businessId: data.businessId,
-      eventId: `${data.bookingId}:no_show`,
+  try {
+    if (deps.webhookUrl) {
+      const r = await deps.emit('booking.no_show', toEventData(data), {
+        businessId: data.businessId,
+        eventId: `${data.bookingId}:no_show`,
+      });
+      return emitDispatched(r);
+    }
+    const html = noShowTemplate({
+      customerName: data.customerName,
+      serviceName: data.serviceName,
+      startsAt: data.startsAt,
+      businessName: data.businessName,
     });
-    return emitDispatched(r);
+    return await deps.sendEmail({
+      to: data.email,
+      subject: `Te echamos de menos — ${data.serviceName || 'tu cita'}`,
+      html,
+    });
+  } catch (err) {
+    console.error(`[notify] booking.no_show soft-fail (${data.bookingId})`, (err as Error).message);
+    return false;
   }
-  const html = noShowTemplate({
-    customerName: data.customerName,
-    serviceName: data.serviceName,
-    startsAt: data.startsAt,
-    businessName: data.businessName,
-  });
-  return deps.sendEmail({
-    to: data.email,
-    subject: `Te echamos de menos — ${data.serviceName || 'tu cita'}`,
-    html,
-  });
 }
