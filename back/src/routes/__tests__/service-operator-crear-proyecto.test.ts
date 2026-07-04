@@ -46,9 +46,11 @@ function fakeDeps(opts: {
   ownerUserId?: string;
   tenantOk?: boolean;
   recent?: { id: string; createdAt: Date } | null;
+  balance?: number | null; // saldo del tenant; undefined = sobrado, null = sin fila
 } = {}) {
   const calls: { model: string; data: unknown }[] = [];
   const findRecentArgs: { tenantId: string; nombre: string; since: Date }[] = [];
+  const chargeCalls: { tenantId: string; cost: number; context: { projectId: string; modulesCount: number } }[] = [];
   let txCount = 0;
 
   const tx: ProjectTxClient = {
@@ -95,9 +97,18 @@ function fakeDeps(opts: {
       findRecentArgs.push({ tenantId, nombre, since });
       return opts.recent ?? null;
     },
+    fetchBalance: async () => {
+      if (opts.balance === undefined) return { saldo: 1_000_000 }; // saldo sobrado por defecto
+      if (opts.balance === null) return null; // tenant sin fila
+      return { saldo: opts.balance };
+    },
+    // Best-effort real: el double nunca lanza (contrato de chargeTokensForProject).
+    chargeTokens: async (tenantId, cost, context) => {
+      chargeCalls.push({ tenantId, cost, context });
+    },
   };
 
-  return { deps, calls, findRecentArgs, txCount: () => txCount };
+  return { deps, calls, chargeCalls, findRecentArgs, txCount: () => txCount };
 }
 
 // ── Gate de confirmación (escritura en 2 pasos) ───────────────────────────────────
@@ -179,7 +190,8 @@ describe('POST /proyectos (operator) — alta e idempotencia', () => {
     await crearProyectoHandler(f.deps, mockReq({ tenantId: 't-1', config, confirmado: true }), res);
 
     assert.equal(res.statusCode, 201);
-    assert.deepEqual(res.body, { id: 'biz-new', config, createdAt: CREATED_AT.toISOString() });
+    // config sin módulos → coste base 100; la respuesta incluye tokensDeducted.
+    assert.deepEqual(res.body, { id: 'biz-new', config, createdAt: CREATED_AT.toISOString(), tokensDeducted: 100 });
     // Mismo pipeline que POST /projects: 1 transacción, mismo orden de creación.
     assert.equal(f.txCount(), 1);
     assert.deepEqual(
@@ -238,5 +250,108 @@ describe('POST /proyectos (operator) — alta e idempotencia', () => {
     const body = res.body as { error: { code: string; message: string } };
     assert.equal(body.error.code, 'server_error');
     assert.ok(!body.error.message.includes('postgres://'));
+  });
+});
+
+// ── Metering de tokens (aa-token-metering-crm, AC1-AC4) ────────────────────────────
+describe('POST /proyectos (operator) — metering de tokens', () => {
+  test('AC1: saldo suficiente → 201 + tokensDeducted correcto + cobro con contexto', async () => {
+    // 3 módulos → coste 100 + 3*50 = 250.
+    const config = { business: { name: 'Clínica Delta' }, modules: ['a', 'b', 'c'] };
+    const f = fakeDeps({ balance: 10_000 });
+    const res = mockRes();
+
+    await crearProyectoHandler(f.deps, mockReq({ tenantId: 't-1', config, confirmado: true }), res);
+
+    assert.equal(res.statusCode, 201);
+    assert.equal((res.body as { tokensDeducted: number }).tokensDeducted, 250);
+    // El proyecto se creó (transacción del service) y el cobro se llamó una vez.
+    assert.equal(f.txCount(), 1);
+    assert.equal(f.chargeCalls.length, 1);
+    assert.deepEqual(f.chargeCalls[0], {
+      tenantId: 't-1',
+      cost: 250,
+      context: { projectId: 'biz-new', modulesCount: 3 },
+    });
+  });
+
+  test('AC2: saldo < costo → 402 insufficient_tokens; NO crea ni cobra', async () => {
+    const config = { business: { name: 'Bar Z' }, modules: ['x', 'y'] }; // coste 200
+    const f = fakeDeps({ balance: 199 });
+    const res = mockRes();
+
+    await crearProyectoHandler(f.deps, mockReq({ tenantId: 't-1', config, confirmado: true }), res);
+
+    assert.equal(res.statusCode, 402);
+    assert.equal((res.body as { error: { code: string } }).error.code, 'insufficient_tokens');
+    // Corte pre-creación: ni transacción del service ni cobro.
+    assert.equal(f.txCount(), 0);
+    assert.equal(f.calls.length, 0);
+    assert.equal(f.chargeCalls.length, 0);
+  });
+
+  test('AC2 borde: saldo == costo → 201 (solo corta si saldo < costo)', async () => {
+    const config = { business: { name: 'Justo' }, modules: ['x'] }; // coste 150
+    const f = fakeDeps({ balance: 150 });
+    const res = mockRes();
+
+    await crearProyectoHandler(f.deps, mockReq({ tenantId: 't-1', config, confirmado: true }), res);
+
+    assert.equal(res.statusCode, 201);
+    assert.equal(f.chargeCalls.length, 1);
+  });
+
+  test('balance null (tenant sin fila) NO corta con 402: sigue al 422 tenant_not_found del service', async () => {
+    const config = { business: { name: 'Fantasma' } };
+    const f = fakeDeps({ balance: null, tenantOk: false });
+    const res = mockRes();
+
+    await crearProyectoHandler(f.deps, mockReq({ tenantId: 't-x', config, confirmado: true }), res);
+
+    assert.equal(res.statusCode, 422);
+    assert.equal((res.body as { error: { code: string } }).error.code, 'tenant_not_found');
+    assert.equal(f.chargeCalls.length, 0);
+  });
+
+  test('AC4: sin tenantId en body, resuelto por config.business.clienteId → se cobra sobre ESE tenant', async () => {
+    const config = { business: { name: 'Bar X', clienteId: 't-77' }, modules: ['m'] }; // coste 150
+    const f = fakeDeps({ balance: 10_000 });
+    const res = mockRes();
+
+    await crearProyectoHandler(
+      f.deps,
+      mockReq({ config, confirmado: true }),
+      res,
+    );
+
+    assert.equal(res.statusCode, 201);
+    assert.equal((res.body as { tokensDeducted: number }).tokensDeducted, 150);
+    assert.equal(f.chargeCalls.length, 1);
+    assert.equal(f.chargeCalls[0].tenantId, 't-77');
+  });
+
+  test('T4.6: cobro best-effort — aunque el cargo esté en curso, la respuesta es 201 con tokensDeducted', async () => {
+    // chargeTokens nunca lanza (contrato best-effort). Aun si su deducción real
+    // fallara en silencio, el handler debe responder 201 con el coste calculado.
+    const config = { business: { name: 'Resiliente' }, modules: ['a'] }; // coste 150
+    const f = fakeDeps({ balance: 10_000 });
+    const res = mockRes();
+
+    await crearProyectoHandler(f.deps, mockReq({ tenantId: 't-1', config, confirmado: true }), res);
+
+    assert.equal(res.statusCode, 201);
+    assert.equal((res.body as { tokensDeducted: number }).tokensDeducted, 150);
+  });
+
+  test('duplicado en ventana NO cobra tokens (idempotencia)', async () => {
+    const recent = { id: 'biz-prev', createdAt: new Date('2026-07-03T09:58:00Z') };
+    const config = { business: { name: 'Clínica Delta' }, modules: ['a', 'b'] };
+    const f = fakeDeps({ recent, balance: 10_000 });
+    const res = mockRes();
+
+    await crearProyectoHandler(f.deps, mockReq({ tenantId: 't-1', config, confirmado: true }), res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(f.chargeCalls.length, 0);
   });
 });

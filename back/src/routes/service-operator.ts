@@ -10,6 +10,11 @@ import {
   type CreateProjectDeps,
   type ProjectConfig,
 } from '../lib/projects/create-project-service.js';
+import {
+  calculateProjectCost,
+  chargeTokensForProject,
+  fetchTenantBalance,
+} from '../lib/projects/token-charge.js';
 
 // ---------------------------------------------------------------------------
 // Router del Operator Agent (F1/F7 aa-operator-agent) — lado creador_CRM.
@@ -202,6 +207,20 @@ export interface OperatorCreateDeps extends CreateProjectDeps {
     nombre: string,
     since: Date,
   ): Promise<{ id: string; createdAt: Date } | null>;
+  /**
+   * Saldo del tenant (saldo_tokens - tokens_usados) en aa.tenant; `null` si no
+   * hay fila (el 422 tenant_not_found lo emite createProjectService, no esto).
+   */
+  fetchBalance(tenantId: string): Promise<{ saldo: number } | null>;
+  /**
+   * Cobra tokens al tenant y registra el consumo en aa.uso_tokens. Best-effort:
+   * NUNCA lanza (absorbe su error internamente), no revierte el proyecto.
+   */
+  chargeTokens(
+    tenantId: string,
+    cost: number,
+    context: { projectId: string; modulesCount: number },
+  ): Promise<void>;
 }
 
 /**
@@ -250,15 +269,44 @@ export async function crearProyectoHandler(deps: OperatorCreateDeps, req: Reques
     const since = new Date(Date.now() - IDEMPOTENCY_WINDOW_MS);
     const existing = await deps.findRecentProject(tenantId, nombre, since);
     if (existing) {
+      // Duplicado en la ventana: se devuelve el existente y NO se cobra de nuevo.
       return res.status(200).json({ id: existing.id, config, createdAt: existing.createdAt.toISOString() });
     }
 
-    // 4) Mismo camino de código que el front (createProjectService valida el tenant).
+    // 4) Metering (aa-token-metering-crm): coste del alta + chequeo de saldo ANTES
+    //    de crear. Si el tenant no tiene fila (balance null) NO cortamos aquí —
+    //    dejamos que createProjectService devuelva su 422 tenant_not_found (única
+    //    fuente de ese caso, no se duplica el check).
+    const modules = (config as { modules?: unknown }).modules;
+    const modulesCount = Array.isArray(modules) ? modules.length : 0;
+    const costo = calculateProjectCost(config);
+    const balance = await deps.fetchBalance(tenantId);
+    if (balance !== null && balance.saldo < costo) {
+      return res.status(402).json({
+        error: { code: 'insufficient_tokens', message: 'Saldo de tokens insuficiente para crear el proyecto' },
+      });
+    }
+
+    // 5) Mismo camino de código que el front (createProjectService valida el tenant).
     const result = await createProjectService({ tenantId, userId: ownerUserId, config }, deps);
     if (!result.ok) {
       return res.status(422).json({ error: { code: 'tenant_not_found', message: 'El cliente (tenant) no existe en agents-agency' } });
     }
-    return res.status(201).json({ id: result.business.id, config, createdAt: result.business.createdAt.toISOString() });
+
+    // 6) Cobro post-creación (best-effort): chargeTokens absorbe su propio error,
+    //    nunca revierte el proyecto ni tumba la 201. Se espera (await) para no
+    //    perder el intento si el proceso muere justo tras responder (Decisión 3).
+    await deps.chargeTokens(tenantId, costo, { projectId: result.business.id, modulesCount });
+
+    // tokensDeducted = coste calculado SIEMPRE, aunque el cobro real haya fallado
+    // en silencio: el operador no ve un error de infraestructura en un proyecto
+    // que SÍ se creó; el fallo (si lo hubo) vive en el log para reconciliar.
+    return res.status(201).json({
+      id: result.business.id,
+      config,
+      createdAt: result.business.createdAt.toISOString(),
+      tokensDeducted: costo,
+    });
   } catch (e) {
     console.error('[service-operator] error creando proyecto:', e);
     return res.status(500).json({ error: { code: 'server_error', message: 'No se pudo crear el proyecto' } });
@@ -514,6 +562,10 @@ const operatorCreateDeps: OperatorCreateDeps = {
       where: { tenantId, nombre, eliminadoEn: null, createdAt: { gte: since } },
       select: { id: true, createdAt: true },
     }),
+  // Metering cross-schema: lee saldo y cobra sobre aa.* por SQL crudo en el
+  // propio proceso del CRM (mismo patrón que tenantExists), ver token-charge.ts.
+  fetchBalance: (tenantId) => fetchTenantBalance(prisma, tenantId),
+  chargeTokens: (tenantId, cost, context) => chargeTokensForProject(prisma, tenantId, cost, context),
 };
 
 // Deps reales de las escrituras del operador: Prisma satisface OperatorWriteDb
