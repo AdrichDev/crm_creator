@@ -15,7 +15,7 @@ Fuente canonica: `specs/communication-integrations/spec.md` + `design.md`. Imple
 
 Decision needed before apply: Yes
 Chained PRs recommended: Yes
-Chain strategy: pending
+Chain strategy: stacked-to-main (WU1 dividido en PR#2.1/2.2/2.3)
 400-line budget risk: High
 
 ### Suggested Work Units
@@ -34,18 +34,27 @@ Chain strategy: pending
 - [ ] **T0.4** - Probar firma HMAC y bloqueo `blocked_no_secret` sin secreto.
 
 ## WU1 - OAuth compartido + Gmail
-- [ ] **T1.1** - Migracion Prisma aditiva `OAuthCredential` en schema `crm` con `estado`/`revokedAt`.
-- [ ] **T1.2** - Crear `back/src/lib/crypto.ts` AES-256-GCM + tests round-trip/authTag invalido.
-- [ ] **T1.3** - Crear `integrations/oauth.ts`: `getValidToken`, refresh perezoso, lock, callback, soft-revoke.
-- [ ] **T1.4** - Crear providers Google para `gmail.modify` y `calendar.events`.
-- [ ] **T1.5** - Crear rutas `/:servicio/connect`, `callback`, `revoke`; validar scope y 422 si falta.
-- [ ] **T1.6** - Integrar Gmail en `notify.ts`; ante `ReauthRequiredError`, fallback sin lanzar.
-- [ ] **T1.7** - Agregar eventos `integracion.reauth_requerido`, `scope_insuficiente`, `fallo_proveedor`.
+
+Chain strategy: stacked-to-main. Split WU1 en 3 slices para respetar el presupuesto de
+revision (400 lineas): PR#2.1 (fundacion, HECHO), PR#2.2 (rutas HTTP), PR#2.3 (integracion+eventos).
+
+### PR#2.1 - fundacion OAuth (HECHO, ~903 lineas: ~603 codigo + ~300 tests, 23 tests verdes)
+- [x] **T1.1** - Migracion Prisma aditiva `OAuthCredential` en schema `crm` con `estado`/`revokedAt`.
+- [x] **T1.2** - Crear `back/src/lib/crypto.ts` AES-256-GCM + tests round-trip/authTag invalido.
+- [x] **T1.3** - Crear `integrations/oauth.ts`: `getValidToken`, refresh perezoso, lock, callback, soft-revoke.
+- [x] **T1.4** - Crear providers Google para `gmail.modify` y `calendar.events`.
+
+### PR#2.2 - rutas HTTP (HECHO)
+- [x] **T1.5** - Rutas `/integrations/:servicio/{connect,callback,revoke}` en `routes/integrations.ts`. Callback publico (identidad en `state` nonce anti-CSRF), connect/revoke con `authenticate+staffOnly` y scoping por `req.businessId`. `ScopeInsufficientError` en callback -> telemetria `integracion.scope_insuficiente` + redirect `estado=scope_insuficiente` (un redirect de navegador no puede devolver 422; el 422 conceptual del design se traduce al `estado` del contrato con la UI). Gate operador para `businessId=null` DIFERIDO a WU3 (en WU1 solo se crean credenciales tenant Gmail; no hay fila admin que proteger todavia).
+
+### PR#2.3 - integracion notify + telemetria (HECHO)
+- [x] **T1.6** - Gmail integrado en `notify.ts` via `integrations/gmail.ts::sendGmailMessage` (getValidToken + users.messages.send, MIME base64url). Solo actua en la via SMTP directa (webhook vacio) para no duplicar email cuando n8n enruta; `'missing'` -> SMTP silencioso; `ReauthRequiredError`/`ProviderError` -> telemetria + fallback SMTP sin lanzar.
+- [x] **T1.7** - Eventos `integracion.reauth_requerido`, `integracion.scope_insuficiente`, `integracion.fallo_proveedor` en `automation/events.ts` (union + payloads). Emitidos via `emit()` soft-fail desde notify.ts y routes/integrations.ts.
 
 ## WU2 - WhatsApp delegado
-- [ ] **T2.1** - Soportar `servicio='whatsapp'`: credencial marcador, sin OAuth real ni SDK Twilio.
-- [ ] **T2.2** - Reusar `disconnectIntegration` para revoke soft-delete WhatsApp.
-- [ ] **T2.3** - Emitir evento WhatsApp a n8n con `businessId`; sin esperar respuesta ni reintentar.
+- [x] **T2.1** - Soportar `servicio='whatsapp'`: credencial marcador, sin OAuth real ni SDK Twilio. (`integrations/whatsapp.ts::connectWhatsApp`, marcador `accessToken=''`; enum/estado/revokedAt ya en schema desde PR#2.1).
+- [x] **T2.2** - Reusar `disconnectIntegration` para revoke soft-delete WhatsApp. (`integrations/whatsapp.ts::disconnectWhatsApp`; requirió fix en `oauth.ts::disconnectIntegration` — antes llamaba `asGoogleService()` incondicional y hacía throw para whatsapp; ahora el revoke remoto es solo para gmail/calendar).
+- [x] **T2.3** - Emitir evento WhatsApp a n8n con `businessId`; sin esperar respuesta ni reintentar. (`integrations/whatsapp.ts::notifyWhatsAppEvent`, evento `whatsapp.credential_event` en `automation/events.ts`, soft-fail vía `emit()`).
 
 ## WU3 - Calendar
 - [ ] **T3.1** - Soportar `servicio='calendar'` tenant y admin (`businessId=null`, `scope='admin'`).

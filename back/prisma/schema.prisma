@@ -27,6 +27,14 @@ enum MemberRole {
   CLIENT
 }
 
+// Servicios de integración externos (crm-integraciones-comunicacion).
+// gmail/calendar = OAuth2 real; whatsapp = marcador de estado (secreto Twilio vive en n8n).
+enum ServicioIntegracion {
+  gmail
+  whatsapp
+  calendar
+}
+
 enum ResourceType {
   TABLE
   ROOM
@@ -191,6 +199,7 @@ model Business {
   visits       Visit[]
   customerNotes CustomerNote[]
   reminders    Reminder[]
+  oauthCredentials OAuthCredential[]
 
   @@map("negocio")
 }
@@ -813,6 +822,34 @@ model CalendarToken {
   createdAt     DateTime  @default(now()) @map("creado_en")
   regeneratedAt DateTime? @map("regenerado_en")
   @@map("token_calendario")
+}
+
+// Credencial OAuth por negocio (Gmail/Calendar) o de plataforma (businessId=null,
+// scope='admin'). Tokens SIEMPRE cifrados enc:v1: (AES-256-GCM, CRM_OAUTH_ENCRYPTION_KEY).
+// Revoke = SOFT-delete (estado='revoked' + revokedAt), sigue el precedente CalendarToken:
+// secreto backend-only, revocar sin destruir el registro (auditoría business-facing).
+// Sin RLS de lectura para authenticated: es un secreto, solo el service role de Prisma lo lee.
+// NOTA multi-tenant: el @@unique([businessId, servicio]) NO restringe filas con businessId
+// null (Postgres trata NULL como distinto). Para credencial admin (WU3) hará falta un índice
+// único parcial sobre servicio WHERE businessId IS NULL. En WU1 (Gmail per-business) el
+// businessId siempre está presente, así que el unique compuesto basta.
+model OAuthCredential {
+  id           String              @id @default(cuid())
+  businessId   String?             @map("negocio_id")
+  business     Business?           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  servicio     ServicioIntegracion
+  scope        String              @default("tenant") // tenant | admin
+  accessToken  String              @map("token_acceso")   // cifrado enc:v1:
+  refreshToken String?             @map("token_refresco") // cifrado enc:v1:
+  expiresAt    DateTime?           @map("expira_en")
+  scopesOauth  String[]            @map("scopes_oauth")   // scopes concedidos por el proveedor
+  estado       String              @default("connected")  // connected | reauth_required | revoked
+  revokedAt    DateTime?           @map("revocado_en")
+  createdAt    DateTime            @default(now()) @map("creado_en")
+  updatedAt    DateTime            @updatedAt @map("actualizado_en")
+
+  @@unique([businessId, servicio])
+  @@map("credencial_oauth")
 }
 
 // ----------------------------- Categorías / Deporte -----------------------------

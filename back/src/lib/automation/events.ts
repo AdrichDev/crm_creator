@@ -23,7 +23,17 @@ export type AutomationEventName =
   | 'timeoff.resolved'
   // crm-citas-google-calendar (WU3): push opt-in de un ítem de agenda a Google
   // Calendar. Workflow n8n dedicado (crm-calendar-push), credencial Google en n8n.
-  | 'calendar.event_push';
+  | 'calendar.event_push'
+  // crm-integraciones-comunicacion (WU2): WhatsApp delegado a n8n. El backend NO
+  // llama a Twilio: solo notifica el cambio de estado de la credencial marcador
+  // (connect/revoke). El envío real de mensajes vive en un workflow n8n aparte.
+  | 'whatsapp.credential_event'
+  // crm-integraciones-comunicacion (WU1, Decisión 6): telemetría de integraciones
+  // OAuth. Solo metadatos, sin PII. Se emiten con el mismo emit() soft-fail; sin
+  // webhook configurado, emit() devuelve skipped (fail-open, no rompe el negocio).
+  | 'integracion.reauth_requerido'
+  | 'integracion.scope_insuficiente'
+  | 'integracion.fallo_proveedor';
 
 // Payload común de los eventos de cita. `fecha`/`hora` van ya formateados (es-ES)
 // para que la plantilla n8n no dependa de la zona horaria del CRM.
@@ -140,6 +150,30 @@ export interface AutomationPayloads {
     inicio: string;   // ISO 8601
     fin: string;       // ISO 8601
     direccion?: string;
+  };
+
+  // --- crm-integraciones-comunicacion (WU2): WhatsApp delegado a n8n ---
+  'whatsapp.credential_event': {
+    businessId: string;
+    credentialId: string;
+    /** connected | revoked. El envío real de mensajes es un evento aparte, fuera de WU2. */
+    tipoEvento: 'connected' | 'revoked';
+  };
+
+  // --- crm-integraciones-comunicacion (WU1, Decisión 6): telemetría OAuth ---
+  // businessId viaja en el envelope; el payload lleva solo metadatos del fallo.
+  'integracion.reauth_requerido': {
+    servicio: string;          // gmail | calendar
+    motivo?: string;           // invalid_grant | token_revoked (opcional)
+  };
+  'integracion.scope_insuficiente': {
+    servicio: string;
+    requerido: string;         // scope que faltó
+    concedidos: string[];      // scopes que sí otorgó el usuario
+  };
+  'integracion.fallo_proveedor': {
+    servicio: string;
+    codigo: string;            // http_5xx | fetch_error (metadato, sin cuerpo de respuesta)
   };
 }
 

@@ -7,6 +7,9 @@ import {
   reminderTemplate,
   noShowTemplate,
 } from './email.js';
+import { sendGmailMessage, ProviderError } from './integrations/gmail.js';
+import type { GmailMessage, GmailSendResult } from './integrations/gmail.js';
+import { ReauthRequiredError } from './integrations/oauth.js';
 
 // ---------------------------------------------------------------------------
 // Puerto de notificación de citas con fallback.
@@ -34,6 +37,13 @@ export interface NotifyDeps {
   webhookUrl: string;
   emit: typeof defaultEmit;
   sendEmail: typeof defaultSendEmail;
+  /**
+   * Envío por el Gmail conectado del negocio (crm-integraciones-comunicacion, T1.6).
+   * Opcional: si falta (tests que no ejercen Gmail), se omite y se usa SMTP directo,
+   * preservando el comportamiento previo. Solo actúa en la vía SMTP (webhook vacío):
+   * cuando n8n está activo, la mensajería la enruta n8n (no se duplica el email).
+   */
+  sendViaGmail?: (businessId: string, msg: GmailMessage) => Promise<GmailSendResult>;
 }
 
 function defaultDeps(): NotifyDeps {
@@ -41,7 +51,43 @@ function defaultDeps(): NotifyDeps {
     webhookUrl: env.automationWebhookUrl,
     emit: defaultEmit,
     sendEmail: defaultSendEmail,
+    sendViaGmail: sendGmailMessage,
   };
+}
+
+/** Traduce un fallo de Gmail a telemetría (soft-fail) antes de caer a SMTP. */
+async function reportGmailFailure(deps: NotifyDeps, businessId: string, err: unknown): Promise<void> {
+  try {
+    if (err instanceof ReauthRequiredError) {
+      await deps.emit('integracion.reauth_requerido', { servicio: 'gmail' }, { businessId });
+    } else if (err instanceof ProviderError) {
+      await deps.emit('integracion.fallo_proveedor', { servicio: 'gmail', codigo: err.codigo }, { businessId });
+    } else {
+      await deps.emit('integracion.fallo_proveedor', { servicio: 'gmail', codigo: 'error' }, { businessId });
+    }
+  } catch {
+    // La telemetría nunca rompe el envío: si emit lanza, se ignora.
+  }
+  console.warn(`[notify] Gmail no disponible, fallback a SMTP (business=${businessId}): ${(err as Error).name}`);
+}
+
+/**
+ * Vía de email directo (webhook vacío): prefiere el Gmail conectado del negocio y cae
+ * a SMTP si no está conectado ('missing'), si requiere reconexión (ReauthRequiredError)
+ * o si el proveedor falla (ProviderError). NUNCA lanza — la telemetría y SMTP absorben.
+ */
+async function deliverDirectEmail(deps: NotifyDeps, businessId: string, msg: GmailMessage): Promise<boolean> {
+  if (deps.sendViaGmail) {
+    try {
+      const result = await deps.sendViaGmail(businessId, msg);
+      if (result === 'sent') return true;
+      // 'missing' → el negocio no conectó Gmail: cae a SMTP sin ruido de telemetría.
+    } catch (err) {
+      await reportGmailFailure(deps, businessId, err);
+      // fall-through a SMTP.
+    }
+  }
+  return deps.sendEmail(msg);
 }
 
 /** Formatea fecha/hora en es-ES igual que las plantillas de email. */
@@ -94,7 +140,7 @@ export async function notifyBookingConfirmed(
       employeeName: data.employeeName,
       businessName: data.businessName,
     });
-    return await deps.sendEmail({
+    return await deliverDirectEmail(deps, data.businessId, {
       to: data.email,
       subject: `Cita confirmada — ${data.serviceName || 'tu servicio'}`,
       html,
@@ -137,7 +183,7 @@ export async function notifyBookingReminder(
     const subject = ventana === '24h'
       ? `Recordatorio: tu cita de mañana — ${data.serviceName}`
       : `Recordatorio: tu cita es en 2 horas — ${data.serviceName}`;
-    return await deps.sendEmail({ to: data.email, subject, html });
+    return await deliverDirectEmail(deps, data.businessId, { to: data.email, subject, html });
   } catch (err) {
     console.error(`[notify] booking.reminder.${ventana} soft-fail (${data.bookingId})`, (err as Error).message);
     return false;
@@ -165,7 +211,7 @@ export async function notifyBookingNoShow(
       startsAt: data.startsAt,
       businessName: data.businessName,
     });
-    return await deps.sendEmail({
+    return await deliverDirectEmail(deps, data.businessId, {
       to: data.email,
       subject: `Te echamos de menos — ${data.serviceName || 'tu cita'}`,
       html,

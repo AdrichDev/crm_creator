@@ -13,6 +13,8 @@ import {
   type BookingNotifyData,
   type NotifyDeps,
 } from '../notify.js';
+import { ReauthRequiredError } from '../integrations/oauth.js';
+import { ProviderError } from '../integrations/gmail.js';
 
 // ---------------------------------------------------------------------------
 // Espías inyectables: capturan las llamadas a emit y sendEmail por separado.
@@ -157,5 +159,74 @@ describe('notify — soft-fail', () => {
     };
     const ok = await notifyBookingReminder(baseData, '24h', 'notif-1', deps);
     assert.equal(ok, true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Gmail del negocio (T1.6): en la vía SMTP directa (webhook vacío) prefiere el
+// Gmail conectado; ante 'missing'/reauth/proveedor cae a SMTP sin lanzar.
+// ---------------------------------------------------------------------------
+describe('notify — Gmail del negocio', () => {
+  function makeGmailDeps(gmail: NotifyDeps['sendViaGmail'], webhookUrl = '') {
+    const emitCalls: EmitCall[] = [];
+    const mailCalls: MailCall[] = [];
+    const deps: NotifyDeps = {
+      webhookUrl,
+      emit: (async (name: string, data: unknown, opts: { businessId: string; eventId?: string }) => {
+        emitCalls.push({ name, data, eventId: opts.eventId, businessId: opts.businessId });
+        return { status: 'sent', eventId: opts.eventId ?? 'auto' };
+      }) as NotifyDeps['emit'],
+      sendEmail: async (opts: MailCall) => { mailCalls.push(opts); return true; },
+      sendViaGmail: gmail,
+    };
+    return Object.assign(deps, { emitCalls, mailCalls });
+  }
+
+  test('Gmail conectado → sent: 0 sendEmail, 0 telemetría', async () => {
+    let gmailCalls = 0;
+    const deps = makeGmailDeps(async () => { gmailCalls++; return 'sent'; });
+    const ok = await notifyBookingConfirmed(baseData, deps);
+    assert.equal(ok, true);
+    assert.equal(gmailCalls, 1);
+    assert.equal(deps.mailCalls.length, 0);
+    assert.equal(deps.emitCalls.length, 0);
+  });
+
+  test('Gmail no conectado (missing) → fallback SMTP, sin telemetría', async () => {
+    const deps = makeGmailDeps(async () => 'missing');
+    const ok = await notifyBookingConfirmed(baseData, deps);
+    assert.equal(ok, true);
+    assert.equal(deps.mailCalls.length, 1);
+    assert.equal(deps.emitCalls.length, 0);
+  });
+
+  test('ReauthRequiredError → emite integracion.reauth_requerido + fallback SMTP', async () => {
+    const deps = makeGmailDeps(async () => { throw new ReauthRequiredError('biz-1', 'gmail'); });
+    const ok = await notifyBookingConfirmed(baseData, deps);
+    assert.equal(ok, true);
+    assert.equal(deps.mailCalls.length, 1);
+    assert.equal(deps.emitCalls.length, 1);
+    assert.equal(deps.emitCalls[0].name, 'integracion.reauth_requerido');
+    assert.equal(deps.emitCalls[0].businessId, 'biz-1');
+  });
+
+  test('ProviderError (5xx) → emite integracion.fallo_proveedor + fallback SMTP', async () => {
+    const deps = makeGmailDeps(async () => { throw new ProviderError('gmail', 'http_503'); });
+    const ok = await notifyBookingNoShow(baseData, deps);
+    assert.equal(ok, true);
+    assert.equal(deps.mailCalls.length, 1);
+    assert.equal(deps.emitCalls.length, 1);
+    assert.equal(deps.emitCalls[0].name, 'integracion.fallo_proveedor');
+    assert.equal((deps.emitCalls[0].data as Record<string, unknown>).codigo, 'http_503');
+  });
+
+  test('webhook activo → Gmail NO se usa (n8n enruta la mensajería)', async () => {
+    let gmailCalls = 0;
+    const deps = makeGmailDeps(async () => { gmailCalls++; return 'sent'; }, 'https://n8n/webhook');
+    const ok = await notifyBookingConfirmed(baseData, deps);
+    assert.equal(ok, true);
+    assert.equal(gmailCalls, 0);
+    assert.equal(deps.emitCalls.length, 1);
+    assert.equal(deps.emitCalls[0].name, 'booking.confirmed');
   });
 });
