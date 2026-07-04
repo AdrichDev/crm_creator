@@ -2,6 +2,7 @@ import { Router, type Response } from 'express';
 import { env } from '../env.js';
 import { authenticate } from '../middleware/auth.js';
 import { staffOnly } from '../middleware/rbac.js';
+import { requireOperatorToken } from '../middleware/operator-token.js';
 import type { AuthedRequest } from '../middleware/types.js';
 import { emit } from '../lib/automation/index.js';
 import {
@@ -24,8 +25,12 @@ import {
 // y revoke sí exigen sesión de staff y scopean por el businessId del token.
 // Mismo patrón mixto que routes/calendar.ts (feed público + autoservicio autenticado).
 //
-// WU1 cubre Gmail (tenant). El scope admin (businessId=null, Calendar de plataforma)
-// llega en WU3 con su gate de operador; aquí no se crea ninguna credencial admin.
+// WU1 cubre Gmail y Calendar de TENANT (businessId de la sesión). WU3 (T3.1/T3.2)
+// añade el scope ADMIN (businessId=null, Calendar de plataforma) bajo las rutas
+// /admin/:servicio/*, protegidas por el service token del operador (NUNCA por sesión
+// de tenant). El callback es COMPARTIDO: la identidad (businessId=null) viaja en el
+// `state` que solo el operador puede generar (nonce inadivinable, un solo uso), así que
+// un tenant normal jamás puede tocar una credencial admin.
 // ---------------------------------------------------------------------------
 
 export const integrationsRouter = Router();
@@ -108,5 +113,43 @@ integrationsRouter.post('/:servicio/revoke', authenticate, staffOnly, async (req
     return res.status(400).json({ error: { code: 'no_business', message: 'La sesión no tiene un negocio activo' } });
   }
   await disconnectIntegration(req.businessId, servicio);
+  res.status(204).end();
+});
+
+// ── Credencial ADMIN (businessId=null) — solo operador (WU3, T3.1/T3.2) ───────
+//
+// Solo Calendar tiene credencial admin (Decisión 4 del design + spec.md). Estas
+// rutas se protegen con el service token del operador (x-service-token), el mismo
+// gate que cerró el hallazgo CRITICAL de rol de operador. Un tenant normal no puede
+// alcanzarlas (no tiene el token) ni forjar el `state` admin del callback.
+
+// Solo se admite el servicio admin de Calendar (Gmail/WhatsApp son siempre por tenant).
+function parseAdminServicio(raw: string): Servicio | null {
+  return raw === 'calendar' ? 'calendar' : null;
+}
+
+// POST /admin/:servicio/connect — el operador inicia el OAuth de la credencial de
+// plataforma (businessId=null). Devuelve la URL de consentimiento con nonce admin.
+integrationsRouter.post('/admin/:servicio/connect', requireOperatorToken(), (req: AuthedRequest, res: Response) => {
+  const servicio = parseAdminServicio(req.params.servicio);
+  if (!servicio) {
+    return res.status(404).json({ error: { code: 'not_found', message: 'Servicio admin no soportado' } });
+  }
+  try {
+    // businessId=null EXPLÍCITO → credencial admin (scope='admin' en el callback).
+    const url = authorizationUrl(servicio, null);
+    res.json({ url });
+  } catch {
+    res.status(503).json({ error: { code: 'oauth_no_configurado', message: 'Integración OAuth no configurada en el servidor' } });
+  }
+});
+
+// POST /admin/:servicio/revoke — soft-delete de la credencial admin (businessId=null).
+integrationsRouter.post('/admin/:servicio/revoke', requireOperatorToken(), async (req: AuthedRequest, res: Response) => {
+  const servicio = parseAdminServicio(req.params.servicio);
+  if (!servicio) {
+    return res.status(404).json({ error: { code: 'not_found', message: 'Servicio admin no soportado' } });
+  }
+  await disconnectIntegration(null, servicio);
   res.status(204).end();
 });

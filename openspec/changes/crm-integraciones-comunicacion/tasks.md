@@ -56,16 +56,18 @@ revision (400 lineas): PR#2.1 (fundacion, HECHO), PR#2.2 (rutas HTTP), PR#2.3 (i
 - [x] **T2.2** - Reusar `disconnectIntegration` para revoke soft-delete WhatsApp. (`integrations/whatsapp.ts::disconnectWhatsApp`; requirió fix en `oauth.ts::disconnectIntegration` — antes llamaba `asGoogleService()` incondicional y hacía throw para whatsapp; ahora el revoke remoto es solo para gmail/calendar).
 - [x] **T2.3** - Emitir evento WhatsApp a n8n con `businessId`; sin esperar respuesta ni reintentar. (`integrations/whatsapp.ts::notifyWhatsAppEvent`, evento `whatsapp.credential_event` en `automation/events.ts`, soft-fail vía `emit()`).
 
-## WU3 - Calendar
-- [ ] **T3.1** - Soportar `servicio='calendar'` tenant y admin (`businessId=null`, `scope='admin'`).
-- [ ] **T3.2** - Anadir/reusar gate operador para filas admin `businessId=null`.
-- [ ] **T3.3** - Crear poller de sync Calendar -> `crm.reserva` usando `getValidToken()`.
-- [ ] **T3.4** - Crear evento Calendar al confirmar cita; fallo de sync no bloquea.
+## WU3 - Calendar (HECHO)
+- [x] **T3.1** - Rutas admin `POST /admin/:servicio/{connect,revoke}` (solo `calendar`) en `routes/integrations.ts`; tenant ya cubierto por rutas genericas WU1.
+- [x] **T3.2** - Gate `requireOperatorToken()` en rutas `/admin/*`; identidad admin viaja en `state` nonce, un tenant no puede forjarlo.
+- [x] **T3.3** - Poller `lib/calendarSync.ts`: lista eventos via `getValidToken()`, concilia con `crm.reserva`; tolerante a fallos (token revocado/listado 5xx/evento roto no rompen el lote). Vinculo evento<->reserva via `extendedProperties.private.crmBookingId` (sin migracion). Fix post-Ruflo: `findImportedBooking` (businessId+serviceId marcador+startAt+endAt como clave idempotencia) evita reservas duplicadas si el write-back PATCH falla persistente.
+- [x] **T3.4** - `integrations/calendar.ts::createBookingCalendarEvent` enganchado en confirmacion de booking (`routes/bookings.ts`), soft-fail, telemetria en fallo; nunca bloquea la cita.
 
 ## Validacion transversal
-- [ ] **V.1** - Verificar aislamiento T1/T2 y `businessId` en queries `oauth_credential`.
-- [ ] **V.2** - Verificar que credencial admin no aparece en listados tenant.
-- [ ] **V.3** - Verificar fallback Gmail revocado -> `notify.ts`.
-- [ ] **V.4** - Verificar refresh perezoso con margen 60s y lock anti-carrera; sin drainer de refresh.
-- [ ] **V.5** - Verificar tokens cifrados `enc:v1:...`, nunca en claro.
-- [ ] **V.6** - Verificar revoke soft-delete: `estado='revoked'` + `revokedAt`.
+- [x] **V.1** - Aislamiento T1/T2 verificado: `findCredential` siempre con `businessId` concreto de sesion/nonce; test `whatsapp.test.ts` prueba explicito no-cruce entre tenants.
+- [x] **V.2** - Credencial admin (`businessId=null`) excluida del poller por filtro explicito doble (query Prisma + `.filter`), no aparece en listados tenant.
+- [x] **V.3** - Fallback Gmail revocado -> `notify.ts` verificado: `ReauthRequiredError`/`ProviderError` -> telemetria + SMTP, nunca lanza.
+- [x] **V.4** - Refresh perezoso margen 60s + lock anti-carrera verificado atomico (get-check-set sin await entremedio); test 2 llamadas concurrentes -> 1 sola HTTP.
+- [x] **V.5** - Tokens cifrados `enc:v1:...` verificado en persistencia y refresh; logs solo status/error.name/businessId, nunca token.
+- [x] **V.6** - Revoke soft-delete verificado: `estado='revoked'` + `revokedAt`, fila persiste.
+
+Ruflo gate (revision fresca, Opus, worktree aislado): WU1+WU2 LIMPIO; WU3 APTO merge con 1 MEDIUM (duplicacion reservas write-back fallido) ya corregido + 2 LOW aceptados (import calendario primario completo, sin paginacion listado >250 eventos — bajo impacto, acotado por ventana `updatedMin`).

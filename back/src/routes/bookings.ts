@@ -7,6 +7,7 @@ import { assertFks, handleCrossTenant } from '../lib/tenant.js';
 import { joinNombre } from '../lib/nombre.js';
 import { notifyBookingConfirmed, notifyBookingNoShow } from '../lib/notify.js';
 import { maybePushCalendarEvent } from '../lib/calendarEmitter.js';
+import { createBookingCalendarEvent } from '../lib/integrations/calendar.js';
 import { emit } from '../lib/automation/index.js';
 import { buildReviewRequest } from '../lib/eventPayloads.js';
 import { parsePagination } from '../lib/pagination.js';
@@ -240,6 +241,25 @@ bookingsRouter.post('/', async (req: AuthedRequest, res: Response) => {
           direccion: location?.direccion ?? undefined,
         }).catch(() => { /* soft-fail ya logueado */ });
       }
+
+      // crm-integraciones-comunicacion (WU3, T3.4): crea el evento en el Google Calendar
+      // conectado del NEGOCIO (credencial OAuth por businessId), distinto del push opt-in
+      // al calendario del staff vía n8n de arriba. Soft-fail total: si el negocio no
+      // conectó Calendar ('missing') o el token está revocado, NUNCA bloquea la cita.
+      // El evento queda etiquetado con crmBookingId → el poller de sync no lo re-importa.
+      const bizLocation = await prisma.location.findUnique({
+        where: { id: booking.locationId },
+        select: { direccion: true },
+      });
+      void createBookingCalendarEvent({
+        businessId,
+        bookingId: booking.id,
+        summary: `${booking.service?.nombre ?? 'Cita'} — ${joinNombre(booking.customer) || 'Cliente'}`,
+        description: booking.notes ?? undefined,
+        location: bizLocation?.direccion ?? undefined,
+        start: booking.startAt,
+        end: booking.endAt,
+      }).catch(() => { /* soft-fail ya logueado */ });
     } catch (err) {
       console.error('[booking.confirmed] error en post-create email/notificaciones:', (err as Error).message);
     }
