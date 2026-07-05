@@ -1,94 +1,21 @@
 'use client';
-import { useCallback, useEffect, useRef, useState } from 'react';
 import { MessageCircle } from 'lucide-react';
 import { PageHeader, Card, EmptyState } from '@/components/ui/primitives';
 import { isApiEnabled } from '@/lib/api/client';
 import { TelegramConversacion } from '@/components/crm/telegram-conversacion';
-import {
-  fetchConversations, fetchMessages, replyToConversation, newClientMessageId,
-  type TelegramConversationDto, type TelegramMessageDto,
-} from '@/lib/api/telegram';
+import { useTelegramInbox } from '@/lib/hooks/use-telegram-inbox';
 
-// Telegram UI (crm-operaos WU5 / AC5): lista de conversaciones del tenant + hilo en
-// vivo con respuesta manual desde OperaOS. El bot real vive en OpenClaw; aquí solo se
-// leen los mensajes persistidos y se envían respuestas (idempotentes por clientMessageId).
-// Polling ligero para el "en directo" (sin WebSocket): conversaciones cada 15 s, hilo
-// abierto cada 5 s.
-
-const CONV_POLL_MS = 15_000;
-const THREAD_POLL_MS = 5_000;
+// Telegram UI (crm-operaos WU5 / AC5): vista de página a pantalla completa. El acceso
+// principal es el widget flotante persistente (TelegramWidget), montado en AppShell; esta
+// página queda como fallback para navegación directa a /telegram. Comparte la orquestación
+// (polling + envío) vía useTelegramInbox.
 
 export default function Page() {
   const apiEnabled = isApiEnabled();
-  const [conversations, setConversations] = useState<TelegramConversationDto[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<TelegramMessageDto[]>([]);
-  const [loadingThread, setLoadingThread] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const activeIdRef = useRef<string | null>(null);
-  activeIdRef.current = activeId;
-
-  const loadConversations = useCallback(async () => {
-    if (!apiEnabled) return;
-    try {
-      const list = await fetchConversations();
-      setConversations(list);
-      setActiveId((cur) => cur ?? list[0]?.conversationId ?? null);
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  }, [apiEnabled]);
-
-  const loadMessages = useCallback(async (conversationId: string, showSpinner = false) => {
-    if (!apiEnabled) return;
-    if (showSpinner) setLoadingThread(true);
-    try {
-      const { items } = await fetchMessages(conversationId);
-      // Solo aplica si sigue siendo la conversación activa (evita carreras de polling).
-      if (activeIdRef.current === conversationId) setMessages(items);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      if (showSpinner) setLoadingThread(false);
-    }
-  }, [apiEnabled]);
-
-  // Carga inicial + polling de conversaciones.
-  useEffect(() => {
-    void loadConversations();
-    if (!apiEnabled) return;
-    const t = setInterval(() => void loadConversations(), CONV_POLL_MS);
-    return () => clearInterval(t);
-  }, [loadConversations, apiEnabled]);
-
-  // Al cambiar de conversación: carga con spinner + polling del hilo abierto.
-  useEffect(() => {
-    if (!activeId) { setMessages([]); return; }
-    void loadMessages(activeId, true);
-    if (!apiEnabled) return;
-    const t = setInterval(() => void loadMessages(activeId), THREAD_POLL_MS);
-    return () => clearInterval(t);
-  }, [activeId, loadMessages, apiEnabled]);
-
-  const active = conversations.find((c) => c.conversationId === activeId) ?? null;
-
-  async function handleSend(text: string) {
-    if (!activeId || sending) return;
-    setSending(true);
-    setError(null);
-    const clientMessageId = newClientMessageId();
-    try {
-      const { message } = await replyToConversation(activeId, text, clientMessageId);
-      // Inserción optimista: añade el saliente sin esperar al siguiente poll.
-      setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
-      void loadConversations();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setSending(false);
-    }
-  }
+  const {
+    conversations, activeId, setActiveId, messages, active,
+    loadingThread, sending, error, handleSend,
+  } = useTelegramInbox(apiEnabled);
 
   return (
     <div>
@@ -109,7 +36,7 @@ export default function Page() {
                     <button
                       key={c.conversationId}
                       onClick={() => setActiveId(c.conversationId)}
-                      className={`flex w-full items-start gap-2 border-b border-gray-100 px-4 py-3 text-left hover:bg-gray-50 ${
+                      className={`flex w-full items-start gap-2 border-b border-gray-100 px-4 py-3 text-left hover:bg-[var(--hover-bg)] ${
                         c.conversationId === activeId ? 'bg-emerald-50' : ''
                       }`}
                     >

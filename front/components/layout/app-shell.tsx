@@ -10,6 +10,7 @@ import { ArrowLeft } from 'lucide-react';
 import { ROLES, type Role } from '@/lib/config/roles';
 import { ThemeToggle } from './theme-toggle';
 import { NotificationBell } from './notification-bell';
+import { TelegramWidget } from '@/components/crm/telegram-widget';
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { config, ready, hasActive, closeProject, role, setRole } = useProjects();
@@ -74,6 +75,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           {children}
         </main>
       </div>
+      {/* Solo staff: el back protege /telegram con staffOnly (403 para cliente) —
+          renderizar el chip a un cliente sería un control que siempre falla. */}
+      {role !== 'cliente' && <TelegramWidget />}
     </div>
   );
 }

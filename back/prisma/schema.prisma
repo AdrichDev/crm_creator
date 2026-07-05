@@ -203,6 +203,7 @@ model Business {
   reminders    Reminder[]
   oauthCredentials OAuthCredential[]
   contactos    Contacto[]
+  telegramMessages TelegramMessage[]
 
   @@map("negocio")
 }
@@ -1013,4 +1014,29 @@ model Contacto {
   @@index([businessId])
   @@index([businessId, contactado])
   @@map("contacto")
+}
+
+// Mensajes de Telegram por tenant (crm-operaos WU5). La tabla la creó la migración
+// 20260705000000_telegram_message; este modelo la espeja EXACTAMENTE (el modelo
+// faltaba en el schema aunque la tabla y las rutas ya existían — routes/telegram.ts
+// referencia prisma.telegramMessage con campos en inglés, la convención del repo:
+// modelo inglés + columnas castellano vía @map). Idempotencia: única por (negocio,
+// id de proveedor) para el webhook entrante y por (negocio, id de cliente) para la
+// respuesta manual saliente. `direction` = 'in' | 'out' (validado en la ruta).
+model TelegramMessage {
+  id                 String   @id @default(cuid())
+  businessId         String   @map("negocio_id")
+  business           Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  conversationId     String   @map("conversacion_id")
+  direction          String   @map("direccion")
+  text               String   @map("texto")
+  providerMessageId  String?  @map("proveedor_mensaje_id")
+  clientMessageId    String?  @map("cliente_mensaje_id")
+  remitente          String?  @map("remitente")
+  createdAt          DateTime @default(now()) @map("creado_en")
+
+  @@unique([businessId, providerMessageId], map: "telegram_msg_provider_uq")
+  @@unique([businessId, clientMessageId], map: "telegram_msg_client_uq")
+  @@index([businessId, conversationId, createdAt])
+  @@map("mensaje_telegram")
 }
