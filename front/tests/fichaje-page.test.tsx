@@ -99,9 +99,11 @@ describe('fichaje/page — modo remoto (API)', () => {
     let eventos: { paso: string }[] = [];
     apiFetchMock.mockImplementation((path: string, init?: RequestInit) => {
       if (path === '/fichaje/hoy') {
+        // Contrato REAL del back: siguientePaso/jornadaCompleta solo tienen sentido con modo
+        // en curso; en jornada sin iniciar (modo null) devuelve siguientePaso null.
         const seq = ['entrada', 'salida_final'];
-        const siguientePaso = eventos.length < seq.length ? seq[eventos.length] : null;
-        return Promise.resolve({ modo, eventos, siguientePaso, jornadaCompleta: siguientePaso === null && modo !== null });
+        const siguientePaso = modo ? (eventos.length < seq.length ? seq[eventos.length] : null) : null;
+        return Promise.resolve({ modo, eventos, siguientePaso, jornadaCompleta: modo !== null && eventos.length >= seq.length });
       }
       if (path === '/fichaje' && init?.method === 'POST') {
         const body = JSON.parse(String(init.body)) as { modo: string };
@@ -122,5 +124,24 @@ describe('fichaje/page — modo remoto (API)', () => {
 
     expect(apiFetchMock).toHaveBeenCalledWith('/fichaje', expect.objectContaining({ method: 'POST' }));
     expect(screen.getByText('Último: Entrada')).toBeInTheDocument();
+  });
+
+  // Regresión: en jornada sin iniciar el back devuelve modo=null, siguientePaso=null. El
+  // botón "Fichar Entrada" DEBE aparecer igual (el front deriva el paso del modo elegido);
+  // antes se confiaba en el siguientePaso del back y el botón nunca se renderizaba → no se
+  // podía empezar la jornada.
+  it('jornada nueva (back devuelve siguientePaso null) muestra el botón Fichar Entrada', async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/fichaje/hoy') {
+        return Promise.resolve({ modo: null, eventos: [], siguientePaso: null, jornadaCompleta: false });
+      }
+      return Promise.resolve({ items: [] });
+    });
+
+    render(<Page />);
+    await flush();
+
+    expect(screen.getByText('No iniciada')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Fichar Entrada/ })).toBeInTheDocument();
   });
 });

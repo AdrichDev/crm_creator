@@ -41,11 +41,16 @@ export default function Page() {
         try {
           const r = await getFichajeHoy();
           if (!mounted) return;
-          setModo(r.modo ?? readModoPref());
+          // El back solo devuelve siguientePaso/jornadaCompleta cuando ya hay modo en curso
+          // (>=1 evento hoy); en jornada sin iniciar devuelve null. Derivamos el primer paso
+          // del modo seleccionado para que "Fichar Entrada" aparezca al empezar el día.
+          const pasos = r.eventos.map((e) => e.paso);
+          const modoEfectivo = r.modo ?? readModoPref();
+          setModo(modoEfectivo);
           setHoy({
-            pasos: r.eventos.map((e) => e.paso),
-            siguientePaso: r.siguientePaso,
-            jornadaCompleta: r.jornadaCompleta,
+            pasos,
+            siguientePaso: nextAllowedStep(modoEfectivo, pasos),
+            jornadaCompleta: isJornadaCompleta(modoEfectivo, pasos),
             bloqueada: r.modo !== null,
           });
         } catch (e) {
@@ -80,7 +85,8 @@ export default function Page() {
       try {
         await ficharPaso(modo);
         const r = await getFichajeHoy();
-        setHoy({ pasos: r.eventos.map((e) => e.paso), siguientePaso: r.siguientePaso, jornadaCompleta: r.jornadaCompleta, bloqueada: true });
+        const pasos = r.eventos.map((e) => e.paso);
+        setHoy({ pasos, siguientePaso: nextAllowedStep(modo, pasos), jornadaCompleta: isJornadaCompleta(modo, pasos), bloqueada: true });
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Error al fichar');
       }
