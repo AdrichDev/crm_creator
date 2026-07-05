@@ -5,6 +5,7 @@ import { crudRouter } from '../lib/crud.js';
 import { authRouter } from './auth.js';
 import { meRouter } from './me.js';
 import { bookingsRouter } from './bookings.js';
+import { fichajeRouter } from './fichaje.js';
 import { timeOffRouter } from './timeoff.js';
 import { packagesRouter } from './packages.js';
 import { dashboardRouter } from './dashboard.js';
@@ -29,6 +30,7 @@ import { notificationsRouter } from './notifications.js';
 import { settingsRouter } from './settings.js';
 import { calendarRouter } from './calendar.js';
 import { integrationsRouter } from './integrations.js';
+import { contactosRouter } from './contactos.js';
 
 export const api = Router();
 
@@ -78,6 +80,9 @@ api.use('/invoices', invoicesRouter());
 api.use('/pedidos', pedidosRouter);
 api.use('/campaigns', crudRouter('campaign', { fields: ['nombre', 'canal', 'estado', 'enviados', 'aperturas'] }));
 api.use('/fichajes', crudRouter('fichaje', { fields: ['employeeId', 'empleado', 'fecha', 'entrada', 'salida', 'horas'], fkFields: { employeeId: 'employee' } }));
+// Fichaje self-service con máquina de estados (crm-operaos WU6, AC6): distinto del CRUD
+// legacy de arriba (resumen entrada+salida editable por staff). Singular a propósito.
+api.use('/fichaje', fichajeRouter);
 api.use('/tags', crudRouter('tag', { fields: ['nombre', 'color'], searchFields: ['nombre'] }));
 api.use('/documents', documentsRouter); // documentos (DELETE hard: sin eliminadoEn)
 api.use('/notifications', notificationsRouter); // solo lectura; las escribe el sistema
@@ -89,6 +94,8 @@ api.use('/visit-states', visitStatesRouter);
 api.use('/visits', visitsRouter);
 api.use('/customer-notes', customerNotesRouter);
 api.use('/reminders', remindersRouter);
+// Contactos comerciales (crm-operaos WU4): agenda de leads/prospectos, paridad con AA.
+api.use('/contactos', contactosRouter);
 
 // Custom
 api.use('/tenants', tenantsRouter); // clientes de AA (aa.tenant, raw cross-schema) → FK de proyectos

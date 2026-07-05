@@ -191,6 +191,7 @@ model Business {
   sales        Sale[]
   campaigns    Campaign[]
   fichajes     Fichaje[]
+  workdayEvents WorkdayEvent[]
   settings     BusinessSetting[]
   notifications Notification[]
   invoices     Invoice[]
@@ -201,6 +202,7 @@ model Business {
   customerNotes CustomerNote[]
   reminders    Reminder[]
   oauthCredentials OAuthCredential[]
+  contactos    Contacto[]
 
   @@map("negocio")
 }
@@ -330,6 +332,7 @@ model Employee {
   timeOff    TimeOffRequest[]
   documents  Document[]
   fichajes     Fichaje[]
+  workdayEvents WorkdayEvent[]
   teamMembers  TeamMember[]
   @@index([businessId])
   @@index([locationId])
@@ -395,6 +398,8 @@ model Customer {
   historialNotas CustomerNote[]
   visitas     Visit[]
   recordatorios Reminder[]
+  // Contactos comerciales (lead/prospecto) convertidos a este cliente (crm-operaos WU4).
+  contactosOrigen Contacto[]
   @@index([businessId])
   @@index([businessId, telefono])
   @@index([businessId, email])
@@ -774,6 +779,26 @@ model Fichaje {
   @@map("fichaje")
 }
 
+// Evento de fichaje (crm-operaos WU6): registro ATÓMICO de un paso de la jornada
+// (entrada / salida_comida / entrada_comida / salida_final), no un resumen entrada+salida
+// como el modelo Fichaje legacy de arriba. Permite validar la secuencia por día y modo
+// (ver back/src/lib/fichaje.ts) sin migrar ni perder los registros históricos de `Fichaje`.
+model WorkdayEvent {
+  id         String   @id @default(cuid())
+  businessId String   @map("negocio_id")
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  employeeId String   @map("empleado_id")
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  fecha      DateTime @db.Date @map("fecha")
+  modo       String   @map("modo") // WorkdayMode: 'intensiva' | 'partida'
+  paso       String   @map("paso") // WorkdayStep: 'entrada' | 'salida_comida' | 'entrada_comida' | 'salida_final'
+  creadoEn   DateTime @default(now()) @map("creado_en")
+
+  @@unique([employeeId, fecha, paso], name: "workday_event_uq")
+  @@index([businessId, employeeId, fecha])
+  @@map("evento_jornada")
+}
+
 // ----------------------------- Plataforma -----------------------------
 model Notification {
   id          String   @id @default(cuid())
@@ -959,4 +984,33 @@ model TeamMember {
   @@unique([teamId, employeeId])
   @@unique([teamId, customerId])
   @@map("miembro_equipo")
+}
+
+// Agenda de contactos comerciales (leads / prospectos), paridad con Agents Agency
+// (crm-operaos WU4). Código pc-NN secuencial por negocio. Soft delete (eliminadoEn).
+// `tipo` = 'lead' | 'prospecto'; `contactado` = 'si' | 'no' | 'nc' (validado en la ruta con zod).
+model Contacto {
+  id           String    @id @default(cuid())
+  businessId   String    @map("negocio_id")
+  business     Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  codigo       String    @map("codigo")
+  tipo         String    @default("prospecto") @map("tipo")
+  nombre       String    @map("nombre")
+  telefono     String?   @map("telefono")
+  email        String?   @map("email")
+  sector       String?   @map("sector")
+  direccion    String?   @map("direccion")
+  peticion     String?   @map("peticion")
+  contactado   String    @default("no") @map("contactado")
+  contactadoEn DateTime? @map("contactado_en")
+  clienteId    String?   @map("cliente_id")
+  cliente      Customer? @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  createdAt    DateTime  @default(now()) @map("creado_en")
+  updatedAt    DateTime  @updatedAt @map("actualizado_en")
+  eliminadoEn  DateTime? @map("eliminado_en")
+
+  @@unique([businessId, codigo], name: "contacto_negocio_codigo_uq")
+  @@index([businessId])
+  @@index([businessId, contactado])
+  @@map("contacto")
 }

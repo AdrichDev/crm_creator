@@ -30,7 +30,7 @@ export const ROLE_LABEL: Record<Role, string> = {
 // ---------------------------------------------------------------------------
 const ROLE_MODULES: Record<Role, ModuleId[] | '*'> = {
   admin: '*',
-  trabajador: ['dashboard', 'citas', 'clientes', 'comercial', 'servicios', 'productos', 'fichaje', 'vacaciones', 'ventas', 'pedidos', 'mi-cuenta'],
+  trabajador: ['dashboard', 'citas', 'clientes', 'comercial', 'contactos', 'servicios', 'productos', 'fichaje', 'vacaciones', 'ventas', 'pedidos', 'mi-cuenta'],
   // Portal del cliente: SUS citas (/me/bookings) + catálogo (servicios/productos, solo lectura) +
   // Mi Cuenta (perfil personal). Sin dashboard, facturas ni configuración admin.
   cliente: ['citas', 'servicios', 'productos', 'mi-cuenta'],
