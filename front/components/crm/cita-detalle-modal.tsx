@@ -3,8 +3,11 @@ import { useEffect, useState } from 'react';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/primitives';
 import type { Cita } from '@/lib/mock/data';
+import { buildGoogleMapsEmbedUrl, buildGoogleMapsSearchUrl } from '@/lib/citas/google-maps-url';
 
-export type CitaConNotas = Cita & { notes?: string | null };
+// direccion: opcional — viene de Location.direccion (back/src/routes/bookings.ts) cuando
+// la cita tiene locationId asociado. Sin dirección, el bloque de mapa no se muestra (AC3, WU3).
+export type CitaConNotas = Cita & { notes?: string | null; direccion?: string | null };
 
 // Modal de detalle de cita desde el widget Agenda (Inicio) — crm-citas-ux-agenda WU5.
 // Patrón visual del ContactInfoModal de agents-agency (dl/dt/dd + ✕ rotatorio, ver
@@ -22,6 +25,9 @@ export function CitaDetalleModal({ cita, onClose, onSave, onIrAgenda }: {
   useEffect(() => { setNotes(cita?.notes ?? ''); }, [cita]);
 
   if (!cita) return null;
+
+  const mapaEmbedUrl = buildGoogleMapsEmbedUrl(cita.direccion);
+  const mapaEnlaceUrl = buildGoogleMapsSearchUrl(cita.direccion);
 
   const campos: [string, string][] = [
     ['Cliente', cita.cliente],
@@ -46,6 +52,26 @@ export function CitaDetalleModal({ cita, onClose, onSave, onIrAgenda }: {
           </div>
         ))}
       </dl>
+      {mapaEmbedUrl && (
+        <div className="mt-4">
+          <label className="opera-label">Ubicación</label>
+          <div className="overflow-hidden rounded-md border border-[var(--line)]">
+            <iframe
+              title="Ubicación de la cita en Google Maps"
+              src={mapaEmbedUrl}
+              className="h-40 w-full sm:h-52"
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+            />
+          </div>
+          {mapaEnlaceUrl && (
+            <a href={mapaEnlaceUrl} target="_blank" rel="noopener noreferrer"
+              className="mt-1 inline-block text-xs text-[var(--acc)] underline">
+              Abrir en Google Maps
+            </a>
+          )}
+        </div>
+      )}
       <div className="mt-4">
         <label className="opera-label">Anotaciones</label>
         <textarea className="opera-control" rows={4} value={notes} onChange={(e) => setNotes(e.target.value)}

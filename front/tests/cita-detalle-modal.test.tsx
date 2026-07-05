@@ -47,3 +47,20 @@ describe('CitaDetalleModal (crm-citas-ux-agenda WU5 / AC5)', () => {
     expect(container.firstChild).toBeNull();
   });
 });
+
+describe('CitaDetalleModal — mapa Google Maps (crm-operaos WU3 / AC3)', () => {
+  it('con dirección: embebe un iframe de Google Maps y el enlace "Abrir en Google Maps"', () => {
+    const cita: CitaConNotas = { ...CITA, direccion: 'C/ Mayor 3, Madrid' };
+    render(<CitaDetalleModal cita={cita} onClose={vi.fn()} onSave={vi.fn()} onIrAgenda={vi.fn()} />);
+    const iframe = screen.getByTitle('Ubicación de la cita en Google Maps') as HTMLIFrameElement;
+    expect(iframe.src).toBe('https://www.google.com/maps?q=C%2F%20Mayor%203%2C%20Madrid&output=embed');
+    const link = screen.getByText('Abrir en Google Maps') as HTMLAnchorElement;
+    expect(link.href).toBe('https://www.google.com/maps/search/?api=1&query=C%2F%20Mayor%203%2C%20Madrid');
+  });
+
+  it('sin dirección: no muestra bloque de mapa', () => {
+    render(<CitaDetalleModal cita={CITA} onClose={vi.fn()} onSave={vi.fn()} onIrAgenda={vi.fn()} />);
+    expect(screen.queryByTitle('Ubicación de la cita en Google Maps')).not.toBeInTheDocument();
+    expect(screen.queryByText('Abrir en Google Maps')).not.toBeInTheDocument();
+  });
+});
