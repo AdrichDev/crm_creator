@@ -11,6 +11,19 @@ export function isApiEnabled(): boolean {
   return Boolean(apiBaseUrl());
 }
 
+// Error tipado del back: conserva code (p.ej. 'oauth_no_configurado') y status HTTP
+// para que la UI pueda distinguir errores concretos sin parsear el mensaje.
+export class ApiError extends Error {
+  readonly code?: string;
+  readonly status: number;
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+  }
+}
+
 export async function apiFetch<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
   const base = apiBaseUrl();
   if (!base) throw new Error('API no configurada');
@@ -30,7 +43,7 @@ export async function apiFetch<T = unknown>(path: string, init: RequestInit = {}
   const res = await fetch(`${base}/api${path}`, { ...init, headers });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body?.error?.message ?? `Error ${res.status}`);
+    throw new ApiError(body?.error?.message ?? `Error ${res.status}`, res.status, body?.error?.code);
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;

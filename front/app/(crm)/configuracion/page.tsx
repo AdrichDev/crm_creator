@@ -12,12 +12,13 @@ import { UsersPanel } from '@/components/config/users-panel';
 import { ChangePasswordForm } from '@/components/config/change-password-form';
 import { MyAccountPanel } from '@/components/config/my-account-panel';
 import { NotificacionesPanel } from '@/components/config/notificaciones-panel';
+import { IntegracionesPanel } from '@/components/config/integraciones-panel';
 import { PageHeader, Card, CardBody, Button, Badge, Toggle } from '@/components/ui/primitives';
 import { isApiEnabled } from '@/lib/api/client';
 import { cn } from '@/lib/utils';
 
-type Tab = 'estado' | 'modulos' | 'trabajador' | 'inicio' | 'usuarios' | 'notificaciones' | 'marca' | 'negocio' | 'cuenta';
-const TAB_LABEL: Record<Tab, string> = { estado: 'Estado', modulos: 'Módulos', trabajador: 'Trabajador', inicio: 'Widgets del inicio', usuarios: 'Usuarios', notificaciones: 'Notificaciones', marca: 'Marca', negocio: 'Negocio', cuenta: 'Mi Cuenta' };
+type Tab = 'estado' | 'modulos' | 'trabajador' | 'inicio' | 'usuarios' | 'notificaciones' | 'integraciones' | 'marca' | 'negocio' | 'cuenta';
+const TAB_LABEL: Record<Tab, string> = { estado: 'Estado', modulos: 'Módulos', trabajador: 'Trabajador', inicio: 'Widgets del inicio', usuarios: 'Usuarios', notificaciones: 'Notificaciones', integraciones: 'Integraciones', marca: 'Marca', negocio: 'Negocio', cuenta: 'Mi Cuenta' };
 const BASE_TABS: Tab[] = ['estado', 'modulos', 'trabajador', 'inicio', 'marca', 'negocio', 'cuenta'];
 
 export default function ConfiguracionPage() {
@@ -28,11 +29,11 @@ export default function ConfiguracionPage() {
   const dialog = useDialog();
 
   // El tab "Usuarios" (gestión de cuentas + cambio de contraseña) es solo para admin.
-  // "Notificaciones" (solo lectura) requiere back → solo admin + modo API.
-  // "Mi Cuenta" es accesible para todos los roles.
+  // "Notificaciones" (solo lectura) e "Integraciones" (OAuth Google) requieren back
+  // → solo admin + modo API. "Mi Cuenta" es accesible para todos los roles.
   const TABS: Tab[] = isAdmin
     ? ['estado', 'modulos', 'trabajador', 'inicio', 'usuarios',
-       ...(apiEnabled ? ['notificaciones' as Tab] : []), 'marca', 'negocio', 'cuenta']
+       ...(apiEnabled ? ['notificaciones' as Tab, 'integraciones' as Tab] : []), 'marca', 'negocio', 'cuenta']
     : BASE_TABS;
 
   const [tab, setTab] = useState<Tab>('estado');
@@ -136,6 +137,17 @@ export default function ConfiguracionPage() {
             Historial de notificaciones que envía el sistema (recordatorios, avisos). Solo lectura.
           </p>
           <NotificacionesPanel />
+        </CardBody></Card>
+      )}
+
+      {/* Integraciones: OAuth de Google (Calendar/Gmail) por negocio (admin + modo API).
+          Mismo panel que /ajustes/integraciones, destino del retorno del consentimiento. */}
+      {tab === 'integraciones' && isAdmin && apiEnabled && (
+        <Card><CardBody className="space-y-4">
+          <p className="text-sm text-[var(--panel-muted)]">
+            Conecta el negocio con Google Calendar y Gmail. Cada negocio usa su propia cuenta de Google.
+          </p>
+          <IntegracionesPanel />
         </CardBody></Card>
       )}
 

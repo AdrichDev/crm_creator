@@ -1,5 +1,6 @@
 import { Router, type Response } from 'express';
 import { env } from '../env.js';
+import { prisma } from '../prisma.js';
 import { authenticate } from '../middleware/auth.js';
 import { staffOnly } from '../middleware/rbac.js';
 import { requireOperatorToken } from '../middleware/operator-token.js';
@@ -11,6 +12,7 @@ import {
   disconnectIntegration,
   takeOAuthState,
   ScopeInsufficientError,
+  type EstadoCredencial,
   type Servicio,
 } from '../lib/integrations/oauth.js';
 
@@ -48,6 +50,54 @@ function frontRedirect(servicio: string, estado: string): string {
   const params = new URLSearchParams({ servicio, estado });
   return `${env.frontUrl}/ajustes/integraciones?${params}`;
 }
+
+// ── Estado de integraciones (GET /) ──────────────────────────────────────────
+
+/** Fila mínima de credencial que necesita el resumen de estado. */
+export interface CredencialResumen {
+  servicio: string;
+  estado: string;
+  updatedAt: Date;
+  scopesOauth: string[];
+}
+
+export interface IntegracionEstado {
+  servicio: Servicio;
+  estado: EstadoCredencial | null; // null = nunca conectada
+  connectedAt?: string;
+  scopesOauth?: string[];
+}
+
+/**
+ * Proyecta las filas de credencial_oauth al contrato de la UI: una entrada por
+ * servicio OAuth, con estado null si el negocio nunca conectó ese servicio.
+ * connectedAt = última transición de la credencial (updatedAt), no la fecha original.
+ */
+export function buildIntegrationsStatus(rows: CredencialResumen[]): IntegracionEstado[] {
+  return OAUTH_SERVICES.map((servicio) => {
+    const row = rows.find((r) => r.servicio === servicio);
+    if (!row) return { servicio, estado: null };
+    return {
+      servicio,
+      estado: row.estado as EstadoCredencial,
+      connectedAt: row.updatedAt.toISOString(),
+      scopesOauth: row.scopesOauth,
+    };
+  });
+}
+
+// GET / — estado por servicio OAuth del negocio de la sesión. Nunca expone tokens:
+// solo estado, fecha y scopes concedidos.
+integrationsRouter.get('/', authenticate, staffOnly, async (req: AuthedRequest, res: Response) => {
+  if (!req.businessId) {
+    return res.status(400).json({ error: { code: 'no_business', message: 'La sesión no tiene un negocio activo' } });
+  }
+  const rows = await prisma.oAuthCredential.findMany({
+    where: { businessId: req.businessId, servicio: { in: OAUTH_SERVICES } },
+    select: { servicio: true, estado: true, updatedAt: true, scopesOauth: true },
+  });
+  res.json({ items: buildIntegrationsStatus(rows) });
+});
 
 // POST /:servicio/connect — genera la URL de consentimiento con nonce anti-CSRF
 // ligado al businessId de la sesión. El front abre esa URL.
