@@ -5,6 +5,7 @@ import type { AuthedRequest } from '../middleware/types.js';
 import { requireRole } from '../middleware/rbac.js';
 import { splitNombre, joinNombre, pickFields } from '../lib/nombre.js';
 import { parsePagination } from '../lib/pagination.js';
+import { dayRange } from '../lib/dateRange.js';
 import { resolveGeocoder, setGeocoder, haversineKm, isValidCoord } from '../lib/geo/index.js';
 import { planImport, type ImportRow, type ExistingCustomer } from '../lib/comercial/import.js';
 
@@ -106,7 +107,28 @@ customersRouter.get('/', async (req: AuthedRequest, res: Response) => {
     ] });
   }
 
-  const where = { businessId, eliminadoEn: null, ...searchWhere, ...filters };
+  // Filtros explícitos de la Cartera de Clientes (nombre/email/fecha), independientes del
+  // `search` genérico de arriba. Se combinan vía AND para no chocar con el OR de `zona`.
+  const andClauses: Record<string, unknown>[] = [];
+  if (typeof q.nombre === 'string' && q.nombre.trim()) {
+    const nombre = q.nombre.trim();
+    andClauses.push({ OR: [
+      { nombre: { contains: nombre, mode: 'insensitive' as const } },
+      { apellido: { contains: nombre, mode: 'insensitive' as const } },
+    ] });
+  }
+  if (typeof q.email === 'string' && q.email.trim()) {
+    andClauses.push({ email: { contains: q.email.trim(), mode: 'insensitive' as const } });
+  }
+  if (typeof q.fecha === 'string' && q.fecha.trim()) {
+    const range = dayRange(q.fecha.trim());
+    if (range) andClauses.push({ createdAt: range });
+  }
+
+  const where = {
+    businessId, eliminadoEn: null, ...searchWhere, ...filters,
+    ...(andClauses.length ? { AND: andClauses } : {}),
+  };
 
   // Cercanía (RF-18): si hay ?near=lat,lng, ordena por distancia (sólo clientes con coords).
   const near = parseNear(q.near);

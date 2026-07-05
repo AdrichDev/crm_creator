@@ -34,6 +34,13 @@ export const EMPTY_FORM: ContactoForm = {
   tipo: 'prospecto', nombre: '', telefono: '', email: '', sector: '', direccion: '',
 };
 
+// Semilla del modo generador (localStorage) — compartida entre /contactos y el
+// widget "Contactos nuevos" del inicio. En modo API arranca vacío y trae datos reales.
+export const CONTACTOS_SEED: ContactoRow[] = [
+  { id: 'c-seed-1', codigo: 'pc-01', tipo: 'lead', nombre: 'Marta Ibáñez', telefono: '600111222', email: 'marta@example.com', sector: 'Retail', direccion: 'Calle Mayor 1', peticion: 'Solicita presupuesto', contactado: 'no', createdAt: new Date().toISOString() },
+  { id: 'c-seed-2', codigo: 'pc-02', tipo: 'prospecto', nombre: 'Diego Serrano', telefono: '600333444', email: 'diego@example.com', sector: 'Hostelería', direccion: 'Av. del Sol 22', peticion: null, contactado: 'si', createdAt: new Date(Date.now() - 86400000).toISOString() },
+];
+
 // Ciclo del estado de contacto al pulsar el badge: NC → Sí → No → NC.
 export const CONTACTADO_CYCLE: Record<ContactadoEstado, ContactadoEstado> = { nc: 'si', si: 'no', no: 'nc' };
 export const CONTACTADO_LABELS: Record<ContactadoEstado, string> = { si: 'Sí', no: 'No', nc: 'NC' };
@@ -43,6 +50,15 @@ export function isToday(iso: string): boolean {
   const d = new Date(iso);
   const now = new Date();
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+}
+
+/** Coincidencia de día calendario exacto entre un ISO datetime y un input `type="date"` (YYYY-MM-DD). */
+export function isSameCalendarDay(iso: string, fecha: string): boolean {
+  if (!fecha) return true;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return false;
+  const [y, m, day] = fecha.split('-').map(Number);
+  return d.getFullYear() === y && d.getMonth() + 1 === m && d.getDate() === day;
 }
 
 export function formatDateTime(iso: string): string {
@@ -119,11 +135,11 @@ export function ContactosLista({
             <Td className="tabular-nums">{formatDateTime(c.createdAt)}</Td>
             <Td>
               <div className="flex items-center justify-end gap-2">
-                <IconButton title="Ver información" onClick={() => onInfo(c)}><Info className="h-4 w-4" /></IconButton>
+                <IconButton tone="view" title="Ver información" onClick={() => onInfo(c)}><Info className="h-4 w-4" /></IconButton>
                 {puedeEditar && (
                   <>
-                    <IconButton title="Editar" onClick={() => onEdit(c)}><Pencil className="h-4 w-4" /></IconButton>
-                    <IconButton danger title="Eliminar" onClick={() => onDelete(c)}><Trash2 className="h-4 w-4" /></IconButton>
+                    <IconButton tone="edit" title="Editar" onClick={() => onEdit(c)}><Pencil className="h-4 w-4" /></IconButton>
+                    <IconButton tone="delete" title="Eliminar" onClick={() => onDelete(c)}><Trash2 className="h-4 w-4" /></IconButton>
                   </>
                 )}
               </div>

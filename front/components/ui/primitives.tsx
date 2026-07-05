@@ -88,12 +88,25 @@ export function Button({ children, variant = 'primary', onClick, type = 'button'
 
 const ICON_BTN_BASE = 'inline-grid place-items-center w-8 h-8 rounded-lg border border-white/10 text-[var(--panel-muted)] transition hover:text-[var(--acc)] hover:border-[var(--acc)]';
 
-/** Botón de acción con icono para celdas de tabla (ver/editar/eliminar). `danger` lo tematiza en rojo. */
-export function IconButton({ title, onClick, danger, className, children }:
-  { title: string; onClick?: () => void; danger?: boolean; className?: string; children: ReactNode }) {
+/** Tonos persistentes (no solo en hover) paridad con agents-agency icon-btn-info/edit/delete. */
+export type IconButtonTone = 'view' | 'edit' | 'delete';
+const ICON_BTN_TONE: Record<IconButtonTone, string> = {
+  view: 'border-[rgba(234,179,8,0.4)] bg-[rgba(234,179,8,0.1)] text-[#facc15] hover:bg-[rgba(234,179,8,0.2)]',
+  edit: 'border-[rgba(6,182,212,0.4)] bg-[rgba(6,182,212,0.1)] text-[#00f0ff] hover:bg-[rgba(6,182,212,0.2)]',
+  delete: 'border-[rgba(239,68,68,0.4)] bg-[rgba(239,68,68,0.1)] text-[#f87171] hover:bg-[rgba(239,68,68,0.2)]',
+};
+
+/**
+ * Botón de acción con icono para celdas de tabla (ver/editar/eliminar).
+ * `tone` aplica los colores persistentes de agents-agency (view/edit/delete). Sin `tone`,
+ * mantiene el estilo gris neutro de siempre; `danger` sigue disponible para ese caso legacy.
+ */
+export function IconButton({ title, onClick, danger, tone, className, children }:
+  { title: string; onClick?: () => void; danger?: boolean; tone?: IconButtonTone; className?: string; children: ReactNode }) {
+  const base = tone ? 'inline-grid place-items-center w-8 h-8 rounded-lg border transition' : ICON_BTN_BASE;
   return (
     <button type="button" title={title} onClick={onClick}
-      className={cn(ICON_BTN_BASE, danger && 'hover:!border-red-500/60 hover:!text-red-400', className)}>
+      className={cn(base, tone ? ICON_BTN_TONE[tone] : danger && 'hover:!border-red-500/60 hover:!text-red-400', className)}>
       {children}
     </button>
   );

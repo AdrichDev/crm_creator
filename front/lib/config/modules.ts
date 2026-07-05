@@ -53,7 +53,7 @@ export const MODULES: ModuleDef[] = [
   { id: 'productos', termKey: 'productos', defaultLabel: 'Productos', description: 'Inventario: stock, categorías y proveedores.', category: 'retail', icon: 'Package', href: '/productos' },
   { id: 'ventas', termKey: 'ventas', defaultLabel: 'Ventas / TPV', description: 'Tickets, métodos de pago y caja.', category: 'retail', icon: 'Receipt', href: '/ventas', recommends: ['productos'] },
   { id: 'pedidos', termKey: 'pedidos', defaultLabel: 'Pedidos', description: 'Presupuestos y pedidos comerciales documentales, con vista previa imprimible.', category: 'retail', icon: 'ClipboardList', href: '/pedidos', recommends: ['clientes'] },
-  { id: 'facturas', termKey: 'facturas', defaultLabel: 'Facturas', description: 'Facturación y documentos del cliente.', category: 'retail', icon: 'Euro', href: '/facturas', recommends: ['clientes'] },
+  { id: 'facturas', termKey: 'facturas', defaultLabel: 'Facturas', description: 'Facturación y documentos del cliente.', category: 'retail', icon: 'ReceiptText', href: '/facturas', recommends: ['clientes'] },
   { id: 'marketing', termKey: 'marketing', defaultLabel: 'Marketing', description: 'Campañas, fidelización y notificaciones.', category: 'marketing', icon: 'Megaphone', href: '/marketing', recommends: ['clientes'] },
   { id: 'estadisticas', termKey: 'estadisticas', defaultLabel: 'Estadísticas', description: 'Indicadores y KPIs del negocio.', category: 'marketing', icon: 'BarChart3', href: '/estadisticas', recommends: ['clientes'] },
   { id: 'estudios-mercado', termKey: 'estudios-mercado', defaultLabel: 'Estudios de Mercado', description: 'Estudios de mercado generados con IA, anclados a datos reales del negocio.', category: 'marketing', icon: 'Search', href: '/estudios-mercado'},

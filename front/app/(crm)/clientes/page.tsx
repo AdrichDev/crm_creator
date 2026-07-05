@@ -18,6 +18,7 @@ import { isApiEnabled } from '@/lib/api/client';
 import { usePaginatedApi } from '@/lib/data/use-paginated-api';
 import { SearchInput } from '@/components/ui/search-input';
 import { Pagination } from '@/components/ui/pagination';
+import { shortClienteId } from '@/lib/utils/format';
 
 // Shape que devuelve el back para /customers paginado.
 type ClienteApiRow = {
@@ -57,13 +58,33 @@ export default function Page() {
   const extraFields = clienteExtraFields(vertical);
   const apiEnabled = isApiEnabled();
 
+  // Filtros explícitos (nombre/email/fecha). Código/sector/contactado no aplican:
+  // el modelo Customer no tiene esos campos (ver reporte de la tarea).
+  const [filterNombre, setFilterNombre] = useState('');
+  const [filterEmail, setFilterEmail] = useState('');
+  const [filterFecha, setFilterFecha] = useState('');
+
   // Modo generador: localStorage / mock.
   const { items: collectionItems, create, update, remove } = useCollection<Cliente>('clientes', seed);
   const { items: facturas } = useCollection<Factura>('facturas', facturasSeed);
   const conFactura = new Set(facturas.map((f) => f.cliente));
+  // Filtrado client-side (modo generador): el mock `Cliente` no tiene `createdAt`, así que
+  // la fecha se compara contra `ultimaVisita` (única fecha real disponible en el mock;
+  // ya viene en formato 'YYYY-MM-DD', igual que el input date).
+  const mockRows = useMemo(() => {
+    const nombre2 = filterNombre.trim().toLowerCase();
+    const email2 = filterEmail.trim().toLowerCase();
+    return collectionItems.filter((c) =>
+      (!nombre2 || c.nombre.toLowerCase().includes(nombre2)) &&
+      (!email2 || (c.email || '').toLowerCase().includes(email2)) &&
+      (!filterFecha || c.ultimaVisita === filterFecha),
+    );
+  }, [collectionItems, filterNombre, filterEmail, filterFecha]);
 
   // Modo API: paginación server-side.
-  const paged = usePaginatedApi<ClienteApiRow>('/customers', 20, apiEnabled);
+  const paged = usePaginatedApi<ClienteApiRow>('/customers', 20, apiEnabled, {
+    nombre: filterNombre || undefined, email: filterEmail || undefined, fecha: filterFecha || undefined,
+  });
   // Modo API: documentos respaldados por /api/documents (scoped por negocio).
   const apiDocs = useDocumentos(apiEnabled);
 
@@ -74,7 +95,7 @@ export default function Page() {
   const tone = (s: string) => s === 'VIP' ? 'brand' : s === 'Nuevo' ? 'blue' : 'gray';
 
   // Items de visualización (tabla).
-  const displayItems = (apiEnabled ? paged.items : collectionItems) as unknown as Cliente[];
+  const displayItems = (apiEnabled ? paged.items : mockRows) as unknown as Cliente[];
   const actual = info ? displayItems.find((c) => c.id === info.id) ?? info : null;
 
   function onNew() { setEditing(null); setOpen(true); }
@@ -105,43 +126,51 @@ export default function Page() {
         <Stat label="Gasto medio" value={'€' + (displayItems.length ? Math.round(displayItems.reduce((a, c) => a + Number(c.gastoTotal), 0) / displayItems.length) : 0)} />
       </div>
 
-      {apiEnabled && (
-        <div className="mb-4">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        {apiEnabled && (
           <SearchInput value={paged.search} onChange={paged.setSearch} placeholder="Buscar cliente..." />
-        </div>
-      )}
+        )}
+        <input type="text" placeholder="Nombre" aria-label="Filtrar por nombre"
+          className="w-40 rounded-xl border border-[var(--line)] bg-transparent px-3 py-2 text-sm"
+          value={filterNombre} onChange={(e) => setFilterNombre(e.target.value)} />
+        <input type="text" placeholder="Email" aria-label="Filtrar por email"
+          className="w-44 rounded-xl border border-[var(--line)] bg-transparent px-3 py-2 text-sm"
+          value={filterEmail} onChange={(e) => setFilterEmail(e.target.value)} />
+        <input type="date" aria-label="Filtrar por fecha"
+          className="rounded-xl border border-[var(--line)] bg-transparent px-3 py-2 text-sm"
+          value={filterFecha} onChange={(e) => setFilterFecha(e.target.value)} />
+      </div>
 
-      <Table head={['Nombre', 'Contacto', 'Visitas', 'Gasto', 'Segmento', 'Facturas', 'Acciones']}>
+      <Table head={['Id Cliente', 'Nombre', 'Contacto', 'Visitas', 'Gasto', 'Segmento', 'Acciones']}>
         {displayItems.map((c) => (
           <tr key={c.id}>
+            <Td className="font-mono text-xs text-[var(--acc)]">{shortClienteId(c.id)}</Td>
             <Td className="font-medium text-white">{c.nombre}</Td>
             <Td><div>{c.email}</div><div className="text-xs text-[var(--panel-muted)]">{c.telefono}</div></Td>
             <Td>{c.visitas}</Td>
             <Td>€{c.gastoTotal}</Td>
             <Td><Badge tone={tone(c.segmento)}>{c.segmento}</Badge></Td>
             <Td>
-              <button
-                className={`inline-grid place-items-center w-8 h-8 rounded-lg border transition ${
-                  conFactura.has(c.nombre)
-                    ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
-                    : 'border-white/10 text-[var(--panel-muted)] hover:text-[var(--acc)] hover:border-[var(--acc)]'
-                }`}
-                title={conFactura.has(c.nombre) ? 'Ver facturas del cliente' : 'Sin facturas — ir a facturación'}
-                onClick={() => router.push('/facturas')}>
-                <Euro className="h-4 w-4" />
-              </button>
-            </Td>
-            <Td>
               <div className="flex items-center justify-end gap-2">
-                <IconButton title="Ver ficha y documentos" onClick={() => setInfo(c)}>
+                <button
+                  className={`inline-grid place-items-center w-8 h-8 rounded-lg border transition ${
+                    conFactura.has(c.nombre)
+                      ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
+                      : 'border-white/10 text-[var(--panel-muted)] hover:text-[var(--acc)] hover:border-[var(--acc)]'
+                  }`}
+                  title={conFactura.has(c.nombre) ? 'Ver facturas del cliente' : 'Sin facturas — ir a facturación'}
+                  onClick={() => router.push('/facturas')}>
+                  <Euro className="h-4 w-4" />
+                </button>
+                <IconButton tone="view" title="Ver ficha y documentos" onClick={() => setInfo(c)}>
                   <Info className="h-4 w-4" />
                 </IconButton>
                 {puedeEditar && (
                   <>
-                    <IconButton title="Editar" onClick={() => onEdit(c)}>
+                    <IconButton tone="edit" title="Editar" onClick={() => onEdit(c)}>
                       <Pencil className="h-4 w-4" />
                     </IconButton>
-                    <IconButton danger title="Eliminar"
+                    <IconButton tone="delete" title="Eliminar"
                       onClick={() => { void dialog.confirm({ message: '¿Eliminar cliente?', danger: true }).then((ok) => { if (ok) remove(c.id); }); }}>
                       <Trash2 className="h-4 w-4" />
                     </IconButton>

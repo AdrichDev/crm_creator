@@ -4,6 +4,7 @@ import { prisma } from '../prisma.js';
 import type { AuthedRequest } from '../middleware/types.js';
 import { splitNombre } from '../lib/nombre.js';
 import { parsePagination } from '../lib/pagination.js';
+import { dayRange } from '../lib/dateRange.js';
 
 // Agenda de contactos comerciales (leads / prospectos) — paridad con Agents Agency
 // (crm-operaos WU4). Multi-tenant: todo se filtra/crea con el businessId del token.
@@ -65,10 +66,16 @@ export function contactadoEnPatch(
   return { contactadoEn: null };
 }
 
+// Re-exportado para no romper imports existentes de `dayRange` desde este módulo.
+export { dayRange };
+
 /** Construye el where de listado (tenant + soft delete + filtros). Función pura, testeable. */
 export function buildContactosWhere(
   businessId: string | undefined,
-  q: { tipo?: ContactoTipo; contactado?: ContactadoEstado; search?: string },
+  q: {
+    tipo?: ContactoTipo; contactado?: ContactadoEstado; search?: string;
+    codigo?: string; nombre?: string; email?: string; sector?: string; fecha?: string;
+  },
 ): Record<string, unknown> {
   const where: Record<string, unknown> = { businessId, eliminadoEn: null };
   if (q.tipo) where.tipo = q.tipo;
@@ -81,6 +88,15 @@ export function buildContactosWhere(
       { telefono: { contains: q.search, mode: 'insensitive' as const } },
       { sector: { contains: q.search, mode: 'insensitive' as const } },
     ];
+  }
+  // Filtros explícitos por campo (independientes del `search` combinado de arriba).
+  if (q.codigo) where.codigo = { contains: q.codigo, mode: 'insensitive' as const };
+  if (q.nombre) where.nombre = { contains: q.nombre, mode: 'insensitive' as const };
+  if (q.email) where.email = { contains: q.email, mode: 'insensitive' as const };
+  if (q.sector) where.sector = { contains: q.sector, mode: 'insensitive' as const };
+  if (q.fecha) {
+    const range = dayRange(q.fecha);
+    if (range) where.createdAt = range;
   }
   return where;
 }
@@ -104,8 +120,13 @@ contactosRouter.get('/', async (req: AuthedRequest, res: Response) => {
   const contactado = CONTACTADO_VALORES.includes(q.contactado as ContactadoEstado)
     ? (q.contactado as ContactadoEstado)
     : undefined;
+  const codigo = typeof q.codigo === 'string' ? q.codigo : undefined;
+  const nombre = typeof q.nombre === 'string' ? q.nombre : undefined;
+  const email = typeof q.email === 'string' ? q.email : undefined;
+  const sector = typeof q.sector === 'string' ? q.sector : undefined;
+  const fecha = typeof q.fecha === 'string' ? q.fecha : undefined;
 
-  const where = buildContactosWhere(req.businessId, { tipo, contactado, search });
+  const where = buildContactosWhere(req.businessId, { tipo, contactado, search, codigo, nombre, email, sector, fecha });
   const [items, total] = await Promise.all([
     prisma.contacto.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (page - 1) * limit, take: limit }),
     prisma.contacto.count({ where }),

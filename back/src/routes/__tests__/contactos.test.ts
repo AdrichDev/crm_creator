@@ -5,6 +5,7 @@ import {
   contactadoEnPatch,
   defaultContactado,
   nextContactoCodigo,
+  dayRange,
   createContactoSchema,
   updateContactoSchema,
   convertContactosSchema,
@@ -70,6 +71,36 @@ describe('contactos · buildContactosWhere', () => {
     const w = buildContactosWhere('b1', { search: 'ana' });
     assert.ok(Array.isArray(w.OR));
     assert.equal((w.OR as unknown[]).length, 5);
+  });
+  it('aplica filtros explícitos de código/nombre/email/sector, independientes del search', () => {
+    const w = buildContactosWhere('b1', { codigo: 'pc-0', nombre: 'ana', email: '@x.com', sector: 'retail' });
+    assert.deepEqual(w.codigo, { contains: 'pc-0', mode: 'insensitive' });
+    assert.deepEqual(w.nombre, { contains: 'ana', mode: 'insensitive' });
+    assert.deepEqual(w.email, { contains: '@x.com', mode: 'insensitive' });
+    assert.deepEqual(w.sector, { contains: 'retail', mode: 'insensitive' });
+    assert.equal(w.OR, undefined);
+  });
+  it('aplica rango de día calendario para fecha', () => {
+    const w = buildContactosWhere('b1', { fecha: '2026-07-05' });
+    const range = w.createdAt as { gte: Date; lt: Date };
+    assert.deepEqual(range.gte, new Date('2026-07-05T00:00:00.000'));
+    assert.deepEqual(range.lt, new Date('2026-07-06T00:00:00.000'));
+  });
+  it('ignora fecha inválida sin romper el where', () => {
+    const w = buildContactosWhere('b1', { fecha: 'no-es-fecha' });
+    assert.equal(w.createdAt, undefined);
+  });
+});
+
+describe('contactos · dayRange', () => {
+  it('devuelve [inicio del día, inicio del día siguiente)', () => {
+    const r = dayRange('2026-01-15');
+    assert.ok(r);
+    assert.deepEqual(r!.gte, new Date('2026-01-15T00:00:00.000'));
+    assert.deepEqual(r!.lt, new Date('2026-01-16T00:00:00.000'));
+  });
+  it('devuelve undefined para strings no parseables', () => {
+    assert.equal(dayRange('not-a-date'), undefined);
   });
 });
 

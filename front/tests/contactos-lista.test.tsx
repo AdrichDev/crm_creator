@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach, afterAll } from 'vitest';
 import { render, cleanup, screen } from '@testing-library/react';
 import {
-  ContactosLista, isToday, type ContactoRow,
+  ContactosLista, isToday, isSameCalendarDay, type ContactoRow,
 } from '@/components/crm/contactos-lista';
 
 // UI test de la lista de contactos (crm-operaos WU4 / AC4): paridad visual/lógica con AA.
@@ -72,5 +72,20 @@ describe('isToday helper', () => {
   it('detecta hoy vs. fecha pasada', () => {
     expect(isToday(new Date().toISOString())).toBe(true);
     expect(isToday('2020-01-01T00:00:00.000Z')).toBe(false);
+  });
+});
+
+describe('isSameCalendarDay helper (filtro de fecha)', () => {
+  it('sin fecha de filtro, siempre coincide', () => {
+    expect(isSameCalendarDay('2026-07-05T10:00:00.000Z', '')).toBe(true);
+  });
+  it('coincide el mismo día calendario, ignorando la hora', () => {
+    expect(isSameCalendarDay('2026-07-05T23:59:00.000', '2026-07-05')).toBe(true);
+  });
+  it('no coincide un día distinto', () => {
+    expect(isSameCalendarDay('2026-07-04T23:59:00.000', '2026-07-05')).toBe(false);
+  });
+  it('ISO no parseable no coincide', () => {
+    expect(isSameCalendarDay('not-a-date', '2026-07-05')).toBe(false);
   });
 });

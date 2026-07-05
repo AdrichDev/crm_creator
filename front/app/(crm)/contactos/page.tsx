@@ -12,18 +12,13 @@ import { useDialog } from '@/components/ui/dialog-provider';
 import { isApiEnabled, apiFetch } from '@/lib/api/client';
 import { useCollection } from '@/lib/data/use-collection';
 import {
-  ContactosLista, CONTACTOS_HEAD, CONTACTADO_CYCLE, CONTACTADO_LABELS, EMPTY_FORM, formatDateTime,
+  ContactosLista, CONTACTOS_HEAD, CONTACTADO_CYCLE, CONTACTADO_LABELS, CONTACTOS_SEED, EMPTY_FORM, formatDateTime,
+  isSameCalendarDay,
   type ContactoRow, type ContactoForm, type ContactoTipo, type ContactadoEstado,
 } from '@/components/crm/contactos-lista';
 import { ContactoFormModal } from '@/components/crm/contacto-modal';
 
 const LIMIT = 20;
-
-// Semilla para el modo generador (localStorage). En modo API arranca vacío y trae datos reales.
-const SEED: ContactoRow[] = [
-  { id: 'c-seed-1', codigo: 'pc-01', tipo: 'lead', nombre: 'Marta Ibáñez', telefono: '600111222', email: 'marta@example.com', sector: 'Retail', direccion: 'Calle Mayor 1', peticion: 'Solicita presupuesto', contactado: 'no', createdAt: new Date().toISOString() },
-  { id: 'c-seed-2', codigo: 'pc-02', tipo: 'prospecto', nombre: 'Diego Serrano', telefono: '600333444', email: 'diego@example.com', sector: 'Hostelería', direccion: 'Av. del Sol 22', peticion: null, contactado: 'si', createdAt: new Date(Date.now() - 86400000).toISOString() },
-];
 
 export default function ContactosPage() {
   const term = useTerm('contactos', 'Contactos');
@@ -35,6 +30,11 @@ export default function ContactosPage() {
   // Filtros + búsqueda + paginación.
   const [filterTipo, setFilterTipo] = useState<'' | ContactoTipo>('');
   const [filterContactado, setFilterContactado] = useState<'' | ContactadoEstado>('');
+  const [filterCodigo, setFilterCodigo] = useState('');
+  const [filterNombre, setFilterNombre] = useState('');
+  const [filterEmail, setFilterEmail] = useState('');
+  const [filterSector, setFilterSector] = useState('');
+  const [filterFecha, setFilterFecha] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
 
@@ -47,6 +47,11 @@ export default function ContactosPage() {
     if (search) params.set('search', search);
     if (filterTipo) params.set('tipo', filterTipo);
     if (filterContactado) params.set('contactado', filterContactado);
+    if (filterCodigo) params.set('codigo', filterCodigo);
+    if (filterNombre) params.set('nombre', filterNombre);
+    if (filterEmail) params.set('email', filterEmail);
+    if (filterSector) params.set('sector', filterSector);
+    if (filterFecha) params.set('fecha', filterFecha);
     try {
       const data = await apiFetch<{ items: ContactoRow[]; total: number }>(`/contactos?${params.toString()}`);
       setApiRows(data.items);
@@ -55,20 +60,29 @@ export default function ContactosPage() {
       setApiRows([]);
       setApiTotal(0);
     }
-  }, [apiEnabled, page, search, filterTipo, filterContactado]);
+  }, [apiEnabled, page, search, filterTipo, filterContactado, filterCodigo, filterNombre, filterEmail, filterSector, filterFecha]);
   useEffect(() => { void fetchApi(); }, [fetchApi]);
 
   // Modo generador: colección en localStorage con filtros/búsqueda client-side.
-  const seed = useMemo(() => SEED, []);
+  const seed = useMemo(() => CONTACTOS_SEED, []);
   const { items: mockItems, create, update, remove } = useCollection<ContactoRow>('contactos', seed);
   const mockRows = useMemo(() => {
     const term2 = search.trim().toLowerCase();
+    const codigo2 = filterCodigo.trim().toLowerCase();
+    const nombre2 = filterNombre.trim().toLowerCase();
+    const email2 = filterEmail.trim().toLowerCase();
+    const sector2 = filterSector.trim().toLowerCase();
     return mockItems.filter((c) =>
       (!filterTipo || c.tipo === filterTipo) &&
       (!filterContactado || c.contactado === filterContactado) &&
-      (!term2 || [c.nombre, c.codigo, c.email, c.telefono, c.sector].some((v) => (v || '').toLowerCase().includes(term2))),
+      (!term2 || [c.nombre, c.codigo, c.email, c.telefono, c.sector].some((v) => (v || '').toLowerCase().includes(term2))) &&
+      (!codigo2 || c.codigo.toLowerCase().includes(codigo2)) &&
+      (!nombre2 || c.nombre.toLowerCase().includes(nombre2)) &&
+      (!email2 || (c.email || '').toLowerCase().includes(email2)) &&
+      (!sector2 || (c.sector || '').toLowerCase().includes(sector2)) &&
+      (!filterFecha || isSameCalendarDay(c.createdAt, filterFecha)),
     );
-  }, [mockItems, filterTipo, filterContactado, search]);
+  }, [mockItems, filterTipo, filterContactado, search, filterCodigo, filterNombre, filterEmail, filterSector, filterFecha]);
 
   const rows = apiEnabled ? apiRows : mockRows;
   const total = apiEnabled ? apiTotal : mockRows.length;
@@ -192,6 +206,21 @@ export default function ContactosPage() {
           <option value="no">Contactado: No</option>
           <option value="nc">Contactado: NC</option>
         </select>
+        <input type="text" placeholder="Código" aria-label="Filtrar por código"
+          className="w-28 rounded-xl border border-[var(--line)] bg-transparent px-3 py-2 text-sm"
+          value={filterCodigo} onChange={(e) => { setFilterCodigo(e.target.value); setPage(1); }} />
+        <input type="text" placeholder="Nombre" aria-label="Filtrar por nombre"
+          className="w-36 rounded-xl border border-[var(--line)] bg-transparent px-3 py-2 text-sm"
+          value={filterNombre} onChange={(e) => { setFilterNombre(e.target.value); setPage(1); }} />
+        <input type="text" placeholder="Email" aria-label="Filtrar por email"
+          className="w-40 rounded-xl border border-[var(--line)] bg-transparent px-3 py-2 text-sm"
+          value={filterEmail} onChange={(e) => { setFilterEmail(e.target.value); setPage(1); }} />
+        <input type="text" placeholder="Sector" aria-label="Filtrar por sector"
+          className="w-32 rounded-xl border border-[var(--line)] bg-transparent px-3 py-2 text-sm"
+          value={filterSector} onChange={(e) => { setFilterSector(e.target.value); setPage(1); }} />
+        <input type="date" aria-label="Filtrar por fecha"
+          className="rounded-xl border border-[var(--line)] bg-transparent px-3 py-2 text-sm"
+          value={filterFecha} onChange={(e) => { setFilterFecha(e.target.value); setPage(1); }} />
         {puedeEditar && (
           <div className="ml-auto flex items-center gap-2">
             {selectionMode ? (
