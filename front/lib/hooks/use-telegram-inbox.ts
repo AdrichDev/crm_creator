@@ -11,6 +11,22 @@ import {
 const CONV_POLL_MS = 15_000;
 const THREAD_POLL_MS = 5_000;
 
+/**
+ * Mezcla la página del servidor con los salientes locales que aún no aparecen en ella.
+ * Motivo (bug real): el polling del hilo reemplazaba el estado completo; un poll lanzado
+ * mientras el envío estaba en vuelo resolvía con una lista SIN el mensaje recién enviado
+ * y, al llegar después de la inserción optimista, lo borraba de pantalla hasta el
+ * siguiente poll. Conservar los `out` locales ausentes (por id) hace que el saliente
+ * nunca desaparezca, llegue o no el proveedor externo a confirmarlo.
+ */
+function mergeServerPage(server: TelegramMessageDto[], prev: TelegramMessageDto[]): TelegramMessageDto[] {
+  const seen = new Set(server.map((m) => m.id));
+  const pendingOut = prev.filter((m) => m.direction === 'out' && !seen.has(m.id));
+  if (pendingOut.length === 0) return server;
+  // createdAt es ISO-8601 UTC → orden lexicográfico == orden cronológico.
+  return [...server, ...pendingOut].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
 export function useTelegramInbox(enabled: boolean) {
   const [conversations, setConversations] = useState<TelegramConversationDto[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -37,8 +53,9 @@ export function useTelegramInbox(enabled: boolean) {
     if (showSpinner) setLoadingThread(true);
     try {
       const { items } = await fetchMessages(conversationId);
-      // Solo aplica si sigue siendo la conversación activa (evita carreras de polling).
-      if (activeIdRef.current === conversationId) setMessages(items);
+      // Solo aplica si sigue siendo la conversación activa (evita carreras de polling)
+      // y sin pisar salientes locales que el servidor aún no devuelve (ver mergeServerPage).
+      if (activeIdRef.current === conversationId) setMessages((prev) => mergeServerPage(items, prev));
     } catch (e) {
       setError((e as Error).message);
     } finally {

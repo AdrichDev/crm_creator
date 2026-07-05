@@ -35,7 +35,7 @@ describe('TelegramWidget', () => {
     expect(screen.getByTestId('telegram-widget-panel')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('Sin conversaciones')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByLabelText('Cerrar panel de Telegram'));
+    fireEvent.click(screen.getByLabelText('Cerrar panel de Minion'));
     expect(screen.queryByTestId('telegram-widget-panel')).not.toBeInTheDocument();
   });
 });

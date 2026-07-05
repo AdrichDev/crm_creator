@@ -3,13 +3,14 @@ import { useState } from 'react';
 import { MessageCircle, X, ArrowLeft } from 'lucide-react';
 import { isApiEnabled } from '@/lib/api/client';
 import { EmptyState } from '@/components/ui/primitives';
+import { MinionIcon } from '@/components/ui/minion-icon';
 import { TelegramConversacion } from '@/components/crm/telegram-conversacion';
 import { useTelegramInbox } from '@/lib/hooks/use-telegram-inbox';
 
-// Widget flotante persistente de Telegram: chip fijo abajo-derecha visible en todas las
-// páginas del CRM. Al pulsarlo abre/cierra un panel de chat (lista de conversaciones →
-// hilo, patrón móvil) sin navegar. La orquestación (polling + envío) vive en
-// useTelegramInbox y solo corre mientras el panel está abierto.
+// Widget flotante persistente de "Minion" (canal Telegram por debajo): chip fijo
+// abajo-derecha visible en toda la consola. Al pulsarlo abre/cierra un panel de chat
+// (lista de conversaciones → hilo, patrón móvil) sin navegar. La orquestación
+// (polling + envío) vive en useTelegramInbox y solo corre mientras el panel está abierto.
 
 export function TelegramWidget() {
   const [open, setOpen] = useState(false);
@@ -31,7 +32,7 @@ export function TelegramWidget() {
       {open && (
         <div
           role="dialog"
-          aria-label="Conversaciones de Telegram"
+          aria-label="Conversaciones de Minion"
           data-testid="telegram-widget-panel"
           className="fixed bottom-24 right-5 z-50 flex h-[70vh] max-h-[560px] w-[min(92vw,380px)] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#111]"
         >
@@ -46,14 +47,14 @@ export function TelegramWidget() {
                   <ArrowLeft className="h-4 w-4" />
                 </button>
               )}
-              <MessageCircle className="h-5 w-5 shrink-0" />
+              <MinionIcon className="h-5 w-5 shrink-0" />
               <span className="truncate font-semibold">
-                {view === 'thread' && active ? (active.remitente || active.conversationId) : 'Telegram'}
+                {view === 'thread' && active ? (active.remitente || active.conversationId) : 'Minion'}
               </span>
             </div>
             <button
               onClick={() => setOpen(false)}
-              aria-label="Cerrar panel de Telegram"
+              aria-label="Cerrar panel de Minion"
               className="rounded p-1 hover:bg-emerald-700"
             >
               <X className="h-4 w-4" />
@@ -73,7 +74,7 @@ export function TelegramWidget() {
               <div className="h-full overflow-y-auto" data-testid="telegram-widget-conversations">
                 {conversations.length === 0 ? (
                   <div className="p-6">
-                    <EmptyState title="Sin conversaciones" hint="Aún no ha llegado ningún mensaje de Telegram." />
+                    <EmptyState title="Sin conversaciones" hint="Aún no ha llegado ningún mensaje." />
                   </div>
                 ) : (
                   conversations.map((c) => (
@@ -106,12 +107,12 @@ export function TelegramWidget() {
 
       <button
         onClick={() => setOpen((v) => !v)}
-        aria-label={open ? 'Cerrar Telegram' : 'Abrir Telegram'}
+        aria-label={open ? 'Cerrar Minion' : 'Abrir Minion'}
         aria-expanded={open}
         data-testid="telegram-widget-chip"
         className="fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2"
       >
-        {open ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
+        {open ? <X className="h-6 w-6" /> : <MinionIcon className="h-7 w-7" />}
       </button>
     </>
   );

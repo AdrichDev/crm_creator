@@ -30,10 +30,13 @@ export function TelegramConversacion({
   const [draft, setDraft] = useState('');
   const endRef = useRef<HTMLDivElement | null>(null);
 
-  // Autoscroll al último mensaje cuando cambia el hilo (chat en vivo).
+  // Autoscroll al último mensaje cuando cambia el hilo (chat en vivo). Se ancla al id
+  // del último mensaje (no a length): un poll puede sustituir la página manteniendo el
+  // mismo número de mensajes pero con un último distinto.
+  const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : null;
   useEffect(() => {
     endRef.current?.scrollIntoView?.({ block: 'end' });
-  }, [messages.length, conversation?.conversationId]);
+  }, [lastMessageId, conversation?.conversationId]);
 
   if (!conversation) {
     return (
@@ -56,7 +59,7 @@ export function TelegramConversacion({
     <div className="flex h-full flex-col">
       <div className="border-b border-gray-200 px-4 py-3">
         <p className="font-semibold">{titulo}</p>
-        <p className="text-xs text-gray-500">Telegram · {conversation.total} mensajes</p>
+        <p className="text-xs text-gray-500">Minion · {conversation.total} mensajes</p>
       </div>
 
       <div className="flex-1 space-y-2 overflow-y-auto px-4 py-3" data-testid="telegram-thread">
