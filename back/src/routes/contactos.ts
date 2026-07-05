@@ -134,11 +134,19 @@ contactosRouter.get('/', async (req: AuthedRequest, res: Response) => {
   res.json({ items, total, page, limit });
 });
 
+/**
+ * Where del contador de pendientes: SIEMPRE acotado por negocio (nunca un conteo
+ * global). Función pura y testeable, igual que `buildContactosWhere` — separada
+ * de esta para no arrastrar filtros de listado (tipo/búsqueda) que no aplican aquí.
+ */
+export function buildPendingCountWhere(businessId: string | undefined): Record<string, unknown> {
+  return { businessId, eliminadoEn: null, contactado: { not: 'si' } };
+}
+
 // GET /pending-count → contactos pendientes de contactar (contactado != 'si'). Antes de /:id.
+// Consumido por el badge del sidebar (front/components/layout/sidebar.tsx).
 contactosRouter.get('/pending-count', async (req: AuthedRequest, res: Response) => {
-  const count = await prisma.contacto.count({
-    where: { businessId: req.businessId, eliminadoEn: null, contactado: { not: 'si' } },
-  });
+  const count = await prisma.contacto.count({ where: buildPendingCountWhere(req.businessId) });
   res.json({ count });
 });
 

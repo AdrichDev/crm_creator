@@ -6,19 +6,21 @@ import { ModuleGuard } from '@/components/layout/module-guard';
 import { useTerm, useRole, useTenantConfig } from '@/lib/tenant-config-context';
 import { canWrite } from '@/lib/config/roles';
 import { clientesMock, clienteExtraFields } from '@/lib/config/sector-data';
-import { PageHeader, Stat, Table, Td, Badge, Button, IconButton } from '@/components/ui/primitives';
+import { PageHeader, Stat, Table, Td, Button, IconButton } from '@/components/ui/primitives';
 import { EntityModal, type Field } from '@/components/ui/entity-modal';
 import { Modal } from '@/components/ui/modal';
 import { DocumentosPanel } from '@/components/ui/documentos-panel';
 import { useCollection } from '@/lib/data/use-collection';
 import { useDocumentos } from '@/lib/data/use-documents';
 import { type Cliente, type Documento, facturas as facturasSeed, type Factura } from '@/lib/mock/data';
-import { UserPlus, Info, Euro, Pencil, Trash2 } from 'lucide-react';
+import { UserPlus, Info, FileText, MapPin, Pencil, Trash2 } from 'lucide-react';
 import { isApiEnabled } from '@/lib/api/client';
 import { usePaginatedApi } from '@/lib/data/use-paginated-api';
 import { SearchInput } from '@/components/ui/search-input';
 import { Pagination } from '@/components/ui/pagination';
 import { shortClienteId } from '@/lib/utils/format';
+import { hasValidCoords, buildRouteUrl } from '@/lib/comercial/maps-link';
+import { buildGoogleMapsSearchUrl } from '@/lib/citas/google-maps-url';
 
 // Shape que devuelve el back para /customers paginado.
 type ClienteApiRow = {
@@ -29,9 +31,12 @@ type ClienteApiRow = {
   direccion: string;
   visitas: number;
   gastoTotal: number;
+  gastoPendiente: number;
   ultimaVisita: string;
   segmento: string;
   estado: string;
+  latitud?: number | null;
+  longitud?: number | null;
 };
 
 const FIELDS: Field[] = [
@@ -92,11 +97,31 @@ export default function Page() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Cliente | null>(null);
   const [info, setInfo] = useState<Cliente | null>(null);
-  const tone = (s: string) => s === 'VIP' ? 'brand' : s === 'Nuevo' ? 'blue' : 'gray';
 
   // Items de visualización (tabla).
   const displayItems = (apiEnabled ? paged.items : mockRows) as unknown as Cliente[];
   const actual = info ? displayItems.find((c) => c.id === info.id) ?? info : null;
+
+  // Gasto pendiente de cobro (facturas no pagadas) del cliente abierto en el modal de info.
+  // Modo API: el back ya lo agrega por nombre en /customers (ver shapeCustomer). Modo
+  // generador: se calcula aquí sobre el mock de facturas (mismo criterio: estado !== 'Pagada'),
+  // emparejando por nombre — el mock `Factura` no tiene FK a Cliente (paridad con el back).
+  const gastoPendienteActual = useMemo(() => {
+    if (!actual) return 0;
+    if (apiEnabled) return (actual as unknown as { gastoPendiente?: number }).gastoPendiente ?? 0;
+    return facturas
+      .filter((f) => f.cliente === actual.nombre && f.estado !== 'Pagada')
+      .reduce((sum, f) => sum + Number(f.total), 0);
+  }, [actual, apiEnabled, facturas]);
+
+  // Enlace a Google Maps del cliente abierto en el modal: prioriza coordenadas reales
+  // (comercial de campo) y cae a búsqueda por texto de dirección si no hay coords.
+  const mapsUrlActual = useMemo(() => {
+    if (!actual) return null;
+    const located = actual as unknown as { latitud?: number | null; longitud?: number | null };
+    if (hasValidCoords(located)) return buildRouteUrl(located);
+    return buildGoogleMapsSearchUrl(actual.direccion ?? null);
+  }, [actual]);
 
   function onNew() { setEditing(null); setOpen(true); }
   function onEdit(c: Cliente) { setEditing(c); setOpen(true); }
@@ -141,30 +166,20 @@ export default function Page() {
           value={filterFecha} onChange={(e) => setFilterFecha(e.target.value)} />
       </div>
 
-      <Table head={['Id Cliente', 'Nombre', 'Contacto', 'Visitas', 'Gasto', 'Segmento', 'Acciones']}>
+      <Table head={['Id Cliente', 'Nombre', 'Teléfono', 'Email', '', 'Acciones', 'Facturas']}>
         {displayItems.map((c) => (
           <tr key={c.id}>
             <Td className="font-mono text-xs text-[var(--acc)]">{shortClienteId(c.id)}</Td>
             <Td className="font-medium text-white">{c.nombre}</Td>
-            <Td><div>{c.email}</div><div className="text-xs text-[var(--panel-muted)]">{c.telefono}</div></Td>
-            <Td>{c.visitas}</Td>
-            <Td>€{c.gastoTotal}</Td>
-            <Td><Badge tone={tone(c.segmento)}>{c.segmento}</Badge></Td>
+            <Td>{c.telefono}</Td>
+            <Td>{c.email}</Td>
+            <Td>
+              <IconButton tone="view" title="Ver ficha y documentos" onClick={() => setInfo(c)}>
+                <Info className="h-4 w-4" />
+              </IconButton>
+            </Td>
             <Td>
               <div className="flex items-center justify-end gap-2">
-                <button
-                  className={`inline-grid place-items-center w-8 h-8 rounded-lg border transition ${
-                    conFactura.has(c.nombre)
-                      ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
-                      : 'border-white/10 text-[var(--panel-muted)] hover:text-[var(--acc)] hover:border-[var(--acc)]'
-                  }`}
-                  title={conFactura.has(c.nombre) ? 'Ver facturas del cliente' : 'Sin facturas — ir a facturación'}
-                  onClick={() => router.push('/facturas')}>
-                  <Euro className="h-4 w-4" />
-                </button>
-                <IconButton tone="view" title="Ver ficha y documentos" onClick={() => setInfo(c)}>
-                  <Info className="h-4 w-4" />
-                </IconButton>
                 {puedeEditar && (
                   <>
                     <IconButton tone="edit" title="Editar" onClick={() => onEdit(c)}>
@@ -177,6 +192,18 @@ export default function Page() {
                   </>
                 )}
               </div>
+            </Td>
+            <Td>
+              <button
+                className={`inline-grid place-items-center w-8 h-8 rounded-lg border transition ${
+                  conFactura.has(c.nombre)
+                    ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
+                    : 'border-white/10 text-[var(--panel-muted)] hover:text-[var(--acc)] hover:border-[var(--acc)]'
+                }`}
+                title={conFactura.has(c.nombre) ? 'Ver facturas del cliente' : 'Sin facturas — ir a facturación'}
+                onClick={() => router.push('/facturas')}>
+                <FileText className="h-4 w-4" />
+              </button>
             </Td>
           </tr>
         ))}
@@ -197,9 +224,21 @@ export default function Page() {
                  ['gastoTotal', 'Gasto total'], ['ultimaVisita', 'Última visita']] as const).map(([k, label]) => (
                 <div key={k}>
                   <span className="text-[var(--panel-muted)]">{label}</span>
-                  <p className="text-white">{String((actual as unknown as Record<string, unknown>)[k] ?? '—') || '—'}</p>
+                  <p className="flex items-center gap-2 text-white">
+                    <span>{String((actual as unknown as Record<string, unknown>)[k] ?? '—') || '—'}</span>
+                    {k === 'direccion' && mapsUrlActual && (
+                      <a href={mapsUrlActual} target="_blank" rel="noreferrer" title="Abrir en Google Maps"
+                        className="inline-grid h-6 w-6 place-items-center rounded-md text-[var(--acc)] transition hover:bg-[var(--hover-bg)]">
+                        <MapPin className="h-4 w-4" />
+                      </a>
+                    )}
+                  </p>
                 </div>
               ))}
+              <div>
+                <span className="text-[var(--panel-muted)]">Gasto pendiente de cobro</span>
+                <p className="text-white">€{gastoPendienteActual}</p>
+              </div>
               {extraFields.map((f) => (
                 <div key={f.name}>
                   <span className="text-[var(--panel-muted)]">{f.label}</span>

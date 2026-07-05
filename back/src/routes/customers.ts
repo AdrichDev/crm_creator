@@ -303,10 +303,27 @@ customersRouter.post('/geocode/rerun', requireRole('ADMIN', 'MANAGER'), async (r
 interface Aggregates {
   bMap: Map<string, { _count: { _all: number }; _max: { startAt: Date | null } }>;
   sMap: Map<string, { _sum: { total: Prisma.Decimal | null } }>;
+  iMap: Map<string, number>;
+}
+
+// Facturas pendientes de cobro por nombre de cliente (crm.factura NO tiene FK a
+// crm.cliente — solo guarda `cliente` como texto, ver comentario en schema.prisma —
+// así que se agrega por nombre, igual que el resto del CRM empareja factura↔cliente
+// hoy (front: `conFactura = new Set(facturas.map(f => f.cliente))`). Limitación
+// conocida: dos clientes con el mismo nombre en el mismo negocio compartirían el
+// agregado; aceptable para este cálculo informativo del modal de ficha.
+async function loadInvoicePendingByName(businessId: string | undefined): Promise<Map<string, number>> {
+  const rows = await prisma.invoice.groupBy({
+    by: ['cliente'],
+    where: { businessId, eliminadoEn: null, estado: { not: 'Pagada' } },
+    _sum: { total: true },
+  });
+  return new Map(rows.map((r) => [r.cliente, r._sum.total ? Number(r._sum.total) : 0]));
 }
 
 async function loadAggregates(businessId: string | undefined, ids: string[]): Promise<Aggregates> {
-  if (ids.length === 0) return { bMap: new Map(), sMap: new Map() };
+  const iMap = await loadInvoicePendingByName(businessId);
+  if (ids.length === 0) return { bMap: new Map(), sMap: new Map(), iMap };
   const [bookingsAgg, salesAgg] = await Promise.all([
     prisma.booking.groupBy({ by: ['customerId'], where: { businessId, customerId: { in: ids } }, _count: { _all: true }, _max: { startAt: true } }),
     prisma.sale.groupBy({ by: ['customerId'], where: { businessId, customerId: { in: ids } }, _sum: { total: true } }),
@@ -314,6 +331,7 @@ async function loadAggregates(businessId: string | undefined, ids: string[]): Pr
   return {
     bMap: new Map(bookingsAgg.filter((b) => b.customerId).map((b) => [b.customerId as string, b])),
     sMap: new Map(salesAgg.filter((s) => s.customerId).map((s) => [s.customerId as string, s])),
+    iMap,
   };
 }
 
@@ -324,10 +342,12 @@ function shapeCustomer(c: CustomerRow, aggs: Aggregates, distanciaKm?: number): 
   const s = aggs.sMap.get(c.id);
   const visitas = b?._count._all ?? 0;
   const gastoTotal = s?._sum.total ? Number(s._sum.total) : 0;
+  const nombreCompleto = joinNombre(c);
+  const gastoPendiente = aggs.iMap.get(nombreCompleto) ?? 0;
   const ultima = b?._max.startAt ?? c.ultimaVisitaEn ?? null;
   return {
     id: c.id,
-    nombre: joinNombre(c),
+    nombre: nombreCompleto,
     email: c.email ?? '',
     telefono: c.telefono ?? '',
     direccion: c.direccion ?? '',
@@ -336,6 +356,7 @@ function shapeCustomer(c: CustomerRow, aggs: Aggregates, distanciaKm?: number): 
     codigoPostal: c.codigoPostal ?? '',
     visitas,
     gastoTotal,
+    gastoPendiente,
     ultimaVisita: ultima ? ultima.toISOString().slice(0, 10) : '',
     segmento: segmentoDe(visitas, gastoTotal, ultima),
     estado: c.estado,

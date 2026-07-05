@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildContactosWhere,
+  buildPendingCountWhere,
   contactadoEnPatch,
   defaultContactado,
   nextContactoCodigo,
@@ -89,6 +90,19 @@ describe('contactos · buildContactosWhere', () => {
   it('ignora fecha inválida sin romper el where', () => {
     const w = buildContactosWhere('b1', { fecha: 'no-es-fecha' });
     assert.equal(w.createdAt, undefined);
+  });
+});
+
+describe('contactos · buildPendingCountWhere (badge del sidebar)', () => {
+  it('acota SIEMPRE por negocio, excluye borrados y solo cuenta contactado != "si"', () => {
+    assert.deepEqual(buildPendingCountWhere('b1'), {
+      businessId: 'b1', eliminadoEn: null, contactado: { not: 'si' },
+    });
+  });
+  it('nunca es un conteo global: businessId de un negocio nunca contamina el de otro', () => {
+    const wa = buildPendingCountWhere('negocio-a');
+    const wb = buildPendingCountWhere('negocio-b');
+    assert.notEqual(wa.businessId, wb.businessId);
   });
 });
 

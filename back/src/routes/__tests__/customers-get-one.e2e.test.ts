@@ -59,3 +59,26 @@ test('GET /customers/:id inexistente → 404', async (t) => {
   const r = await api('/customers/no-existe', {}, auth.token, auth.businessId);
   assert.equal(r.status, 404);
 });
+
+// Segunda pasada Cartera de Clientes: `gastoPendiente` (facturas no pagadas) se
+// agrega por nombre — crm.factura no tiene FK a crm.cliente (ver comentario en
+// schema.prisma) — igual que el resto del CRM empareja factura↔cliente hoy.
+test('GET /customers/:id agrega gastoPendiente sumando solo facturas no pagadas del propio negocio', async (t) => {
+  if (!backUp) return t.skip('back down');
+  if (!SUPABASE_LIVE) return t.skip('SUPABASE_SERVICE_ROLE_KEY is placeholder');
+
+  const auth = await registerAndToken(`cust_pend_${uniq()}@test.local`, 'Cust-pass-1234', t);
+  if (!auth) return;
+  const { token, businessId } = auth;
+
+  const customer = await prisma.customer.create({ data: { businessId, nombre: 'Marta', apellido: 'Ruiz' } });
+  await prisma.invoice.createMany({ data: [
+    { businessId, numero: `PEND-${uniq()}`, cliente: 'Marta Ruiz', fecha: '2026-07-01', total: 100, estado: 'Pendiente' },
+    { businessId, numero: `PEND-${uniq()}`, cliente: 'Marta Ruiz', fecha: '2026-07-02', total: 50, estado: 'Pendiente' },
+    { businessId, numero: `PAID-${uniq()}`, cliente: 'Marta Ruiz', fecha: '2026-07-03', total: 999, estado: 'Pagada' },
+  ] });
+
+  const r = await api(`/customers/${customer.id}`, {}, token, businessId);
+  assert.equal(r.status, 200, `expected 200, got ${r.status}: ${JSON.stringify(r.body)}`);
+  assert.equal(r.body!.gastoPendiente, 150, 'solo suma las 2 facturas Pendiente (100+50), no la Pagada');
+});
