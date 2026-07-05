@@ -16,6 +16,11 @@ describe('CITAS_SECTOR_FIELDS', () => {
     expect(CITAS_SECTOR_FIELDS['centro-deportivo']?.columns).not.toContain('Cliente');
   });
 
+  it('comerciales usa "Cliente", no "Cuenta" (jerga corporativa descartada por producto)', () => {
+    expect(CITAS_SECTOR_FIELDS.comerciales?.columns).toContain('Cliente');
+    expect(CITAS_SECTOR_FIELDS.comerciales?.columns).not.toContain('Cuenta');
+  });
+
   it('los 8 verticales no representativos no tienen entrada (caen al genérico) — spec C-S1/C-S8', () => {
     for (const v of VERTICALS) {
       if ((REPRESENTATIVOS as readonly string[]).includes(v.id)) continue;

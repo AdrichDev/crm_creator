@@ -24,7 +24,7 @@ export const CITAS_SECTOR_FIELDS: Partial<Record<VerticalId, SectorFieldsDef>> =
     formComponent: 'clase',
   },
   comerciales: {
-    columns: ['Cuenta', 'Comercial', 'Canal', 'Fecha', 'Hora', 'Estado'],
+    columns: ['Cliente', 'Comercial', 'Canal', 'Fecha', 'Hora', 'Estado'],
     formComponent: 'reunion',
   },
 };
