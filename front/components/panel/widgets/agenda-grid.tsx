@@ -101,8 +101,8 @@ export interface AgendaGridProps<T extends AgendaItem> {
   onRangeChange?: (from: string, to: string) => void;
   /** Panel lateral con TODAS las citas del día seleccionado (paridad con
    * agents-agency: `SelectedDayPanel` a la derecha del calendario en vista
-   * mes/semana). Solo para /citas full-screen — el widget del inicio (tile
-   * pequeño) no tiene espacio y mantiene el listado bajo el grid. */
+   * mes/semana). Lo usan /citas full-screen y el widget Agenda del inicio
+   * (tile 'xl', ancho completo): mismo layout calendario + card lateral. */
   sidePanel?: boolean;
 }
 

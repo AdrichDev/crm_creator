@@ -10,7 +10,6 @@ import { ArrowLeft } from 'lucide-react';
 import { ROLES, type Role } from '@/lib/config/roles';
 import { ThemeToggle } from './theme-toggle';
 import { NotificationBell } from './notification-bell';
-import { TelegramWidget } from '@/components/crm/telegram-widget';
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { config, ready, hasActive, closeProject, role, setRole } = useProjects();
@@ -67,17 +66,21 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </header>
         <main className="opera-main dark-scroll">
-          {config.tenantEnabled === false && (
-            <div className="mb-5 rounded-lg border-l-4 border-amber-400 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">
-              <strong>Tenant en mantenimiento.</strong> Las operaciones pueden estar limitadas mientras se realizan actualizaciones o la sincronización con la base de datos. Reactívalo en Configuración → Estado.
-            </div>
-          )}
-          {children}
+          {/* Wrapper de contenido: ancho máximo centrado en monitores anchos.
+              Los modales fixed inset-0 de las páginas no se ven afectados
+              (max-width de un ancestro no recorta elementos position:fixed). */}
+          <div className="opera-content">
+            {config.tenantEnabled === false && (
+              <div className="mb-5 rounded-lg border-l-4 border-amber-400 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">
+                <strong>Tenant en mantenimiento.</strong> Las operaciones pueden estar limitadas mientras se realizan actualizaciones o la sincronización con la base de datos. Reactívalo en Configuración → Estado.
+              </div>
+            )}
+            {children}
+          </div>
         </main>
       </div>
-      {/* Solo staff: el back protege /telegram con staffOnly (403 para cliente) —
-          renderizar el chip a un cliente sería un control que siempre falla. */}
-      {role !== 'cliente' && <TelegramWidget />}
+      {/* El widget Minion ya no se monta aquí: vive en el root layout
+          (MinionWidgetGlobal) para aparecer también en /dashboard. */}
     </div>
   );
 }

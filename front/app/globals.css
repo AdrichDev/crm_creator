@@ -327,7 +327,25 @@ body {
   border: 0; outline: none; cursor: pointer;
 }
 
-.opera-main { flex: 1; min-width: 0; min-height: 0; padding: 2.5rem; overflow-y: auto; }
+/* Área scrolleable del panel. Padding lateral fluido (16px móvil → 48px desktop)
+   y flex column para que .opera-content pueda ocupar el alto disponible. */
+.opera-main {
+  flex: 1; min-width: 0; min-height: 0;
+  display: flex; flex-direction: column;
+  padding: 2.5rem clamp(1rem, 4vw, 3rem);
+  overflow-y: auto;
+}
+
+/* Contenedor del contenido de cada página: ancho máximo centrado para que las
+   vistas no ocupen el 100% en monitores muy anchos. Es flex column con flex:1
+   (altura definida por el flexing, no por el contenido) para que .panel-fill
+   (height:100%) siga llenando el alto del viewport. Sin min-height:0: el
+   mínimo basado en contenido permite crecer en páginas largas y conserva el
+   padding inferior del scroll. */
+.opera-content {
+  display: flex; flex-direction: column; flex: 1;
+  width: 100%; max-width: 1700px; margin-inline: auto;
+}
 
 /* Sidebar — Centro de Mando */
 .opera-sidebar {
@@ -560,8 +578,8 @@ body {
 .agenda-hour-slot > div { flex-shrink: 0; }
 
 /* Panel lateral de "citas del día" (paridad con agents-agency: calendario a la
-   izquierda + SelectedDayPanel fijo a la derecha en vista mes/semana). Solo en
-   /citas full-screen (`sidePanel`); el widget del inicio no lo usa. */
+   izquierda + SelectedDayPanel fijo a la derecha en vista mes/semana). Lo usan
+   /citas full-screen y el widget Agenda del inicio (tile xl, `sidePanel`). */
 .agenda-mes-con-panel, .agenda-semana-con-panel {
   flex: 1; min-height: 0; display: grid; gap: 1rem; grid-template-columns: minmax(0, 1.8fr) minmax(280px, 0.8fr);
 }
@@ -601,9 +619,16 @@ body {
 .widget-sm { grid-column: span 1; grid-row: span 1; }
 .widget-md { grid-column: span 2; grid-row: span 1; }
 .widget-lg { grid-column: span 2; grid-row: span 2; }
+/* xl (Agenda): ancho completo + 2 filas — mismo layout que /citas (calendario
+   grande con el panel de "citas del día" a la derecha), no la versión mini. */
+.widget-xl { grid-column: span 4; grid-row: span 2; }
+/* Celdas de día más altas y número más legible que en los tiles pequeños. */
+.widget-xl .calendar-days-mes { grid-auto-rows: minmax(3rem, 1fr); }
+.widget-xl .calendar-day > span:first-child { font-size: .95rem; }
 .widget-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .5rem; padding: 3rem 1.5rem; border: 1px dashed rgba(255,255,255,0.12); border-radius: 22px; text-align: center; flex: 1; }
 @media (max-width: 768px) {
   .widget-grid { grid-template-columns: repeat(2, 1fr); grid-auto-rows: minmax(160px, 1fr); }
+  .widget-xl { grid-column: span 2; }
 }
 
 /* Página de inicio: ocupa el alto disponible de .opera-main para que el

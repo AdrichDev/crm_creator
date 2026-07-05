@@ -6,11 +6,11 @@ import { AgendaWidget } from '@/components/panel/widgets/agenda-widget';
 
 // crm-operaos-agenda-contactos-fichaje-telegram WU1 (AC1): "la sección
 // Agenda/Citas/Reservas usa exactamente la vista del widget principal, adaptada
-// a pantalla de módulo". Este archivo cubre (1) que /citas comparte el mismo
-// calendario base (AgendaGrid: nav, vistas, grid mensual) que AgendaWidget —
-// DIVERGE a propósito en el listado de citas: /citas usa `sidePanel` (panel
-// lateral tipo agents-agency, `.agenda-dia-panel`), el widget del inicio (tile
-// pequeño) mantiene el listado bajo el grid (`.agenda-widget-day-list`) — y
+// a pantalla de módulo". Este archivo cubre (1) que /citas y AgendaWidget
+// comparten el mismo calendario base (AgendaGrid: nav, vistas, grid mensual) Y
+// el mismo panel lateral de citas del día (`sidePanel` → `.agenda-dia-panel`):
+// desde el rediseño del widget Agenda (tile 'xl'), el inicio usa el mismo
+// layout que /citas en vez de la versión mini con listado bajo el grid — y
 // (2) que la terminología sectorial (citas/reservas/clases) sigue viva en la
 // vista full-screen.
 
@@ -55,8 +55,8 @@ describe('citas/page — vista full-screen comparte gramática con AgendaWidget 
       expect(widgetContainer.querySelector(cls)).toBeTruthy();
       expect(pageContainer.querySelector(cls)).toBeTruthy();
     }
-    // Divergencia intencional: widget = listado bajo el grid, /citas = panel lateral.
-    expect(widgetContainer.querySelector('.agenda-widget-day-list')).toBeTruthy();
+    // Paridad total: ambos usan el panel lateral de "citas del día" (`sidePanel`).
+    expect(widgetContainer.querySelector('.agenda-dia-panel')).toBeTruthy();
     expect(pageContainer.querySelector('.agenda-dia-panel')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'Mes' }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: 'Semana' }).length).toBeGreaterThan(0);

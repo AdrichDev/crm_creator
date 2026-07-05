@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
-  DASHBOARD_WIDGETS, MAX_DASHBOARD_WIDGETS, activeDashboardWidgets,
-  dashboardWidgetAvailable, defaultDashboardWidgets, emptyDashboardWidgets,
+  AGENDA_GROUP, DASHBOARD_WIDGETS, MAX_AGENDA_GROUP_DEFAULTS, MAX_DASHBOARD_WIDGETS,
+  activeDashboardWidgets, dashboardWidgetAvailable, defaultDashboardWidgets, emptyDashboardWidgets,
   type WidgetId,
 } from '@/lib/config/dashboard-widgets';
 import { emptyModules } from '@/lib/config/tenant-config';
+import { MODULE_MAP } from '@/lib/config/modules';
 import { VERTICALS } from '@/lib/config/verticals';
 
 const ALL_MODULES_ON = Object.fromEntries(
@@ -84,14 +85,32 @@ describe('defaultDashboardWidgets', () => {
     expect(ids).not.toContain('kpis-hoy');
   });
 
-  it('un vertical con citas pero sin categorias sí incluye kpis-hoy en el top-3', () => {
+  it('un vertical con citas pero sin categorias arranca con agenda+proximos y completa con variedad (no un 3er widget de agenda)', () => {
     const ids = defaultDashboardWidgets('fitness');
-    expect(ids.slice(0, 3)).toEqual(['agenda', 'proximos-eventos', 'kpis-hoy']);
+    expect(ids.slice(0, 2)).toEqual(['agenda', 'proximos-eventos']);
+    // kpis-hoy sería el 3er widget del grupo agenda: queda fuera por la regla anti-repetición.
+    expect(ids).not.toContain('kpis-hoy');
+    expect(ids).not.toContain('ocupacion-semana');
+  });
+
+  it('ningún vertical recibe más de MAX_AGENDA_GROUP_DEFAULTS widgets del grupo agenda (regla anti-repetición)', () => {
+    for (const v of VERTICALS) {
+      const ids = defaultDashboardWidgets(v.id);
+      const deAgenda = ids.filter((id) => AGENDA_GROUP.has(id));
+      expect(deAgenda.length, `vertical ${v.id} apila widgets de agenda: ${deAgenda.join(', ')}`)
+        .toBeLessThanOrEqual(MAX_AGENDA_GROUP_DEFAULTS);
+    }
+  });
+
+  it('comerciales completa con los widgets de sus módulos reales (contactos/comercial) en vez de repetir agenda', () => {
+    const ids = defaultDashboardWidgets('comerciales');
+    expect(ids).toEqual(['agenda', 'proximos-eventos', 'clientes-nuevos', 'contactos-nuevos', 'visitas-comercial']);
   });
 
   it('vertical "custom" (sin módulo citas) no recibe agenda/kpis/proximos', () => {
     const ids = defaultDashboardWidgets('custom');
-    expect(ids).toEqual(['clientes-nuevos']);
+    // contactos-nuevos entra porque el módulo `contactos` es obligatorio (siempre activo).
+    expect(ids).toEqual(['clientes-nuevos', 'contactos-nuevos']);
   });
 
   it('nunca supera MAX_DASHBOARD_WIDGETS para ningún vertical', () => {
@@ -107,12 +126,14 @@ describe('defaultDashboardWidgets', () => {
     }
   });
 
-  it('centro-deportivo incluye widgets cuyo módulo está en su defaultModules', () => {
+  it('centro-deportivo incluye widgets cuyo módulo está en su defaultModules (o es obligatorio)', () => {
     const ids = defaultDashboardWidgets('centro-deportivo');
     const vertical = VERTICALS.find((v) => v.id === 'centro-deportivo')!;
     for (const id of ids) {
       const def = DASHBOARD_WIDGETS.find((w) => w.id === id)!;
-      if (def.dependsOn) expect(vertical.defaultModules).toContain(def.dependsOn);
+      if (def.dependsOn && !MODULE_MAP[def.dependsOn].mandatory) {
+        expect(vertical.defaultModules).toContain(def.dependsOn);
+      }
     }
   });
 
@@ -120,7 +141,8 @@ describe('defaultDashboardWidgets', () => {
     const ids = defaultDashboardWidgets('custom');
     for (const id of ids) {
       const def = DASHBOARD_WIDGETS.find((w) => w.id === id)!;
-      if (def.dependsOn) expect(['clientes']).toContain(def.dependsOn);
+      // `contactos` es obligatorio (siempre activo), por eso también cuenta como soportado.
+      if (def.dependsOn) expect(['clientes', 'contactos']).toContain(def.dependsOn);
     }
   });
 

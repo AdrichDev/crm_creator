@@ -37,9 +37,19 @@ describe('WidgetGrid', () => {
     );
     await flush();
     expect(container.querySelectorAll('.widget-tile')).toHaveLength(3);
-    expect(container.querySelector('.widget-lg')).toBeTruthy(); // agenda
+    expect(container.querySelector('.widget-xl')).toBeTruthy(); // agenda (ancho completo, layout /citas)
     expect(container.querySelectorAll('.widget-md')).toHaveLength(1); // kpis-hoy
     expect(container.querySelectorAll('.widget-sm')).toHaveLength(1); // ventas-hoy
+  });
+
+  it('renderiza los widgets nuevos contactos-nuevos y visitas-comercial', async () => {
+    const { container } = render(
+      <WidgetGrid selected={['contactos-nuevos', 'visitas-comercial']} modules={ALL_MODULES_ON} />,
+    );
+    await flush();
+    expect(container.querySelectorAll('.widget-tile')).toHaveLength(2);
+    expect(screen.getByText(/Contactos nuevos/i)).toBeInTheDocument();
+    expect(screen.getByText(/Seguimiento comercial/i)).toBeInTheDocument();
   });
 
   it('un widget con módulo apagado no se renderiza aunque esté seleccionado', async () => {
@@ -51,7 +61,7 @@ describe('WidgetGrid', () => {
     expect(container.querySelectorAll('.widget-tile')).toHaveLength(1);
   });
 
-  it('selección con los 8 widgets del catálogo nunca renderiza más de 6 tiles', async () => {
+  it('selección con todos los widgets del catálogo nunca renderiza más de 6 tiles', async () => {
     const todos = DASHBOARD_WIDGETS.map((w) => w.id);
     const { container } = render(<WidgetGrid selected={todos} modules={ALL_MODULES_ON} />);
     await flush();

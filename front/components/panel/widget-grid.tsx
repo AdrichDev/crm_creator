@@ -9,6 +9,8 @@ import { KpisWidget } from './widgets/kpis-widget';
 import { ProximosWidget } from './widgets/proximos-widget';
 import { CategoriasWidget } from './widgets/categorias-widget';
 import { ClientesNuevosWidget } from './widgets/clientes-nuevos-widget';
+import { ContactosNuevosWidget } from './widgets/contactos-nuevos-widget';
+import { VisitasComercialWidget } from './widgets/visitas-comercial-widget';
 import { VentasHoyWidget } from './widgets/ventas-hoy-widget';
 import { FacturacionWidget } from './widgets/facturacion-widget';
 import { VacacionesWidget } from './widgets/vacaciones-widget';
@@ -21,6 +23,8 @@ function WidgetBody({ id }: { id: WidgetId }) {
     case 'proximos-eventos': return <ProximosWidget />;
     case 'categorias': return <CategoriasWidget />;
     case 'clientes-nuevos': return <ClientesNuevosWidget />;
+    case 'contactos-nuevos': return <ContactosNuevosWidget />;
+    case 'visitas-comercial': return <VisitasComercialWidget />;
     case 'ventas-hoy': return <VentasHoyWidget />;
     case 'facturacion-pendiente': return <FacturacionWidget />;
     case 'vacaciones-pendientes': return <VacacionesWidget />;

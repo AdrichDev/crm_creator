@@ -33,9 +33,13 @@ export function AgendaWidget() {
 
   return (
     <>
+      {/* `sidePanel`: mismo layout que /citas full-screen — calendario grande a la
+          izquierda + card lateral con las citas del día seleccionado. El tile del
+          widget es 'xl' (ancho completo, 2 filas), así que hay sitio de sobra. */}
       <AgendaGrid<Cita>
         items={items}
         getKey={(c) => c.id}
+        sidePanel
         emptyLabel={`Sin ${termCitas.toLowerCase()} este día.`}
         renderCard={(c, { compact }) => (
           <div
