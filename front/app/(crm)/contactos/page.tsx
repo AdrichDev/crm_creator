@@ -1,6 +1,6 @@
 'use client';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { UserPlus } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { UserPlus, MapPin } from 'lucide-react';
 import { ModuleGuard } from '@/components/layout/module-guard';
 import { useTerm, useRole } from '@/lib/tenant-config-context';
 import { canWrite } from '@/lib/config/roles';
@@ -17,6 +17,7 @@ import {
   type ContactoRow, type ContactoForm, type ContactoTipo, type ContactadoEstado,
 } from '@/components/crm/contactos-lista';
 import { ContactoFormModal } from '@/components/crm/contacto-modal';
+import { buildGoogleMapsSearchUrl } from '@/lib/citas/google-maps-url';
 
 const LIMIT = 20;
 
@@ -41,8 +42,15 @@ export default function ContactosPage() {
   // Modo API: datos remotos con filtros y paginación server-side.
   const [apiRows, setApiRows] = useState<ContactoRow[]>([]);
   const [apiTotal, setApiTotal] = useState(0);
+  // Guardia de orden de respuestas (mismo patrón que usePaginatedApi.requestId):
+  // cada tecleo en los filtros dispara un GET (sin debounce) y pueden quedar varios
+  // en vuelo sin garantía de orden. Sin esta guardia, un GET viejo (con snapshot
+  // ANTERIOR a un PATCH de edición) podía resolver DESPUÉS del refetch post-guardado
+  // y pisar la fila recién editada — la edición "no persistía" visualmente.
+  const fetchSeq = useRef(0);
   const fetchApi = useCallback(async () => {
     if (!apiEnabled) return;
+    const myId = ++fetchSeq.current;
     const params = new URLSearchParams({ page: String(page), limit: String(LIMIT) });
     if (search) params.set('search', search);
     if (filterTipo) params.set('tipo', filterTipo);
@@ -54,9 +62,11 @@ export default function ContactosPage() {
     if (filterFecha) params.set('fecha', filterFecha);
     try {
       const data = await apiFetch<{ items: ContactoRow[]; total: number }>(`/contactos?${params.toString()}`);
+      if (myId !== fetchSeq.current) return; // respuesta obsoleta: no pisar datos más nuevos
       setApiRows(data.items);
       setApiTotal(data.total);
     } catch {
+      if (myId !== fetchSeq.current) return;
       setApiRows([]);
       setApiTotal(0);
     }
@@ -96,6 +106,11 @@ export default function ContactosPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [info, setInfo] = useState<ContactoRow | null>(null);
+
+  // Enlace a Google Maps del contacto abierto en el modal: Contacto no tiene
+  // coordenadas (a diferencia de Customer), así que siempre se construye por
+  // texto de dirección. Sin dirección → sin pin (mismo criterio que Clientes).
+  const infoMapsUrl = useMemo(() => (info ? buildGoogleMapsSearchUrl(info.direccion) : null), [info]);
 
   // Modo selección → añadir a cliente.
   const [selectionMode, setSelectionMode] = useState(false);
@@ -264,7 +279,15 @@ export default function ContactosPage() {
             ] as const).map(([label, value]) => (
               <div key={label} className="grid grid-cols-[110px_1fr] gap-3 py-2">
                 <dt className="text-[11px] font-bold uppercase tracking-wider text-[var(--acc)]">{label}</dt>
-                <dd className="whitespace-pre-wrap break-words text-white">{value}</dd>
+                <dd className="flex items-center gap-2 text-white">
+                  <span className="whitespace-pre-wrap break-words">{value}</span>
+                  {label === 'Dirección' && infoMapsUrl && (
+                    <a href={infoMapsUrl} target="_blank" rel="noreferrer" title="Abrir en Google Maps"
+                      className="inline-grid h-6 w-6 shrink-0 place-items-center rounded-md text-[var(--acc)] transition hover:bg-[var(--hover-bg)]">
+                      <MapPin className="h-4 w-4" />
+                    </a>
+                  )}
+                </dd>
               </div>
             ))}
           </dl>

@@ -14,7 +14,7 @@ import { useCollection } from '@/lib/data/use-collection';
 import { useDocumentos } from '@/lib/data/use-documents';
 import { type Cliente, type Documento, facturas as facturasSeed, type Factura } from '@/lib/mock/data';
 import { UserPlus, Info, FileText, MapPin, Pencil, Trash2 } from 'lucide-react';
-import { isApiEnabled } from '@/lib/api/client';
+import { isApiEnabled, apiFetch } from '@/lib/api/client';
 import { usePaginatedApi } from '@/lib/data/use-paginated-api';
 import { SearchInput } from '@/components/ui/search-input';
 import { Pagination } from '@/components/ui/pagination';
@@ -116,24 +116,56 @@ export default function Page() {
       .reduce((sum, f) => sum + Number(f.total), 0);
   }, [actual, apiEnabled, facturas]);
 
-  // Enlace a Google Maps del cliente abierto en el modal: prioriza coordenadas reales
-  // (comercial de campo) y cae a búsqueda por texto de dirección si no hay coords.
+  // Enlace a Google Maps del cliente abierto en el modal: prioriza la búsqueda por texto
+  // de dirección (mismo comportamiento que Contactos — Google geocodifica la dirección
+  // exacta) y cae a coordenadas solo si no hay dirección guardada. Las coords mock son
+  // aproximadas por barrio, por eso el texto es más fiable como pin.
   // Pin simple (buildPinUrl), NO ruta de navegación (buildRouteUrl es para el botón "Ir"
   // del módulo comercial) — este es solo el icono de "ver en el mapa" de la ficha.
   const mapsUrlActual = useMemo(() => {
     if (!actual) return null;
+    const byAddress = buildGoogleMapsSearchUrl(actual.direccion ?? null);
+    if (byAddress) return byAddress;
     const located = actual as unknown as { latitud?: number | null; longitud?: number | null };
     if (hasValidCoords(located)) return buildPinUrl(located);
-    return buildGoogleMapsSearchUrl(actual.direccion ?? null);
+    return null;
   }, [actual]);
 
   function onNew() { setEditing(null); setOpen(true); }
   function onEdit(c: Cliente) { setEditing(c); setOpen(true); }
-  function onSubmit(v: Record<string, string | number>) {
+  async function onSubmit(v: Record<string, string | number>) {
+    // Modo API: mutación directa con AWAIT antes de refrescar. Antes se delegaba en
+    // useCollection.update/create, que dispara el PATCH/POST sin esperar (fire-and-forget),
+    // y paged.refresh() corría en paralelo: el GET llegaba al back ANTES de que la
+    // mutación commiteara y la tabla (paged.items) recargaba datos viejos — la edición
+    // "no se veía" hasta una segunda acción. Mismo patrón que contactos/handleSave.
+    if (apiEnabled) {
+      try {
+        if (editing) await apiFetch(`/customers/${editing.id}`, { method: 'PATCH', body: JSON.stringify(v) });
+        else await apiFetch('/customers', { method: 'POST', body: JSON.stringify(v) });
+      } catch {
+        // El modal queda abierto para reintentar sin perder lo escrito.
+        void dialog.alert('No se pudo guardar el cliente.');
+        return;
+      }
+      paged.refresh();
+      setOpen(false);
+      return;
+    }
+    // Modo generador (localStorage): camino optimista de useCollection, intacto.
     if (editing) update(editing.id, v as Partial<Cliente>);
     else create({ documentos: [], ...v } as unknown as Omit<Cliente, 'id'>);
     setOpen(false);
-    if (apiEnabled) paged.refresh();
+  }
+  // Borrado con el mismo criterio: en modo API, DELETE directo + refresh del paginado
+  // (useCollection.remove solo actualizaba collectionItems, que la tabla no pinta).
+  async function onDelete(id: Cliente['id']) {
+    if (apiEnabled) {
+      try { await apiFetch(`/customers/${id}`, { method: 'DELETE' }); } catch { void dialog.alert('No se pudo eliminar el cliente.'); return; }
+      paged.refresh();
+      return;
+    }
+    remove(id);
   }
   function addDoc(d: Documento) {
     if (!actual) return;
@@ -203,7 +235,7 @@ export default function Page() {
                       <Pencil className="h-4 w-4" />
                     </IconButton>
                     <IconButton tone="delete" title="Eliminar"
-                      onClick={() => { void dialog.confirm({ message: '¿Eliminar cliente?', danger: true }).then((ok) => { if (ok) remove(c.id); }); }}>
+                      onClick={() => { void dialog.confirm({ message: '¿Eliminar cliente?', danger: true }).then((ok) => { if (ok) void onDelete(c.id); }); }}>
                       <Trash2 className="h-4 w-4" />
                     </IconButton>
                   </>
