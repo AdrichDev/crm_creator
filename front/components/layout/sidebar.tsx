@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { MODULES, CATEGORY_LABEL } from '@/lib/config/modules';
 import { groupModules } from '@/lib/config/module-category';
@@ -12,7 +12,7 @@ import { GENERATED_TENANT } from '@/lib/config/generated-tenant';
 import { isApiEnabled } from '@/lib/api/client';
 import { getAuthProfile } from '@/lib/api/profile';
 import { logout } from '@/lib/auth/session';
-import { LogOut } from 'lucide-react';
+import { LogOut, Settings } from 'lucide-react';
 
 const PANEL_TITLE: Record<Role, string> = {
   admin: 'Centro de Mando',
@@ -47,16 +47,24 @@ export function Sidebar() {
     }
   }, [pathname, role, router]);
 
+  // Configuración y Mi Cuenta ya viven en el popover de cuenta del pie del sidebar
+  // (ver más abajo) — no se duplican como items sueltos en el nav principal.
+  const HIDDEN_FROM_NAV = new Set(['configuracion', 'mi-cuenta']);
+
   // Los módulos obligatorios (dashboard, configuración) se muestran siempre,
   // aunque una config antigua no los tenga marcados — el rol sigue filtrando.
-  const active = MODULES.filter((m) => (config.modules[m.id] || m.mandatory) && moduleAllowedForRole(role, m.id));
+  const active = MODULES.filter(
+    (m) => !HIDDEN_FROM_NAV.has(m.id) && (config.modules[m.id] || m.mandatory) && moduleAllowedForRole(role, m.id)
+  );
   const groups = groupModules(active, config.business.vertical);
 
   // Pie del sidebar: usuario REAL de la sesión cuando hay backend; si no
   // (consola fuente demo) se usa el usuario demo del rol activo. Fallback
   // "Invitado" si la sesión no resuelve.
   const apiOn = isApiEnabled();
-  const [realUser, setRealUser] = useState<{ nombre: string; iniciales: string; rolLabel: string } | null>(null);
+  const [realUser, setRealUser] = useState<{ nombre: string; iniciales: string; rolLabel: string; email: string } | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!apiOn) { setRealUser(null); return; }
@@ -70,6 +78,7 @@ export function Sidebar() {
           nombre,
           iniciales: initialsOf(nombre),
           rolLabel: memberRoleLabel(p.role),
+          email: p.email,
         });
       })
       .catch(() => { if (!cancelled) setRealUser(null); });
@@ -78,9 +87,32 @@ export function Sidebar() {
 
   const demo = DEMO_USERS[role];
   const user = apiOn
-    ? (realUser ?? { nombre: 'Invitado', iniciales: '–', rolLabel: '' })
-    : { nombre: demo.nombre, iniciales: demo.iniciales, rolLabel: demo.rolLabel };
+    ? (realUser ?? { nombre: 'Invitado', iniciales: '–', rolLabel: '', email: '' })
+    : { nombre: demo.nombre, iniciales: demo.iniciales, rolLabel: demo.rolLabel, email: demo.email };
   const rolLabel = user.rolLabel;
+
+  // Cierra el popover de cuenta al hacer clic fuera o al pulsar Escape.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [menuOpen]);
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
 
   // "Salir": en un build generado (cliente final) cierra sesión y vuelve al
   // login. En la consola fuente cierra el proyecto y vuelve al dashboard general.
@@ -129,9 +161,9 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* Usuario logado (según perfil activo) + salir */}
+      {/* Usuario logado (según perfil activo) + menú de cuenta (Configuración/Mi Cuenta/Salir) */}
       <div className="opera-sidebar-foot">
-        <div className="flex items-center gap-3 px-2 py-2">
+        <div className="relative flex items-center gap-3 px-2 py-2" ref={menuRef}>
           <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-xs font-semibold text-white shadow"
             style={{ background: 'linear-gradient(135deg, var(--brand-secondary), var(--brand-primary))' }}>
             {user.iniciales}
@@ -140,10 +172,47 @@ export function Sidebar() {
             <p className="truncate text-sm font-medium text-white">{user.nombre}</p>
             <p className="truncate text-[11px] text-gold">{rolLabel}</p>
           </div>
-          <button onClick={salir} title="Salir"
-            className="rounded-lg p-2 text-gray-400 transition hover:bg-[var(--hover-bg)] hover:text-red-400">
-            <LogOut className="h-4 w-4" />
+          <button
+            onClick={() => setMenuOpen((v) => !v)}
+            title="Cuenta"
+            aria-expanded={menuOpen}
+            className="rounded-lg p-2 text-gray-400 transition hover:bg-[var(--hover-bg)] hover:text-[var(--acc)]"
+          >
+            <Settings className="h-4 w-4" />
           </button>
+
+          {menuOpen && (
+            <div
+              className="absolute bottom-full right-0 mb-2 w-56 rounded-xl shadow-xl z-20 overflow-hidden"
+              style={{ background: 'var(--panel-card)', border: '1px solid var(--line)' }}
+            >
+              <div className="px-3 py-2" style={{ borderBottom: '1px solid var(--line)' }}>
+                <p className="truncate text-[11px] text-gray-400">{user.email || 'sin sesión'}</p>
+              </div>
+              <div className="py-1">
+                <Link
+                  href="/configuracion"
+                  className="flex items-center gap-2 px-3 py-2 text-sm text-gray-300 transition hover:bg-[var(--hover-bg)] hover:text-[var(--hover-text)]"
+                >
+                  <span className="text-base">⚙️</span> Configuración
+                </Link>
+                <Link
+                  href="/cuenta"
+                  className="flex items-center gap-2 px-3 py-2 text-sm text-gray-300 transition hover:bg-[var(--hover-bg)] hover:text-[var(--hover-text)]"
+                >
+                  <span className="text-base">👤</span> Mi Cuenta
+                </Link>
+              </div>
+              <div className="py-1" style={{ borderTop: '1px solid var(--line)' }}>
+                <button
+                  onClick={salir}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-400 transition hover:bg-red-500/10"
+                >
+                  <LogOut className="h-4 w-4" /> Cerrar sesión
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </aside>
