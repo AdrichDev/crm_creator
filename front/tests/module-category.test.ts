@@ -18,7 +18,7 @@ describe('effectiveCategory (WU1.2)', () => {
 });
 
 describe('groupModules (WU3.1/WU3.2)', () => {
-  it('agrupa en el orden fijo Esencial → Operativa → Personas → Retail → Marketing', () => {
+  it('agrupa en el orden fijo Área de Trabajo → Clientes/Lead → Personas → Facturación → Data', () => {
     const groups = groupModules(MODULES, 'peluqueria');
     const order = groups.map((g) => g.cat);
     const expectedOrder = (Object.keys(CATEGORY_LABEL) as ModuleCategory[]).filter((cat) => order.includes(cat));
@@ -29,7 +29,7 @@ describe('groupModules (WU3.1/WU3.2)', () => {
     const activos = MODULES.filter((m) => m.id === 'dashboard' || m.id === 'clientes');
     const groups = groupModules(activos, 'peluqueria');
     expect(groups.every((g) => g.items.length > 0)).toBe(true);
-    expect(groups.map((g) => g.cat)).toEqual(['core']);
+    expect(groups.map((g) => g.cat)).toEqual(['core', 'operativa']);
   });
 
   it('el módulo comercial cae en Esencial solo en el vertical comerciales', () => {

@@ -10,15 +10,15 @@ import type { BusinessViews } from '@/lib/config/tenant-config';
 import { DEFAULT_VIEWS } from '@/lib/config/tenant-config';
 import { cn } from '@/lib/utils';
 
-// Un color por categoría: todos los iconos de "Esencial" comparten tono, los de
-// "Operativa" otro, etc. Colores sólidos (no tokens de tema) para que contrasten
+// Un color por categoría: todos los iconos de "Área de Trabajo" comparten tono, los de
+// "Clientes / Lead" otro, etc. Colores sólidos (no tokens de tema) para que contrasten
 // igual en claro y oscuro. Sirven de codificación visual de cada grupo.
 const CATEGORY_COLOR: Record<ModuleCategory, string> = {
-  core:      '#2563eb', // azul   — Esencial
-  operativa: '#0d9488', // teal   — Operativa
+  core:      '#2563eb', // azul   — Área de Trabajo
+  operativa: '#0d9488', // teal   — Clientes / Lead
   personas:  '#7c3aed', // violeta— Personas
-  retail:    '#ea580c', // naranja— Retail / Caja
-  marketing: '#db2777', // rosa   — Marketing y Web
+  retail:    '#ea580c', // naranja— Facturación
+  marketing: '#db2777', // rosa   — Data
 };
 
 export function ModuleToggleGrid({ modules, onToggle, terminology = {}, vertical, emojis, onSetEmoji, views = DEFAULT_VIEWS, onViewsChange }:

@@ -99,7 +99,7 @@ export const VERTICALS: VerticalDef[] = [
     // activables pero apagados (dashboard/configuración/mi-cuenta son obligatorios).
     defaultModules: ['clientes', 'comercial', 'citas', 'pedidos'],
     terminology: { citas: 'Agenda', empleados: 'Comerciales', servicios: 'Productos y tarifas', clientes: 'Cartera de clientes', ventas: 'Pedidos', comercial: 'Mapa comercial', estadisticas: 'Informes' },
-    // `comercial` sube a "Esencial": es el módulo central de este vertical.
+    // `comercial` sube a "Área de Trabajo": es el módulo central de este vertical.
     moduleCategories: { comercial: 'core' },
     branding: { primary: '#1e3a5f', secondary: '#3b82f6' },
   },
