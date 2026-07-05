@@ -24,6 +24,11 @@ export default function MapaClientes({ customers, selectedId, onSelect, center, 
   const markersRef = useRef<google.maps.Marker[]>([]);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Clave del último conjunto de clientes sobre el que se hizo fitBounds: al
+  // repintar por selectedId/modo (seleccionar en el mapa, cambiar color) NO hay
+  // que reencuadrar de nuevo — eso pisaba el zoom/pan manual del usuario en
+  // cada click. Solo se reencuadra cuando el conjunto de ubicados cambia.
+  const boundsKeyRef = useRef<string | null>(null);
 
   // Inicializa el mapa una vez.
   useEffect(() => {
@@ -97,7 +102,10 @@ export default function MapaClientes({ customers, selectedId, onSelect, center, 
       bounds.extend(position);
     }
 
-    if (markersRef.current.length > 0 && !center) {
+    const boundsKey = located.map((c) => c.id).sort().join(',');
+    const isNewSet = boundsKey !== boundsKeyRef.current;
+    if (markersRef.current.length > 0 && !center && isNewSet) {
+      boundsKeyRef.current = boundsKey;
       map.fitBounds(bounds, 48);
       // fitBounds puede acercar demasiado con un único punto: limita el zoom tras encajar.
       google.maps.event.addListenerOnce(map, 'idle', () => {
