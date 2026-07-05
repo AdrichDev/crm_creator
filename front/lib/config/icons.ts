@@ -18,6 +18,7 @@ const DEFAULT_EMOJI: Record<ModuleId, string> = {
   facturas: '💶',
   marketing: '📣',
   estadisticas: '📈',
+  'estudios-mercado': '🔎',
   categorias: '🏟️',
   comercial: '🗺️',
   contactos: '📇',

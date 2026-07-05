@@ -76,7 +76,7 @@ export default function EstudioDetailPage() {
   }
 
   return (
-    <ModuleGuard module="estadisticas">
+    <ModuleGuard module="estudios-mercado">
       {loading ? (
         <div className="flex min-h-[60vh] items-center justify-center">
           <span className="animate-pulse text-sm text-[var(--panel-muted)]">Cargando estudio…</span>

@@ -1,16 +1,14 @@
 'use client';
 import { useMemo, useState } from 'react';
-import Link from 'next/link';
 import { ModuleGuard } from '@/components/layout/module-guard';
 import { useTerm } from '@/lib/tenant-config-context';
 import { PageHeader, Stat, Table, Td, Badge } from '@/components/ui/primitives';
 import { useCollection } from '@/lib/data/use-collection';
-import { Sparkles, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { aggregateStats } from '@/lib/stats/aggregate';
 import { eur } from '@/lib/utils/format';
 import { BarChart } from '@/components/stats/bar-chart';
 import { DonutChart } from '@/components/stats/donut-chart';
-import { StudiesPanel } from '@/components/stats/studies-panel';
 import {
   citas as citasSeed, facturas as facturasSeed, ventas as ventasSeed,
   clientes as clientesSeed, servicios as serviciosSeed, productos as productosSeed,
@@ -19,12 +17,8 @@ import {
 
 const DONUT_COLORS = ['var(--acc)', '#6aa8ff', '#2ed573', '#d68bff', '#ff9f43', '#ff6b78', '#00d2d3'];
 
-type Tab = 'dashboard' | 'estudios';
-
 export default function Page() {
   const term = useTerm('estadisticas', 'Estadísticas');
-
-  const [tab, setTab] = useState<Tab>('dashboard');
 
   // ── Colecciones del tenant (datos reales en localStorage) ──
   const { items: citas } = useCollection<Cita>('citas', citasSeed);
@@ -50,104 +44,77 @@ export default function Page() {
     return { cs, fs, vs, ingresos };
   }, [drillMonth, citas, facturas, ventas]);
 
-  const tabCls = (t: Tab) =>
-    `px-4 py-2 text-sm font-medium rounded-lg transition-colors ${tab === t
-      ? 'text-[var(--acc)]'
-      : 'text-[var(--panel-muted)] hover:text-[var(--panel-text)]'}`;
-  const tabStyle = (t: Tab) => tab === t
-    ? { background: 'color-mix(in srgb, var(--acc) 14%, transparent)', border: '1px solid color-mix(in srgb, var(--acc) 30%, transparent)' }
-    : { border: '1px solid transparent' };
-
   return (
     <ModuleGuard module="estadisticas">
-      <PageHeader title={term} subtitle="Panel de indicadores del negocio y estudios de mercado con IA."
-        action={tab === 'estudios'
-          ? <Link href="/estadisticas/estudios/nuevo" className="btn btn-primary"><Sparkles className="h-4 w-4" /> Nuevo estudio con IA</Link>
-          : undefined} />
+      <PageHeader title={term} subtitle="Panel de indicadores del negocio." />
 
-      {/* Pestañas */}
-      <div className="mb-6 flex gap-2">
-        <button className={tabCls('dashboard')} style={tabStyle('dashboard')} onClick={() => setTab('dashboard')}>Dashboard</button>
-        <button className={tabCls('estudios')} style={tabStyle('estudios')} onClick={() => setTab('estudios')}>Estudios de mercado</button>
-      </div>
+      <div className="space-y-6">
+        {/* KPIs */}
+        <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-5">
+          {stats.kpis.map((k) => <Stat key={k.label} label={k.label} value={k.value} accent={k.accent} />)}
+        </div>
 
-      {/* ════════ DASHBOARD ════════ */}
-      {tab === 'dashboard' && (
-        <div className="space-y-6">
-          {/* KPIs */}
-          <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-5">
-            {stats.kpis.map((k) => <Stat key={k.label} label={k.label} value={k.value} accent={k.accent} />)}
-          </div>
+        {/* Actividad mensual (clic en barra => detalle) */}
+        <BarChart
+          title="Actividad mensual"
+          subtitle="Citas, ventas y facturas por mes · clic en una columna para ver el detalle"
+          data={stats.monthly}
+          series={[
+            { key: 'citas', label: 'Citas', color: 'var(--acc)' },
+            { key: 'ventas', label: 'Ventas', color: '#6aa8ff' },
+            { key: 'facturas', label: 'Facturas', color: '#2ed573' },
+          ]}
+          onBarClick={(_, month) => setDrillMonth(month ?? null)}
+        />
 
-          {/* Actividad mensual (clic en barra => detalle) */}
-          <BarChart
-            title="Actividad mensual"
-            subtitle="Citas, ventas y facturas por mes · clic en una columna para ver el detalle"
-            data={stats.monthly}
-            series={[
-              { key: 'citas', label: 'Citas', color: 'var(--acc)' },
-              { key: 'ventas', label: 'Ventas', color: '#6aa8ff' },
-              { key: 'facturas', label: 'Facturas', color: '#2ed573' },
-            ]}
-            onBarClick={(_, month) => setDrillMonth(month ?? null)}
-          />
+        {/* Facturación por estado */}
+        <BarChart
+          title="Facturación por estado"
+          subtitle="Importe (€) emitido por mes según el estado de la factura"
+          data={stats.billing}
+          series={[
+            { key: 'Pagada', label: 'Pagada', color: '#2ed573' },
+            { key: 'Pendiente', label: 'Pendiente', color: '#e5b53a' },
+            { key: 'Anulada', label: 'Anulada', color: '#ff4757' },
+          ]}
+          formatValue={eur}
+          onBarClick={(_, month) => setDrillMonth(month ?? null)}
+        />
 
-          {/* Facturación por estado */}
-          <BarChart
-            title="Facturación por estado"
-            subtitle="Importe (€) emitido por mes según el estado de la factura"
-            data={stats.billing}
-            series={[
-              { key: 'Pagada', label: 'Pagada', color: '#2ed573' },
-              { key: 'Pendiente', label: 'Pendiente', color: '#e5b53a' },
-              { key: 'Anulada', label: 'Anulada', color: '#ff4757' },
-            ]}
-            formatValue={eur}
-            onBarClick={(_, month) => setDrillMonth(month ?? null)}
-          />
-
-          {/* Panel de drilldown */}
-          {drillMonth && drill && (
-            <div className="panel">
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-base font-semibold text-[var(--panel-text)]">Detalle de {drillMonth}</h2>
-                <button className="row-action edit" onClick={() => setDrillMonth(null)} title="Cerrar"><X className="h-4 w-4" /></button>
-              </div>
-              <div className="mb-4 grid gap-4 sm:grid-cols-4">
-                <Stat label="Citas" value={drill.cs.length} accent />
-                <Stat label="Ventas" value={drill.vs.length} />
-                <Stat label="Facturas" value={drill.fs.length} />
-                <Stat label="Ingresos" value={eur(drill.ingresos)} accent />
-              </div>
-              {drill.cs.length > 0 && (
-                <Table head={['Fecha', 'Cliente', 'Servicio', 'Estado']}>
-                  {drill.cs.map((c) => (
-                    <tr key={c.id}>
-                      <Td>{c.fecha}</Td>
-                      <Td className="text-[var(--panel-text)]">{c.cliente}</Td>
-                      <Td>{c.servicio}</Td>
-                      <Td><Badge tone={c.estado === 'Confirmada' ? 'blue' : c.estado === 'Cancelada' ? 'red' : 'amber'}>{c.estado}</Badge></Td>
-                    </tr>
-                  ))}
-                </Table>
-              )}
+        {/* Panel de drilldown */}
+        {drillMonth && drill && (
+          <div className="panel">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-base font-semibold text-[var(--panel-text)]">Detalle de {drillMonth}</h2>
+              <button className="row-action edit" onClick={() => setDrillMonth(null)} title="Cerrar"><X className="h-4 w-4" /></button>
             </div>
-          )}
-
-          {/* Distribuciones */}
-          <div className="grid gap-4 md:grid-cols-2">
-            <DonutChart title="Servicios por categoría" data={stats.serviciosPorCategoria} colors={DONUT_COLORS} totalLabel="servicios" />
-            <DonutChart title="Clientes por segmento" data={stats.clientesPorSegmento} colors={DONUT_COLORS} totalLabel="clientes" />
+            <div className="mb-4 grid gap-4 sm:grid-cols-4">
+              <Stat label="Citas" value={drill.cs.length} accent />
+              <Stat label="Ventas" value={drill.vs.length} />
+              <Stat label="Facturas" value={drill.fs.length} />
+              <Stat label="Ingresos" value={eur(drill.ingresos)} accent />
+            </div>
+            {drill.cs.length > 0 && (
+              <Table head={['Fecha', 'Cliente', 'Servicio', 'Estado']}>
+                {drill.cs.map((c) => (
+                  <tr key={c.id}>
+                    <Td>{c.fecha}</Td>
+                    <Td className="text-[var(--panel-text)]">{c.cliente}</Td>
+                    <Td>{c.servicio}</Td>
+                    <Td><Badge tone={c.estado === 'Confirmada' ? 'blue' : c.estado === 'Cancelada' ? 'red' : 'amber'}>{c.estado}</Badge></Td>
+                  </tr>
+                ))}
+              </Table>
+            )}
           </div>
-        </div>
-      )}
+        )}
 
-      {/* ════════ ESTUDIOS DE MERCADO ════════ */}
-      {tab === 'estudios' && (
-        <div className="space-y-6">
-          <StudiesPanel />
+        {/* Distribuciones */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <DonutChart title="Servicios por categoría" data={stats.serviciosPorCategoria} colors={DONUT_COLORS} totalLabel="servicios" />
+          <DonutChart title="Clientes por segmento" data={stats.clientesPorSegmento} colors={DONUT_COLORS} totalLabel="clientes" />
         </div>
-      )}
+      </div>
     </ModuleGuard>
   );
 }

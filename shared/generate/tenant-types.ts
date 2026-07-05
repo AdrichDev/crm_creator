@@ -31,6 +31,7 @@ export type ModuleId =
   | 'facturas'
   | 'marketing'
   | 'estadisticas'
+  | 'estudios-mercado'
   | 'categorias'
   | 'comercial'
   | 'contactos'
@@ -190,7 +191,8 @@ export const MODULES: ModuleDef[] = [
   { id: 'ventas',        termKey: 'ventas',        defaultLabel: 'Ventas / TPV',   description: 'Tickets, métodos de pago y caja.',                 category: 'retail',    icon: 'Receipt',         href: '/ventas',        recommends: ['productos'] },
   { id: 'facturas',      termKey: 'facturas',      defaultLabel: 'Facturas',       description: 'Facturación y documentos del cliente.',            category: 'retail',    icon: 'Euro',            href: '/facturas',      recommends: ['clientes'] },
   { id: 'marketing',     termKey: 'marketing',     defaultLabel: 'Marketing',      description: 'Campañas, fidelización y notificaciones.',         category: 'marketing', icon: 'Megaphone',       href: '/marketing',     recommends: ['clientes'] },
-  { id: 'estadisticas',  termKey: 'estadisticas',  defaultLabel: 'Estadísticas',   description: 'Estudios de mercado e informes con IA.',           category: 'marketing', icon: 'BarChart3',       href: '/estadisticas',  recommends: ['clientes'] },
+  { id: 'estadisticas',  termKey: 'estadisticas',  defaultLabel: 'Estadísticas',   description: 'Indicadores y KPIs del negocio.',                  category: 'marketing', icon: 'BarChart3',       href: '/estadisticas',  recommends: ['clientes'] },
+  { id: 'estudios-mercado', termKey: 'estudios-mercado', defaultLabel: 'Estudios de Mercado', description: 'Estudios de mercado generados con IA, anclados a datos reales del negocio.', category: 'marketing', icon: 'Search', href: '/estudios-mercado', mandatory: true },
   { id: 'categorias',    termKey: 'categorias',    defaultLabel: 'Categorías',     description: 'Equipos y staff del club deportivo',               category: 'personas',  icon: 'Trophy',          href: '/categorias' },
   { id: 'comercial',     termKey: 'comercial',     defaultLabel: 'Comercial de campo', description: 'Mapa geolocalizado, visitas, estados y rutas para comerciales de calle.', category: 'operativa', icon: 'MapPinned',   href: '/comercial',     recommends: ['clientes'] },
   { id: 'contactos',     termKey: 'contactos',     defaultLabel: 'Contactos',      description: 'Agenda de leads y prospectos comerciales con estado de contacto.', category: 'operativa', icon: 'Contact',         href: '/contactos',     mandatory: true, recommends: ['clientes'] },

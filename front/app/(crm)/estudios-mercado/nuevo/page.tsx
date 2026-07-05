@@ -68,7 +68,7 @@ export default function NuevoEstudioPage() {
           avgBudget: avgBudget ? parseFloat(avgBudget) : undefined,
         },
       });
-      router.push(`/estadisticas/estudios/${study.id}`);
+      router.push(`/estudios-mercado/${study.id}`);
     } catch (err) {
       setErrors({ submit: err instanceof Error ? err.message : 'Error al crear el estudio' });
       setLoading(false);
@@ -76,7 +76,7 @@ export default function NuevoEstudioPage() {
   }
 
   return (
-    <ModuleGuard module="estadisticas">
+    <ModuleGuard module="estudios-mercado">
       <div className="mx-auto max-w-2xl">
         <div className="mb-6">
           <span className="text-xs uppercase tracking-wide text-[var(--panel-muted)]">Estudios de mercado</span>

@@ -45,7 +45,7 @@ export function StudiesPanel() {
         <Card>
           <CardBody className="empty-state">
             <p className="mb-3 text-sm text-[var(--panel-muted)]">No hay estudios de mercado todavía.</p>
-            <Link href="/estadisticas/estudios/nuevo" className="btn btn-primary">Crear primer estudio</Link>
+            <Link href="/estudios-mercado/nuevo" className="btn btn-primary">Crear primer estudio</Link>
           </CardBody>
         </Card>
       )}
@@ -62,7 +62,7 @@ export function StudiesPanel() {
               <Td><StudyStatusBadge status={study.status} /></Td>
               <Td>
                 <div className="flex justify-end">
-                  <Link href={`/estadisticas/estudios/${study.id}`} className="row-action edit" title="Abrir">
+                  <Link href={`/estudios-mercado/${study.id}`} className="row-action edit" title="Abrir">
                     <Eye className="h-4 w-4" />
                   </Link>
                 </div>
