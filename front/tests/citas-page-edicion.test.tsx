@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, screen, fireEvent, act } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import Page from '@/app/(crm)/citas/page';
@@ -40,7 +40,14 @@ const ROW = {
   teamId: null, recurso: null, aforo: null, notes: null,
 };
 
-afterEach(() => { cleanup(); apiFetchMock.mockReset(); alertMock.mockClear(); });
+// La vista full-screen (WU1 crm-operaos-agenda-contactos-fichaje-telegram) solo
+// muestra los eventos del día seleccionado (por defecto, "hoy"); se fija SOLO
+// `Date` (sin fake timers globales — findByText necesita setTimeout real para
+// su polling) al día de ROW para que la tarjeta sea visible sin navegar el calendario.
+beforeEach(() => {
+  vi.setSystemTime(new Date(2026, 6, 10));
+});
+afterEach(() => { cleanup(); apiFetchMock.mockReset(); alertMock.mockClear(); vi.useRealTimers(); });
 async function flush() { await act(async () => { await Promise.resolve(); }); }
 
 async function abrirEdicion() {
