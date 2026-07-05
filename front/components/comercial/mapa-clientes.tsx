@@ -1,12 +1,11 @@
 'use client';
-import 'leaflet/dist/leaflet.css';
-import { useEffect, useRef } from 'react';
-import type * as L from 'leaflet';
+import { useEffect, useRef, useState } from 'react';
 import type { ComercialCustomer } from '@/lib/comercial/types';
 import { markerColor, type ColorMode } from '@/lib/comercial/marker-color';
+import { googleMapsApiKey, loadGoogleMaps } from '@/lib/maps/loader';
 
-// Mapa de clientes con Leaflet + OpenStreetMap (gratis, sin API key). Imperativo con
-// import dinámico (evita SSR). Sólo pinta clientes con coordenadas válidas (geoEstado=OK).
+// Mapa de clientes con Google Maps JS API. Imperativo (useRef) para reusar el mismo estilo
+// que el resto del módulo. Sólo pinta clientes con coordenadas válidas (geoEstado=OK).
 // El color del marcador depende del `modo` (selector exclusivo estado/gasto, §16.3).
 
 interface Props {
@@ -17,77 +16,103 @@ interface Props {
   modo?: ColorMode;
 }
 
+const BOX_CLASS = 'h-[520px] w-full rounded-xl border border-white/10 z-0';
+
 export default function MapaClientes({ customers, selectedId, onSelect, center, modo = 'estado' }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const layerRef = useRef<L.LayerGroup | null>(null);
-  const LRef = useRef<typeof L | null>(null);
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const markersRef = useRef<google.maps.Marker[]>([]);
+  const [ready, setReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Inicializa el mapa una vez.
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      const leaflet = (await import('leaflet')).default ?? (await import('leaflet'));
-      if (cancelled || !containerRef.current || mapRef.current) return;
-      LRef.current = leaflet as unknown as typeof L;
-      const map = leaflet.map(containerRef.current, { zoomControl: true }).setView(
-        [center?.lat ?? 40.4168, center?.lng ?? -3.7038],
-        center ? 13 : 6,
-      );
-      leaflet.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap',
-        maxZoom: 19,
-      }).addTo(map);
-      layerRef.current = leaflet.layerGroup().addTo(map);
-      mapRef.current = map;
-      renderMarkers();
-    })();
+    if (!googleMapsApiKey()) {
+      setError('Mapa no disponible: falta NEXT_PUBLIC_GOOGLE_MAPS_API_KEY.');
+      return;
+    }
+    loadGoogleMaps()
+      .then(() => {
+        if (cancelled || !containerRef.current || mapRef.current) return;
+        mapRef.current = new google.maps.Map(containerRef.current, {
+          center: { lat: center?.lat ?? 40.4168, lng: center?.lng ?? -3.7038 },
+          zoom: center ? 13 : 6,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: false,
+        });
+        setReady(true);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'No se pudo cargar Google Maps.');
+      });
     return () => {
       cancelled = true;
-      // Destruye el mapa al desmontar: evita el error "Map container is already
-      // initialized" al volver a la ruta y libera listeners/tiles.
-      mapRef.current?.remove();
+      clearMarkers();
       mapRef.current = null;
-      layerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Re-pinta marcadores cuando cambian los clientes, la selección o el modo de color.
+  // Re-pinta marcadores cuando el mapa está listo o cambian clientes, selección o modo de color.
   useEffect(() => {
+    if (!ready) return;
     renderMarkers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customers, selectedId, modo]);
+  }, [ready, customers, selectedId, modo]);
+
+  function clearMarkers() {
+    for (const m of markersRef.current) m.setMap(null);
+    markersRef.current = [];
+  }
 
   function renderMarkers() {
-    const leaflet = LRef.current;
     const map = mapRef.current;
-    const layer = layerRef.current;
-    if (!leaflet || !map || !layer) return;
-    layer.clearLayers();
+    if (!map) return;
+    clearMarkers();
 
     const located = customers.filter((c) => c.geoEstado === 'OK' && c.latitud != null && c.longitud != null);
-    const pts: [number, number][] = [];
+    const bounds = new google.maps.LatLngBounds();
     for (const c of located) {
       const color = markerColor(c, modo);
       const selected = c.id === selectedId;
-      const icon = leaflet.divIcon({
-        className: 'comercial-marker',
-        html: `<span style="display:block;width:${selected ? 20 : 14}px;height:${selected ? 20 : 14}px;border-radius:9999px;background:${color};border:2px solid #fff;box-shadow:0 0 0 2px ${color}55"></span>`,
-        iconSize: [selected ? 20 : 14, selected ? 20 : 14],
-        iconAnchor: [selected ? 10 : 7, selected ? 10 : 7],
+      const position = { lat: c.latitud as number, lng: c.longitud as number };
+      const marker = new google.maps.Marker({
+        map,
+        position,
+        title: `${c.nombre}${c.categoriaAbc ? ` · ${c.categoriaAbc}` : ''}`,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          fillColor: color,
+          fillOpacity: 1,
+          strokeColor: '#ffffff',
+          strokeWeight: 2,
+          scale: selected ? 9 : 6,
+        },
+        zIndex: selected ? 1000 : undefined,
       });
-      const m = leaflet.marker([c.latitud as number, c.longitud as number], { icon, title: c.nombre });
-      m.on('click', () => onSelect?.(c));
-      m.bindTooltip(`${c.nombre}${c.categoriaAbc ? ` · ${c.categoriaAbc}` : ''}`, { direction: 'top' });
-      m.addTo(layer);
-      pts.push([c.latitud as number, c.longitud as number]);
+      marker.addListener('click', () => onSelect?.(c));
+      markersRef.current.push(marker);
+      bounds.extend(position);
     }
 
-    if (pts.length > 0 && !center) {
-      map.fitBounds(leaflet.latLngBounds(pts).pad(0.2), { maxZoom: 14 });
+    if (markersRef.current.length > 0 && !center) {
+      map.fitBounds(bounds, 48);
+      // fitBounds puede acercar demasiado con un único punto: limita el zoom tras encajar.
+      google.maps.event.addListenerOnce(map, 'idle', () => {
+        if ((map.getZoom() ?? 0) > 14) map.setZoom(14);
+      });
     }
   }
 
-  return <div ref={containerRef} className="h-[520px] w-full rounded-xl border border-white/10 z-0" />;
+  if (error) {
+    return (
+      <div className={`${BOX_CLASS} flex items-center justify-center bg-black/20 px-4 text-center text-sm text-[var(--panel-muted)]`}>
+        {error}
+      </div>
+    );
+  }
+
+  return <div ref={containerRef} className={BOX_CLASS} />;
 }
