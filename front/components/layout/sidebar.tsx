@@ -190,12 +190,14 @@ export function Sidebar() {
                 <p className="truncate text-[11px] text-gray-400">{user.email || 'sin sesión'}</p>
               </div>
               <div className="py-1">
-                <Link
-                  href="/configuracion"
-                  className="flex items-center gap-2 px-3 py-2 text-sm text-gray-300 transition hover:bg-[var(--hover-bg)] hover:text-[var(--hover-text)]"
-                >
-                  <span className="text-base">⚙️</span> Configuración
-                </Link>
+                {moduleAllowedForRole(role, 'configuracion') && (
+                  <Link
+                    href="/configuracion"
+                    className="flex items-center gap-2 px-3 py-2 text-sm text-gray-300 transition hover:bg-[var(--hover-bg)] hover:text-[var(--hover-text)]"
+                  >
+                    <span className="text-base">⚙️</span> Configuración
+                  </Link>
+                )}
                 <Link
                   href="/cuenta"
                   className="flex items-center gap-2 px-3 py-2 text-sm text-gray-300 transition hover:bg-[var(--hover-bg)] hover:text-[var(--hover-text)]"
