@@ -34,6 +34,18 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
 
+  // Colapsar/expandir sidebar (paridad con agents-agency: misma clave de
+  // localStorage para consistencia entre productos hermanos).
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    setCollapsed(localStorage.getItem('sidebar-collapsed') === 'true');
+  }, []);
+  const toggleCollapse = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    localStorage.setItem('sidebar-collapsed', String(next));
+  };
+
   // Guard centralizado: si el módulo de la ruta actual no está permitido para
   // el rol → redirige al destino apropiado. Así un cliente que escriba
   // /configuracion en la barra de direcciones es redirigido a /cuenta.
@@ -136,40 +148,59 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="opera-sidebar dark-scroll">
+    <aside className={cn('opera-sidebar dark-scroll relative', collapsed && 'opera-sidebar-collapsed')}>
+      {/* Botón de colapso (paridad visual con agents-agency: misma posición/flechas) */}
+      <button
+        onClick={toggleCollapse}
+        title={collapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}
+        className="absolute top-4 right-0 z-10 flex h-8 w-8 items-center justify-center rounded-l-lg border text-base font-bold transition"
+        style={{ background: 'var(--hover-bg)', borderColor: 'var(--line)', color: 'var(--acc)' }}
+      >
+        {collapsed ? '>' : '<'}
+      </button>
+
       {/* Identidad del negocio */}
-      <div className="flex items-center gap-3 px-5 pt-5">
+      <div className={cn('flex items-center gap-3', collapsed ? 'justify-center px-2 pt-16 pb-3' : 'px-5 pt-5')}>
         <div className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-xl text-sm font-bold text-white shadow-lg"
           style={config.branding.logoImage ? undefined : { background: 'linear-gradient(135deg, var(--brand-secondary), var(--brand-primary))' }}>
           {config.branding.logoImage
             ? <img src={config.branding.logoImage} alt="logo" className="h-full w-full object-cover" />
             : config.branding.logoText}
         </div>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-white">{config.business.name}</p>
-          <p className="truncate text-xs capitalize text-gold">{config.business.vertical}</p>
-        </div>
+        {!collapsed && (
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-white">{config.business.name}</p>
+            <p className="truncate text-xs capitalize text-gold">{config.business.vertical}</p>
+          </div>
+        )}
       </div>
 
-      <p className="opera-sidebar-title">{PANEL_TITLE[role]}</p>
+      {!collapsed && <p className="opera-sidebar-title">{PANEL_TITLE[role]}</p>}
 
       <nav className="opera-sidebar-links">
         {groups.map((g) => (
           <div key={g.cat}>
-            <p className="group-label">{CATEGORY_LABEL[g.cat]}</p>
+            {!collapsed && <p className="group-label">{CATEGORY_LABEL[g.cat]}</p>}
             <ul className="m-0 list-none p-0">
               {g.items.map((m) => {
                 const label = config.terminology[m.termKey] ?? m.defaultLabel;
                 const isActive = pathname === m.href || (m.href !== '/panel' && pathname.startsWith(m.href));
                 return (
                   <li key={m.id}>
-                    <Link href={m.href} className={cn(isActive && 'active')}>
+                    <Link
+                      href={m.href}
+                      title={collapsed ? label : undefined}
+                      className={cn(isActive && 'active', collapsed && 'relative justify-center')}
+                    >
                       <span className="w-5 text-center text-base leading-none">{resolveModuleEmoji(config.business.vertical, m.id, config.moduleEmojis)}</span>
-                      <span className="truncate">{label}</span>
+                      {!collapsed && <span className="truncate">{label}</span>}
                       {m.id === 'contactos' && pendingContactos > 0 && (
                         <span
                           title={`${pendingContactos} contacto(s) pendiente(s) de contactar`}
-                          className="ml-auto grid h-5 min-w-[20px] shrink-0 place-items-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold leading-none text-white"
+                          className={cn(
+                            'grid h-5 min-w-[20px] shrink-0 place-items-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold leading-none text-white',
+                            collapsed ? 'absolute right-1 top-1' : 'ml-auto'
+                          )}
                         >
                           {pendingContactos}
                         </span>
@@ -185,27 +216,46 @@ export function Sidebar() {
 
       {/* Usuario logado (según perfil activo) + menú de cuenta (Configuración/Mi Cuenta/Salir) */}
       <div className="opera-sidebar-foot">
-        <div className="relative flex items-center gap-3 px-2 py-2" ref={menuRef}>
-          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-xs font-semibold text-white shadow"
-            style={{ background: 'linear-gradient(135deg, var(--brand-secondary), var(--brand-primary))' }}>
-            {user.iniciales}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-white">{user.nombre}</p>
-            <p className="truncate text-[11px] text-gold">{rolLabel}</p>
-          </div>
-          <button
-            onClick={() => setMenuOpen((v) => !v)}
-            title="Cuenta"
-            aria-expanded={menuOpen}
-            className="rounded-lg p-2 text-gray-400 transition hover:bg-[var(--hover-bg)] hover:text-[var(--acc)]"
-          >
-            <Settings className="h-4 w-4" />
-          </button>
+        <div className={cn('relative flex items-center px-2 py-2', collapsed ? 'flex-col justify-center gap-2' : 'gap-3')} ref={menuRef}>
+          {!collapsed && (
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-xs font-semibold text-white shadow"
+              style={{ background: 'linear-gradient(135deg, var(--brand-secondary), var(--brand-primary))' }}>
+              {user.iniciales}
+            </div>
+          )}
+          {!collapsed && (
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-white">{user.nombre}</p>
+              <p className="truncate text-[11px] text-gold">{rolLabel}</p>
+            </div>
+          )}
+
+          {collapsed && (
+            <button
+              onClick={() => setMenuOpen((v) => !v)}
+              title="Cuenta"
+              aria-expanded={menuOpen}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-xs font-semibold text-white shadow"
+              style={{ background: 'linear-gradient(135deg, var(--brand-secondary), var(--brand-primary))' }}
+            >
+              {user.iniciales}
+            </button>
+          )}
+
+          {!collapsed && (
+            <button
+              onClick={() => setMenuOpen((v) => !v)}
+              title="Cuenta"
+              aria-expanded={menuOpen}
+              className="rounded-lg p-2 text-gray-400 transition hover:bg-[var(--hover-bg)] hover:text-[var(--acc)]"
+            >
+              <Settings className="h-4 w-4" />
+            </button>
+          )}
 
           {menuOpen && (
             <div
-              className="absolute bottom-full right-0 mb-2 w-56 rounded-xl shadow-xl z-20 overflow-hidden"
+              className={cn('absolute bottom-full mb-2 w-56 rounded-xl shadow-xl z-20 overflow-hidden', collapsed ? 'left-0' : 'right-0')}
               style={{ background: 'var(--panel-card)', border: '1px solid var(--line)' }}
             >
               <div className="px-3 py-2" style={{ borderBottom: '1px solid var(--line)' }}>

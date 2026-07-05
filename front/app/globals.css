@@ -351,7 +351,11 @@ body {
 .opera-sidebar {
   width: 256px; flex-shrink: 0; display: flex; flex-direction: column;
   background: var(--panel-card); border-right: 1px solid rgba(255,255,255,0.05);
+  transition: width .2s ease; overflow: hidden;
 }
+/* Colapso del sidebar (paridad con agents-agency: w-[68px] colapsado). */
+.opera-sidebar-collapsed { width: 68px; }
+.opera-sidebar-collapsed .opera-sidebar-links a { justify-content: center; padding-left: .5rem; padding-right: .5rem; }
 .opera-sidebar-title {
   color: var(--acc); font-family: var(--heading-font); font-weight: 700;
   font-size: 1.05rem; letter-spacing: .5px; padding: 1.5rem 1.5rem .5rem;
