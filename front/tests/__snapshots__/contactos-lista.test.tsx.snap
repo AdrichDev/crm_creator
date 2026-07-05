@@ -1,0 +1,342 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`ContactosLista (AC4) > coincide con el snapshot de UI 1`] = `
+<div>
+  <table>
+    <tbody>
+      <tr>
+        <td
+          class="font-mono text-xs text-[var(--acc)]"
+        >
+          pc-01
+        </td>
+        <td
+          class=""
+        >
+          <span
+            class="status-badge tone-blue"
+          >
+            Lead
+          </span>
+        </td>
+        <td
+          class="font-medium text-white"
+        >
+          <span
+            class="inline-flex items-center gap-2"
+          >
+            Marta Ibáñez
+            <span
+              class="grid h-[18px] w-[18px] place-items-center rounded-full bg-yellow-400 text-[10px] font-black leading-none text-black"
+              title="Nuevo hoy — pendiente de contactar"
+            >
+              N
+            </span>
+          </span>
+        </td>
+        <td
+          class=""
+        >
+          600111222
+        </td>
+        <td
+          class=""
+        >
+          marta@x.com
+        </td>
+        <td
+          class=""
+        >
+          Retail
+        </td>
+        <td
+          class="text-center"
+        >
+          <button
+            class="cursor-pointer border-0 bg-transparent p-0 disabled:cursor-default"
+            title="Clic para cambiar el estado (Sí → No → NC)"
+            type="button"
+          >
+            <span
+              class="status-badge tone-red"
+            >
+              No
+            </span>
+          </button>
+        </td>
+        <td
+          class="tabular-nums"
+        >
+          05/07/2026, 14:00
+        </td>
+        <td
+          class=""
+        >
+          <div
+            class="flex items-center justify-end gap-2"
+          >
+            <button
+              class="inline-grid place-items-center w-8 h-8 rounded-lg border border-white/10 text-[var(--panel-muted)] transition hover:text-[var(--acc)] hover:border-[var(--acc)]"
+              title="Ver información"
+              type="button"
+            >
+              <svg
+                class="lucide lucide-info h-4 w-4"
+                fill="none"
+                height="24"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                viewBox="0 0 24 24"
+                width="24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="10"
+                />
+                <path
+                  d="M12 16v-4"
+                />
+                <path
+                  d="M12 8h.01"
+                />
+              </svg>
+            </button>
+            <button
+              class="inline-grid place-items-center w-8 h-8 rounded-lg border border-white/10 text-[var(--panel-muted)] transition hover:text-[var(--acc)] hover:border-[var(--acc)]"
+              title="Editar"
+              type="button"
+            >
+              <svg
+                class="lucide lucide-pencil h-4 w-4"
+                fill="none"
+                height="24"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                viewBox="0 0 24 24"
+                width="24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"
+                />
+                <path
+                  d="m15 5 4 4"
+                />
+              </svg>
+            </button>
+            <button
+              class="inline-grid place-items-center w-8 h-8 rounded-lg border border-white/10 text-[var(--panel-muted)] transition hover:text-[var(--acc)] hover:border-[var(--acc)] hover:!border-red-500/60 hover:!text-red-400"
+              title="Eliminar"
+              type="button"
+            >
+              <svg
+                class="lucide lucide-trash2 h-4 w-4"
+                fill="none"
+                height="24"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                viewBox="0 0 24 24"
+                width="24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M3 6h18"
+                />
+                <path
+                  d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"
+                />
+                <path
+                  d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"
+                />
+                <line
+                  x1="10"
+                  x2="10"
+                  y1="11"
+                  y2="17"
+                />
+                <line
+                  x1="14"
+                  x2="14"
+                  y1="11"
+                  y2="17"
+                />
+              </svg>
+            </button>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td
+          class="font-mono text-xs text-[var(--acc)]"
+        >
+          pc-02
+        </td>
+        <td
+          class=""
+        >
+          <span
+            class="status-badge tone-gold"
+          >
+            Prospecto
+          </span>
+        </td>
+        <td
+          class="font-medium text-white"
+        >
+          <span
+            class="inline-flex items-center gap-2"
+          >
+            Diego Serrano
+          </span>
+        </td>
+        <td
+          class=""
+        >
+          —
+        </td>
+        <td
+          class=""
+        >
+          —
+        </td>
+        <td
+          class=""
+        >
+          —
+        </td>
+        <td
+          class="text-center"
+        >
+          <button
+            class="cursor-pointer border-0 bg-transparent p-0 disabled:cursor-default"
+            title="Clic para cambiar el estado (Sí → No → NC)"
+            type="button"
+          >
+            <span
+              class="status-badge tone-green"
+            >
+              Sí
+            </span>
+          </button>
+        </td>
+        <td
+          class="tabular-nums"
+        >
+          01/01/2026, 11:00
+        </td>
+        <td
+          class=""
+        >
+          <div
+            class="flex items-center justify-end gap-2"
+          >
+            <button
+              class="inline-grid place-items-center w-8 h-8 rounded-lg border border-white/10 text-[var(--panel-muted)] transition hover:text-[var(--acc)] hover:border-[var(--acc)]"
+              title="Ver información"
+              type="button"
+            >
+              <svg
+                class="lucide lucide-info h-4 w-4"
+                fill="none"
+                height="24"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                viewBox="0 0 24 24"
+                width="24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="10"
+                />
+                <path
+                  d="M12 16v-4"
+                />
+                <path
+                  d="M12 8h.01"
+                />
+              </svg>
+            </button>
+            <button
+              class="inline-grid place-items-center w-8 h-8 rounded-lg border border-white/10 text-[var(--panel-muted)] transition hover:text-[var(--acc)] hover:border-[var(--acc)]"
+              title="Editar"
+              type="button"
+            >
+              <svg
+                class="lucide lucide-pencil h-4 w-4"
+                fill="none"
+                height="24"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                viewBox="0 0 24 24"
+                width="24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"
+                />
+                <path
+                  d="m15 5 4 4"
+                />
+              </svg>
+            </button>
+            <button
+              class="inline-grid place-items-center w-8 h-8 rounded-lg border border-white/10 text-[var(--panel-muted)] transition hover:text-[var(--acc)] hover:border-[var(--acc)] hover:!border-red-500/60 hover:!text-red-400"
+              title="Eliminar"
+              type="button"
+            >
+              <svg
+                class="lucide lucide-trash2 h-4 w-4"
+                fill="none"
+                height="24"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                viewBox="0 0 24 24"
+                width="24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M3 6h18"
+                />
+                <path
+                  d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"
+                />
+                <path
+                  d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"
+                />
+                <line
+                  x1="10"
+                  x2="10"
+                  y1="11"
+                  y2="17"
+                />
+                <line
+                  x1="14"
+                  x2="14"
+                  y1="11"
+                  y2="17"
+                />
+              </svg>
+            </button>
+          </div>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+`;

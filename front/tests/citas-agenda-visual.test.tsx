@@ -6,9 +6,13 @@ import { AgendaWidget } from '@/components/panel/widgets/agenda-widget';
 
 // crm-operaos-agenda-contactos-fichaje-telegram WU1 (AC1): "la sección
 // Agenda/Citas/Reservas usa exactamente la vista del widget principal, adaptada
-// a pantalla de módulo". Este archivo cubre (1) que /citas comparte la misma
-// gramática visual (AgendaGrid) que AgendaWidget y (2) que la terminología
-// sectorial (citas/reservas/clases) sigue viva en la vista full-screen.
+// a pantalla de módulo". Este archivo cubre (1) que /citas comparte el mismo
+// calendario base (AgendaGrid: nav, vistas, grid mensual) que AgendaWidget —
+// DIVERGE a propósito en el listado de citas: /citas usa `sidePanel` (panel
+// lateral tipo agents-agency, `.agenda-dia-panel`), el widget del inicio (tile
+// pequeño) mantiene el listado bajo el grid (`.agenda-widget-day-list`) — y
+// (2) que la terminología sectorial (citas/reservas/clases) sigue viva en la
+// vista full-screen.
 
 vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
@@ -47,20 +51,23 @@ describe('citas/page — vista full-screen comparte gramática con AgendaWidget 
     const { container: pageContainer } = render(<Page />);
     await flush();
 
-    for (const cls of ['.agenda-widget', '.agenda-widget-nav', '.agenda-widget-views', '.calendar-grid-header', '.calendar-days-mes', '.agenda-widget-day-list']) {
+    for (const cls of ['.agenda-widget', '.agenda-widget-nav', '.agenda-widget-views', '.calendar-grid-header', '.calendar-days-mes']) {
       expect(widgetContainer.querySelector(cls)).toBeTruthy();
       expect(pageContainer.querySelector(cls)).toBeTruthy();
     }
+    // Divergencia intencional: widget = listado bajo el grid, /citas = panel lateral.
+    expect(widgetContainer.querySelector('.agenda-widget-day-list')).toBeTruthy();
+    expect(pageContainer.querySelector('.agenda-dia-panel')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'Mes' }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: 'Semana' }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: 'Día' }).length).toBeGreaterThan(0);
   });
 
-  it('/citas muestra tarjetas de evento (.cita-full-card) igual que el widget, con el día 16 seleccionado', async () => {
+  it('/citas muestra tarjetas de evento (.cita-full-card) en el panel lateral, con el día 16 seleccionado', async () => {
     const { container } = render(<Page />);
     await flush();
 
-    const tarjetas = container.querySelectorAll('.agenda-widget-day-list .cita-full-card');
+    const tarjetas = container.querySelectorAll('.agenda-dia-panel-lista .cita-full-card');
     expect(tarjetas.length).toBeGreaterThan(0);
   });
 });

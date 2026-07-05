@@ -58,6 +58,32 @@ function periodoLabel(vista: AgendaVista, cursor: Date, semana: CalCell[]): stri
     : `${ini.getDate()} ${MESES_ABBR[ini.getMonth()]} – ${fin.getDate()} ${MESES_ABBR[fin.getMonth()]} ${fin.getFullYear()}`;
 }
 
+/** Panel lateral con todas las citas del día seleccionado — paridad visual con
+ * `SelectedDayPanel` de agents-agency (columna fija a la derecha del calendario
+ * en vista mes/semana, cards grandes, scroll propio si hay muchas). */
+function DiaPanel<T extends AgendaItem>({ selected, eventos, emptyLabel, getKey, renderCard }: {
+  selected: string;
+  eventos: T[];
+  emptyLabel: string;
+  getKey: (item: T) => string | number;
+  renderCard: (item: T, ctx: { compact: boolean }) => ReactNode;
+}) {
+  const fechaLabel = selected ? selected.split('-').reverse().join('/') : '';
+  return (
+    <aside className="agenda-dia-panel">
+      <div className="agenda-dia-panel-head">
+        <div className="agenda-dia-panel-kicker">Citas del día</div>
+        <h3 className="agenda-dia-panel-fecha">{fechaLabel}</h3>
+      </div>
+      <div className="agenda-dia-panel-lista">
+        {eventos.length === 0
+          ? <p className="empty-state">{emptyLabel}</p>
+          : eventos.map((it) => <div key={getKey(it)}>{renderCard(it, { compact: false })}</div>)}
+      </div>
+    </aside>
+  );
+}
+
 export interface AgendaGridProps<T extends AgendaItem> {
   items: T[];
   /** Mensaje cuando el día seleccionado no tiene eventos (término sectorial: citas/reservas/clases). */
@@ -73,10 +99,15 @@ export interface AgendaGridProps<T extends AgendaItem> {
    * de filtrar dentro de una página fija (bug: cambiar de día no actualizaba
    * los registros en modo API paginado). */
   onRangeChange?: (from: string, to: string) => void;
+  /** Panel lateral con TODAS las citas del día seleccionado (paridad con
+   * agents-agency: `SelectedDayPanel` a la derecha del calendario en vista
+   * mes/semana). Solo para /citas full-screen — el widget del inicio (tile
+   * pequeño) no tiene espacio y mantiene el listado bajo el grid. */
+  sidePanel?: boolean;
 }
 
 export function AgendaGrid<T extends AgendaItem>({
-  items, emptyLabel, getKey, renderCard, initialDate, onSelectedChange, onRangeChange,
+  items, emptyLabel, getKey, renderCard, initialDate, onSelectedChange, onRangeChange, sidePanel = false,
 }: AgendaGridProps<T>) {
   const [vista, setVista] = useState<AgendaVista>('mes');
   const [cursor, setCursor] = useState<Date | null>(null);
@@ -199,54 +230,65 @@ export function AgendaGrid<T extends AgendaItem>({
       </div>
 
       {vista === 'mes' && (
-        <>
-          <div className="calendar-grid-header">{DOW.map((d) => <div key={d}>{d}</div>)}</div>
-          <div className="calendar-days calendar-days-mes">
-            {cells.map((cell, i) => {
-              if (!cell) return <div key={`e${i}`} className="calendar-day empty" />;
-              const n = porDia.get(cell.date) ?? 0;
-              const cls = ['calendar-day'];
+        <div className={sidePanel ? 'agenda-mes-con-panel' : undefined}>
+          <div className={sidePanel ? 'agenda-mes-calendario' : undefined}>
+            <div className="calendar-grid-header">{DOW.map((d) => <div key={d}>{d}</div>)}</div>
+            <div className="calendar-days calendar-days-mes">
+              {cells.map((cell, i) => {
+                if (!cell) return <div key={`e${i}`} className="calendar-day empty" />;
+                const n = porDia.get(cell.date) ?? 0;
+                const cls = ['calendar-day'];
+                if (cell.date === selected) cls.push('active');
+                if (cell.date === hoyStr) cls.push('today');
+                return (
+                  <div key={cell.date} className={cls.join(' ')} onClick={() => seleccionar(cell.date)}>
+                    <span>{cell.d}</span>
+                    {n > 0 && <span className="appointment-dot" />}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {sidePanel ? (
+            <DiaPanel selected={selected} eventos={eventosDelDia} emptyLabel={emptyLabel} getKey={getKey} renderCard={renderCard} />
+          ) : (
+            <div className="agenda-widget-day-list">
+              {eventosDelDia.length === 0
+                ? <p className="empty-state">{emptyLabel}</p>
+                : eventosDelDia.map((it) => <div key={getKey(it)}>{renderCard(it, { compact: false })}</div>)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {vista === 'semana' && (
+        <div className={sidePanel ? 'agenda-semana-con-panel' : undefined}>
+          <div className="agenda-week-grid">
+            {semanaCells.map((cell) => {
+              const delDia = items
+                .filter((it) => it.fecha === cell.date)
+                .sort((a, b) => a.hora.localeCompare(b.hora));
+              const cls = ['agenda-week-col'];
               if (cell.date === selected) cls.push('active');
               if (cell.date === hoyStr) cls.push('today');
+              const dow = (parseFecha(cell.date).getDay() + 6) % 7;
               return (
                 <div key={cell.date} className={cls.join(' ')} onClick={() => seleccionar(cell.date)}>
-                  <span>{cell.d}</span>
-                  {n > 0 && <span className="appointment-dot" />}
+                  <div className="agenda-week-col-head">
+                    <span className="dow">{DOW[dow]}</span>
+                    <span className="d">{cell.d}</span>
+                  </div>
+                  <div className="agenda-week-col-body">
+                    {delDia.map((it) => <div key={getKey(it)}>{renderCard(it, { compact: true })}</div>)}
+                  </div>
                 </div>
               );
             })}
           </div>
-
-          <div className="agenda-widget-day-list">
-            {eventosDelDia.length === 0
-              ? <p className="empty-state">{emptyLabel}</p>
-              : eventosDelDia.map((it) => <div key={getKey(it)}>{renderCard(it, { compact: false })}</div>)}
-          </div>
-        </>
-      )}
-
-      {vista === 'semana' && (
-        <div className="agenda-week-grid">
-          {semanaCells.map((cell) => {
-            const delDia = items
-              .filter((it) => it.fecha === cell.date)
-              .sort((a, b) => a.hora.localeCompare(b.hora));
-            const cls = ['agenda-week-col'];
-            if (cell.date === selected) cls.push('active');
-            if (cell.date === hoyStr) cls.push('today');
-            const dow = (parseFecha(cell.date).getDay() + 6) % 7;
-            return (
-              <div key={cell.date} className={cls.join(' ')} onClick={() => seleccionar(cell.date)}>
-                <div className="agenda-week-col-head">
-                  <span className="dow">{DOW[dow]}</span>
-                  <span className="d">{cell.d}</span>
-                </div>
-                <div className="agenda-week-col-body">
-                  {delDia.map((it) => <div key={getKey(it)}>{renderCard(it, { compact: true })}</div>)}
-                </div>
-              </div>
-            );
-          })}
+          {sidePanel && (
+            <DiaPanel selected={selected} eventos={eventosDelDia} emptyLabel={emptyLabel} getKey={getKey} renderCard={renderCard} />
+          )}
         </div>
       )}
 

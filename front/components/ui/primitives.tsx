@@ -25,7 +25,7 @@ export function CardBody({ children, className }: { children: ReactNode; classNa
   return <div className={cn('p-5', className)}>{children}</div>;
 }
 
-type Tone = 'gray' | 'green' | 'amber' | 'red' | 'blue' | 'brand';
+export type Tone = 'gray' | 'green' | 'amber' | 'red' | 'blue' | 'brand';
 export function Badge({ children, tone = 'gray' }: { children: ReactNode; tone?: Tone }) {
   const map: Record<Tone, string> = {
     gray: 'tone-gray', green: 'tone-green', amber: 'tone-amber',

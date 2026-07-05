@@ -1,6 +1,7 @@
 'use client';
 import type { ReactNode } from 'react';
 import type { SectorFieldsDef } from '@/lib/config/citas-sector-fields';
+import type { Tone } from '@/components/ui/primitives';
 import { DOW_FULL } from '@/lib/config/constants';
 
 /** Color de borde izquierdo de tarjeta según estado de cita. */
@@ -8,7 +9,7 @@ export const estadoTone = (s: string): string =>
   s === 'Completada' ? '#6aa8ff' : s === 'Cancelada' ? '#ff4757' : 'var(--acc)';
 
 /** Badge tone según estado. */
-export const tone = (s: string): string =>
+export const tone = (s: string): Tone =>
   s === 'Confirmada' ? 'green' : s === 'Pendiente' ? 'amber' : s === 'Completada' ? 'blue' : 'red';
 
 /** Día de la semana en español desde fecha YYYY-MM-DD. */

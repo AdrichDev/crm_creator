@@ -431,6 +431,17 @@ body {
 .btn-ghost:hover { color: var(--hover-text); background: transparent; }
 .btn-sm { padding: .35rem .7rem; font-size: .8rem; }
 .btn-block-lg { width: 100%; padding: 1rem; font-size: 1.1rem; }
+/* Tema claro: el primario es transparente y depende de --acc/--acc-light, que por
+   tenant pueden ser pálidos o incluso blanco puro (p.ej. EDM San Blas usa --acc:#fff)
+   → texto y borde blancos sobre el modal claro = botón invisible. Se alinea al dorado
+   profundo de plataforma (#8a6516), el mismo que ya usan hovers, tabla y badges en claro. */
+:root[data-theme="light"] .btn-primary { color: #8a6516; border-color: #8a6516; }
+:root[data-theme="light"] .btn-primary:hover {
+  /* Texto sobre el relleno dorado: crema del tema (--panel-card), no blanco puro
+     (convención hover-tokens: nunca #fff/negro directos en :hover). */
+  background: #8a6516; color: var(--panel-card); border-color: #8a6516;
+  box-shadow: 0 4px 10px color-mix(in srgb, #8a6516 30%, transparent);
+}
 
 .row-action { background: none; border: 0; cursor: pointer; border-radius: 6px; padding: .25rem .6rem; font-size: .8rem; font-weight: 600; }
 .row-action.edit { color: var(--panel-muted); }
@@ -547,6 +558,26 @@ body {
 .agenda-hour-label { flex: 0 0 3.2rem; font-size: .72rem; color: var(--panel-muted); padding-top: .15rem; }
 .agenda-hour-slot { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .35rem; }
 .agenda-hour-slot > div { flex-shrink: 0; }
+
+/* Panel lateral de "citas del día" (paridad con agents-agency: calendario a la
+   izquierda + SelectedDayPanel fijo a la derecha en vista mes/semana). Solo en
+   /citas full-screen (`sidePanel`); el widget del inicio no lo usa. */
+.agenda-mes-con-panel, .agenda-semana-con-panel {
+  flex: 1; min-height: 0; display: grid; gap: 1rem; grid-template-columns: minmax(0, 1.8fr) minmax(280px, 0.8fr);
+}
+.agenda-mes-calendario { display: flex; flex-direction: column; min-height: 0; gap: .5rem; }
+.agenda-dia-panel {
+  display: flex; flex-direction: column; min-height: 0; min-width: 0; border-radius: 14px;
+  background: rgba(255,255,255,0.03); border: 1px solid var(--line); padding: 1rem;
+}
+.agenda-dia-panel-head { flex: 0 0 auto; border-bottom: 1px solid var(--line); padding-bottom: .75rem; margin-bottom: .75rem; }
+.agenda-dia-panel-kicker { font-size: .65rem; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; color: var(--panel-muted); }
+.agenda-dia-panel-fecha { margin: .25rem 0 0; font-size: 1.15rem; font-weight: 800; color: var(--panel-text); }
+.agenda-dia-panel-lista { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: .6rem; }
+.agenda-dia-panel-lista > div { flex-shrink: 0; }
+@media (max-width: 1100px) {
+  .agenda-mes-con-panel, .agenda-semana-con-panel { grid-template-columns: 1fr; }
+}
 
 /* Mosaico de widgets del inicio (panel/widget-grid.tsx) — gramática tipo widget
    de móvil: esquinas más redondeadas que el resto del chrome, tamaños fijos

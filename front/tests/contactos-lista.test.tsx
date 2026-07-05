@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, afterAll } from 'vitest';
 import { render, cleanup, screen } from '@testing-library/react';
 import {
   ContactosLista, isToday, type ContactoRow,
@@ -9,7 +9,16 @@ import {
 vi.mock('next/navigation', () => ({ usePathname: () => '/contactos' }));
 vi.mock('@/lib/tenant-config-context', () => ({ useRole: () => ({ role: 'admin' }) }));
 
+// Reloj FIJO para todo el archivo: la fila de Marta necesita createdAt = "hoy"
+// (para la insignia N), pero un `new Date()` real hacía el snapshot no
+// determinista — se congelaba la hora de generación y fallaba en cualquier otra
+// corrida (flaky permanente). Instante en UTC para que el ISO sea idéntico
+// siempre; el fake timer hace que isToday() y el snapshot vean el mismo "hoy".
+vi.useFakeTimers({ shouldAdvanceTime: true });
+vi.setSystemTime(new Date('2026-07-05T12:00:00.000Z'));
+
 afterEach(() => cleanup());
+afterAll(() => vi.useRealTimers());
 
 const rows: ContactoRow[] = [
   { id: '1', codigo: 'pc-01', tipo: 'lead', nombre: 'Marta Ibáñez', telefono: '600111222', email: 'marta@x.com', sector: 'Retail', direccion: 'Calle 1', peticion: null, contactado: 'no', createdAt: new Date().toISOString() },

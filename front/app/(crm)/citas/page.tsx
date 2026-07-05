@@ -247,6 +247,7 @@ export default function Page() {
           items={displayItems}
           getKey={(c) => c.id}
           emptyLabel={`Sin ${term.toLowerCase()} este día.`}
+          sidePanel
           onRangeChange={(from, to) => {
             // `to` de AgendaGrid es inclusivo (último día visible); el back filtra
             // startAt con `lte: new Date(to)`, que parsea a medianoche — sin el +1
