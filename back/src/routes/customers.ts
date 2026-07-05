@@ -43,7 +43,7 @@ function segmentoDe(visitas: number, gastoTotal: number, ultima: Date | null): s
 
 // Columnas editables (los derivados se ignoran al escribir). Incluye comercial de campo.
 const INPUT = [
-  'email', 'telefono', 'direccion', 'notas',
+  'razonSocial', 'email', 'telefono', 'direccion', 'notas',
   'localidad', 'provincia', 'codigoPostal',
   'categoriaAbc', 'estadoVisitaId', 'tipoRegistro', 'proximaAccionEn',
 ] as const;
@@ -348,6 +348,7 @@ function shapeCustomer(c: CustomerRow, aggs: Aggregates, distanciaKm?: number): 
   return {
     id: c.id,
     nombre: nombreCompleto,
+    razonSocial: c.razonSocial ?? '',
     email: c.email ?? '',
     telefono: c.telefono ?? '',
     direccion: c.direccion ?? '',

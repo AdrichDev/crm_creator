@@ -362,6 +362,9 @@ model Customer {
   user        User?    @relation(fields: [userId], references: [id])
   nombre      String   @map("nombre")
   apellido    String?  @map("apellido")
+  // Empresa/razón social del cliente (crm-clientes-empresa-vs-contacto). Nullable/aditivo:
+  // `nombre`+`apellido` siguen siendo la PERSONA de contacto, sin cambios.
+  razonSocial String?  @map("razon_social")
   telefono    String?  @map("telefono")
   email       String?  @map("email")
   fechaNacimiento DateTime? @map("fecha_nacimiento")

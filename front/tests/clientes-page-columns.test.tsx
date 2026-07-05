@@ -4,9 +4,10 @@ import type { ReactNode } from 'react';
 import type { Cliente } from '@/lib/mock/data';
 import Page from '@/app/(crm)/clientes/page';
 
-// Segunda pasada sobre "Cartera de Clientes": columnas exactas Id Cliente, Nombre,
-// Teléfono, Email, [icono info], Acciones, Facturas (sin Contacto/Visitas/Gasto/Segmento
-// como columnas de tabla — esos datos viven ahora en el modal de ficha).
+// Tercera pasada sobre "Cartera de Clientes": columnas exactas Id Cliente, Empresa,
+// Contacto, Teléfono, Email, Facturas, Acciones (Facturas ANTES de Acciones; ver/editar/
+// eliminar viven juntos en la columna Acciones, sin columna [info] separada). Visitas/
+// Gasto/Segmento no son columnas de tabla — esos datos viven en el modal de ficha.
 
 const CLIENTES: Cliente[] = [
   { id: 1, nombre: 'Ana Gómez', email: 'ana@mail.com', telefono: '600111222', visitas: 5, gastoTotal: 300, segmento: 'VIP', ultimaVisita: '2026-06-10', direccion: 'Calle Falsa 1' },
@@ -44,20 +45,25 @@ vi.mock('next/navigation', () => ({
 
 afterEach(() => cleanup());
 
-describe('clientes/page — columnas de la tabla (2ª pasada)', () => {
-  it('cabecera exacta: Id Cliente, Nombre, Teléfono, Email, [info], Acciones, Facturas', () => {
+describe('clientes/page — columnas de la tabla (3ª pasada)', () => {
+  it('cabecera exacta: Id Cliente, Empresa, Contacto, Teléfono, Email, Facturas, Acciones', () => {
     render(<Page />);
     const headerCells = screen.getAllByRole('columnheader').map((th) => th.textContent);
-    expect(headerCells).toEqual(['Id Cliente', 'Nombre', 'Teléfono', 'Email', '', 'Acciones', 'Facturas']);
+    expect(headerCells).toEqual(['Id Cliente', 'Empresa', 'Contacto', 'Teléfono', 'Email', 'Facturas', 'Acciones']);
   });
 
-  it('no muestra Segmento, Visitas, Gasto ni una columna Contacto combinada', () => {
+  it('Facturas va ANTES que Acciones', () => {
+    render(<Page />);
+    const headerCells = screen.getAllByRole('columnheader').map((th) => th.textContent);
+    expect(headerCells.indexOf('Facturas')).toBeLessThan(headerCells.indexOf('Acciones'));
+  });
+
+  it('no muestra Segmento, Visitas ni Gasto como columnas de tabla', () => {
     render(<Page />);
     const headerCells = screen.getAllByRole('columnheader').map((th) => th.textContent);
     expect(headerCells).not.toContain('Segmento');
     expect(headerCells).not.toContain('Visitas');
     expect(headerCells).not.toContain('Gasto');
-    expect(headerCells).not.toContain('Contacto');
   });
 
   it('la fila muestra teléfono y email en columnas separadas', () => {

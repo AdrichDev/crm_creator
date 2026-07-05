@@ -97,7 +97,10 @@ export const VERTICALS: VerticalDef[] = [
     tagline: 'Gestión de equipos de ventas, leads y pipeline comercial',
     // Por defecto solo lo que usa un comercial de campo; retail/marketing quedan
     // activables pero apagados (dashboard/configuración/mi-cuenta son obligatorios).
-    defaultModules: ['clientes', 'comercial', 'citas', 'pedidos'],
+    // `facturas` entra en el default porque la tabla de Clientes SIEMPRE muestra una
+    // columna Facturas (para cualquier vertical con `clientes` activo) — dejarlo fuera
+    // hacía que ese botón rebotara a /panel en negocios nuevos de este vertical.
+    defaultModules: ['clientes', 'comercial', 'citas', 'pedidos', 'facturas'],
     terminology: { citas: 'Agenda', empleados: 'Comerciales', servicios: 'Productos y tarifas', clientes: 'Cartera de clientes', ventas: 'Pedidos', comercial: 'Mapa comercial', estadisticas: 'Informes' },
     // `comercial` sube a "Área de Trabajo": es el módulo central de este vertical.
     moduleCategories: { comercial: 'core' },

@@ -22,3 +22,12 @@ export function buildRouteUrl(p: Located): string | null {
   if (!hasValidCoords(p)) return null;
   return `https://www.google.com/maps/dir/?api=1&destination=${p.latitud},${p.longitud}`;
 }
+
+// URL de PIN/marcador simple: centra el mapa en las coordenadas sin pedir ruta desde la
+// ubicación del usuario. Para la ficha de Clientes (icono del modal de info), a diferencia
+// de `buildRouteUrl` (botón "Ir" de navegación del módulo comercial, que sigue siendo
+// correcto ahí y no se toca).
+export function buildPinUrl(p: Located): string | null {
+  if (!hasValidCoords(p)) return null;
+  return `https://www.google.com/maps/search/?api=1&query=${p.latitud},${p.longitud}`;
+}

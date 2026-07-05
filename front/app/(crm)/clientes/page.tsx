@@ -18,14 +18,15 @@ import { isApiEnabled } from '@/lib/api/client';
 import { usePaginatedApi } from '@/lib/data/use-paginated-api';
 import { SearchInput } from '@/components/ui/search-input';
 import { Pagination } from '@/components/ui/pagination';
-import { shortClienteId } from '@/lib/utils/format';
-import { hasValidCoords, buildRouteUrl } from '@/lib/comercial/maps-link';
+import { shortClienteId, eurSuffix } from '@/lib/utils/format';
+import { hasValidCoords, buildPinUrl } from '@/lib/comercial/maps-link';
 import { buildGoogleMapsSearchUrl } from '@/lib/citas/google-maps-url';
 
 // Shape que devuelve el back para /customers paginado.
 type ClienteApiRow = {
   id: string;
   nombre: string;
+  razonSocial?: string;
   email: string;
   telefono: string;
   direccion: string;
@@ -40,8 +41,9 @@ type ClienteApiRow = {
 };
 
 const FIELDS: Field[] = [
-  { name: 'nombre', label: 'Nombre', required: true },
-  { name: 'contacto', label: 'Persona de contacto' },
+  { name: 'nombre', label: 'Persona de contacto', required: true },
+  { name: 'razonSocial', label: 'Empresa (razón social)' },
+  { name: 'contacto', label: 'Otro contacto' },
   { name: 'cif', label: 'NIF / CIF' },
   { name: 'email', label: 'Email', type: 'email' },
   { name: 'telefono', label: 'Teléfono' },
@@ -116,10 +118,12 @@ export default function Page() {
 
   // Enlace a Google Maps del cliente abierto en el modal: prioriza coordenadas reales
   // (comercial de campo) y cae a búsqueda por texto de dirección si no hay coords.
+  // Pin simple (buildPinUrl), NO ruta de navegación (buildRouteUrl es para el botón "Ir"
+  // del módulo comercial) — este es solo el icono de "ver en el mapa" de la ficha.
   const mapsUrlActual = useMemo(() => {
     if (!actual) return null;
     const located = actual as unknown as { latitud?: number | null; longitud?: number | null };
-    if (hasValidCoords(located)) return buildRouteUrl(located);
+    if (hasValidCoords(located)) return buildPinUrl(located);
     return buildGoogleMapsSearchUrl(actual.direccion ?? null);
   }, [actual]);
 
@@ -166,20 +170,33 @@ export default function Page() {
           value={filterFecha} onChange={(e) => setFilterFecha(e.target.value)} />
       </div>
 
-      <Table head={['Id Cliente', 'Nombre', 'Teléfono', 'Email', '', 'Acciones', 'Facturas']}>
+      <Table head={['Id Cliente', 'Empresa', 'Contacto', 'Teléfono', 'Email', 'Facturas', 'Acciones']}>
         {displayItems.map((c) => (
           <tr key={c.id}>
             <Td className="font-mono text-xs text-[var(--acc)]">{shortClienteId(c.id)}</Td>
+            <Td className="text-white">{(c as unknown as { razonSocial?: string }).razonSocial || '—'}</Td>
             <Td className="font-medium text-white">{c.nombre}</Td>
             <Td>{c.telefono}</Td>
             <Td>{c.email}</Td>
             <Td>
-              <IconButton tone="view" title="Ver ficha y documentos" onClick={() => setInfo(c)}>
-                <Info className="h-4 w-4" />
-              </IconButton>
+              <button
+                className={`inline-grid place-items-center w-8 h-8 rounded-lg border transition ${
+                  conFactura.has(c.nombre)
+                    ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
+                    : 'border-white/10 text-[var(--panel-muted)] hover:text-[var(--acc)] hover:border-[var(--acc)]'
+                }`}
+                title={conFactura.has(c.nombre) ? 'Ver facturas del cliente' : 'Sin facturas — ir a facturación'}
+                onClick={() => router.push('/facturas')}>
+                <FileText className="h-4 w-4" />
+              </button>
             </Td>
             <Td>
+              {/* Los 3 iconos de acción (ver/editar/eliminar) EN LÍNEA en una sola columna,
+                  no repartidos en dos columnas ni en menú desplegable. */}
               <div className="flex items-center justify-end gap-2">
+                <IconButton tone="view" title="Ver ficha y documentos" onClick={() => setInfo(c)}>
+                  <Info className="h-4 w-4" />
+                </IconButton>
                 {puedeEditar && (
                   <>
                     <IconButton tone="edit" title="Editar" onClick={() => onEdit(c)}>
@@ -192,18 +209,6 @@ export default function Page() {
                   </>
                 )}
               </div>
-            </Td>
-            <Td>
-              <button
-                className={`inline-grid place-items-center w-8 h-8 rounded-lg border transition ${
-                  conFactura.has(c.nombre)
-                    ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
-                    : 'border-white/10 text-[var(--panel-muted)] hover:text-[var(--acc)] hover:border-[var(--acc)]'
-                }`}
-                title={conFactura.has(c.nombre) ? 'Ver facturas del cliente' : 'Sin facturas — ir a facturación'}
-                onClick={() => router.push('/facturas')}>
-                <FileText className="h-4 w-4" />
-              </button>
             </Td>
           </tr>
         ))}
@@ -219,13 +224,14 @@ export default function Page() {
         {actual && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3 text-sm">
-              {([['contacto', 'Contacto'], ['cif', 'NIF / CIF'], ['email', 'Email'], ['telefono', 'Teléfono'],
+              {([['razonSocial', 'Empresa'], ['contacto', 'Otro contacto'], ['cif', 'NIF / CIF'], ['email', 'Email'], ['telefono', 'Teléfono'],
                  ['direccion', 'Dirección'], ['segmento', 'Segmento'], ['visitas', 'Visitas'],
                  ['gastoTotal', 'Gasto total'], ['ultimaVisita', 'Última visita']] as const).map(([k, label]) => (
                 <div key={k}>
                   <span className="text-[var(--panel-muted)]">{label}</span>
                   <p className="flex items-center gap-2 text-white">
-                    <span>{String((actual as unknown as Record<string, unknown>)[k] ?? '—') || '—'}</span>
+                    <span>{k === 'gastoTotal' ? eurSuffix(Number(actual.gastoTotal) || 0)
+                      : (String((actual as unknown as Record<string, unknown>)[k] ?? '—') || '—')}</span>
                     {k === 'direccion' && mapsUrlActual && (
                       <a href={mapsUrlActual} target="_blank" rel="noreferrer" title="Abrir en Google Maps"
                         className="inline-grid h-6 w-6 place-items-center rounded-md text-[var(--acc)] transition hover:bg-[var(--hover-bg)]">
@@ -237,7 +243,7 @@ export default function Page() {
               ))}
               <div>
                 <span className="text-[var(--panel-muted)]">Gasto pendiente de cobro</span>
-                <p className="text-white">€{gastoPendienteActual}</p>
+                <p className="text-white">{eurSuffix(gastoPendienteActual)}</p>
               </div>
               {extraFields.map((f) => (
                 <div key={f.name}>

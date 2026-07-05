@@ -102,9 +102,12 @@ describe('defaultDashboardWidgets', () => {
     }
   });
 
-  it('comerciales completa con los widgets de sus módulos reales (contactos/comercial) en vez de repetir agenda', () => {
+  it('comerciales completa con los widgets de sus módulos reales (contactos/comercial/facturas) en vez de repetir agenda', () => {
+    // facturas entra en defaultModules de `comerciales` (crm-clientes-empresa-vs-contacto:
+    // la tabla de Clientes siempre pinta la columna Facturas), así que su widget dependiente
+    // ahora completa el hueco hasta MAX_DASHBOARD_WIDGETS en vez de quedar fuera.
     const ids = defaultDashboardWidgets('comerciales');
-    expect(ids).toEqual(['agenda', 'proximos-eventos', 'clientes-nuevos', 'contactos-nuevos', 'visitas-comercial']);
+    expect(ids).toEqual(['agenda', 'proximos-eventos', 'clientes-nuevos', 'contactos-nuevos', 'visitas-comercial', 'facturacion-pendiente']);
   });
 
   it('vertical "custom" (sin módulo citas) no recibe agenda/kpis/proximos', () => {

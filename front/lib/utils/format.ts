@@ -3,6 +3,10 @@
 /** Importe en euros sin decimales: 1234 → "€1.234". */
 export const eur = (n: number): string => '€' + n.toLocaleString('es-ES', { maximumFractionDigits: 0 });
 
+/** Importe con el símbolo € DETRÁS y 2 decimales: 1234.5 → "1.234,50 €" (ficha de cliente). */
+export const eurSuffix = (n: number): string =>
+  new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(n);
+
 /** Dos dígitos con cero a la izquierda: 5 → "05". */
 export const pad = (n: number): string => String(n).padStart(2, '0');
 

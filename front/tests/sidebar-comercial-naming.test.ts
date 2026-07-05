@@ -48,6 +48,11 @@ describe('defaultModules del vertical comerciales (WU2.3)', () => {
     expect(cfg.modules.citas).toBe(true);
     expect(cfg.modules.configuracion).toBe(true);
     expect(cfg.modules['mi-cuenta']).toBe(true);
+    // facturas entra en el default (crm-clientes-empresa-vs-contacto): la tabla de
+    // Clientes SIEMPRE pinta una columna Facturas para cualquier vertical con
+    // `clientes` activo; dejarlo fuera del default hacía que ese botón rebotara a
+    // /panel (ModuleGuard) en negocios nuevos de este vertical.
+    expect(cfg.modules.facturas).toBe(true);
   });
 
   it('deja retail/marketing y el resto apagados pero activables', () => {
@@ -58,7 +63,6 @@ describe('defaultModules del vertical comerciales (WU2.3)', () => {
     expect(cfg.modules.vacaciones).toBe(false);
     expect(cfg.modules.productos).toBe(false);
     expect(cfg.modules.ventas).toBe(false);
-    expect(cfg.modules.facturas).toBe(false);
     expect(cfg.modules.marketing).toBe(false);
     expect(cfg.modules.estadisticas).toBe(false);
   });
