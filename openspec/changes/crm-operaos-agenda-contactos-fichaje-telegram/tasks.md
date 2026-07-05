@@ -40,3 +40,15 @@ Chain strategy: pending
 - [x] 5.2 Ajustar back/modelo para eventos ordenados de jornada si el CRUD actual no alcanza.
 - [x] 5.3 Tests de secuencia válida y bloqueo de fichajes extra.
 
+## Phase 6: Fixes reales tras QA (2026-07-05) — las fases 1-5 quedaron marcadas [x] pero no funcionaban en la práctica
+- [x] 6.1 Padding lateral en todas las vistas del panel (`.opera-main`/`.opera-content`, `app-shell.tsx`) — antes el contenido ocupaba el 100% del ancho.
+- [x] 6.2 Dashboard sobrecargado de widgets de agenda (4 de 5 widgets por defecto eran variantes de citas/agenda para el vertical `comerciales`) — nuevos widgets `contactos-nuevos` y `visitas-comercial`, regla anti-repetición (`MAX_AGENDA_GROUP_DEFAULTS=2`) en `defaultDashboardWidgets`.
+- [x] 6.3 Widget de Agenda del dashboard agrandado a tamaño `xl` con card lateral (mismo layout que `/citas`), antes era una versión mini.
+- [x] 6.4 Fix Google Maps `InvalidKeyMapError`: `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` en `front/.env.local` tenía un `:` sobrante al inicio (40 chars en vez de 39) — corregido.
+- [x] 6.5 Rebrand Telegram → Minion: ícono SVG propio (`MinionIcon`), texto "Minion" en vez de "Telegram" en toda la UI.
+- [x] 6.6 Bug real de tiempo real: el polling de 5s pisaba el mensaje optimista recién enviado con datos viejos del servidor — fix con merge por id en `use-telegram-inbox.ts` en vez de reemplazo total del estado.
+- [x] 6.7 Widget de Minion pasa de estar montado solo dentro de `(crm)/layout.tsx` (por proyecto) a `app/layout.tsx` (root) — ahora aparece en `/dashboard` y persiste al entrar/salir de cualquier proyecto.
+- [x] 6.8 Terminología "Cuenta"→"Cliente" en columna de Citas/Reuniones para el vertical `comerciales`.
+- [x] 6.9 20 clientes + 10 contactos (mix lead/prospecto) mock creados en el tenant "Comercial Demo IA" vía SQL directo, todos los campos rellenos, geo real de Madrid.
+- [x] 6.10 Empleado de prueba "Laura Fichaje Test" creado en el tenant "AiAs" para poder probar fichaje — SIN login todavía (crear vía Configuración → invitar usuario, no se hizo por SQL directo al no tener credenciales de admin para pasar por el flujo real).
+
