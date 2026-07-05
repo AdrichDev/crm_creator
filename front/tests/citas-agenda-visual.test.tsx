@@ -56,11 +56,11 @@ describe('citas/page — vista full-screen comparte gramática con AgendaWidget 
     expect(screen.getAllByRole('button', { name: 'Día' }).length).toBeGreaterThan(0);
   });
 
-  it('/citas muestra tarjetas de evento (.appointment-card) igual que el widget, con el día 16 seleccionado', async () => {
+  it('/citas muestra tarjetas de evento (.cita-full-card) igual que el widget, con el día 16 seleccionado', async () => {
     const { container } = render(<Page />);
     await flush();
 
-    const tarjetas = container.querySelectorAll('.agenda-widget-day-list .appointment-card');
+    const tarjetas = container.querySelectorAll('.agenda-widget-day-list .cita-full-card');
     expect(tarjetas.length).toBeGreaterThan(0);
   });
 });

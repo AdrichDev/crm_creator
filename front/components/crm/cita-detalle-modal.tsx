@@ -14,11 +14,14 @@ export type CitaConNotas = Cita & { notes?: string | null; direccion?: string | 
 // ui/modal.tsx + globals.css .opera-modal-close) con los tokens del CRM. Las
 // "anotaciones" viven en Booking.notes (texto libre, sin migración — ver decisiones
 // de crm-citas-ux-agenda/proposal.md).
-export function CitaDetalleModal({ cita, onClose, onSave, onIrAgenda }: {
+export function CitaDetalleModal({ cita, onClose, onSave, onIrAgenda, irAgendaLabel = 'Ir a agenda' }: {
   cita: CitaConNotas | null;
   onClose: () => void;
   onSave: (notes: string) => void;
   onIrAgenda: () => void;
+  /** Desde el widget del inicio navega a /citas; desde /citas la misma acción
+   * abre directamente el formulario de edición — la etiqueta debe reflejarlo. */
+  irAgendaLabel?: string;
 }) {
   const [notes, setNotes] = useState('');
 
@@ -42,7 +45,7 @@ export function CitaDetalleModal({ cita, onClose, onSave, onIrAgenda }: {
     <Modal open title="Detalle de cita" onClose={onClose}
       footer={<>
         <Button variant="outline" onClick={onClose}>Cerrar</Button>
-        <Button onClick={onIrAgenda}>Ir a agenda</Button>
+        <Button onClick={onIrAgenda}>{irAgendaLabel}</Button>
       </>}>
       <dl className="divide-y divide-[var(--line)] text-sm">
         {campos.map(([label, value]) => (

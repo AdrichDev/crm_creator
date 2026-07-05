@@ -18,9 +18,11 @@ import { usePaginatedApi } from '@/lib/data/use-paginated-api';
 import { SearchInput } from '@/components/ui/search-input';
 import { Pagination } from '@/components/ui/pagination';
 import { CITAS_SECTOR_FIELDS, type SectorFieldsDef } from '@/lib/config/citas-sector-fields';
-import { DOW_FULL } from '@/lib/config/constants';
 import { ClienteInfoModal } from '@/components/crm/cliente-info-modal';
+import { CitaDetalleModal, type CitaConNotas } from '@/components/crm/cita-detalle-modal';
 import { AgendaGrid } from '@/components/panel/widgets/agenda-grid';
+import { estadoTone, tone, metaFields } from '@/components/agenda/shared';
+import { addDays } from '@/lib/utils/calendar';
 
 // Shape que devuelve el back para /bookings paginado.
 type CitaApiRow = {
@@ -56,55 +58,28 @@ const ESTADO_TO_STATUS: Record<string, string> = {
   Pendiente: 'PENDING', Confirmada: 'CONFIRMED', Cancelada: 'CANCELLED', Completada: 'COMPLETED',
 };
 
-/** "Canal: Videollamada" en notes → "Videollamada". Ver Open Question crm-citas-por-sector. */
-function extractCanal(notes?: string | null): string {
-  const m = notes?.match(/Canal:\s*(.+)/);
-  return m?.[1]?.trim() ?? '—';
-}
-
-function diaSemanaLabel(fecha: string): string {
-  const [y, m, d] = fecha.split('-').map(Number);
-  const dt = new Date(y, (m ?? 1) - 1, d ?? 1);
-  return DOW_FULL[(dt.getDay() + 6) % 7];
-}
-
-const tone = (s: string) => s === 'Confirmada' ? 'green' : s === 'Pendiente' ? 'amber' : s === 'Completada' ? 'blue' : 'red';
-// Mismo mapeo de color que AgendaWidget (borde izquierdo de la tarjeta) — paridad visual AC1.
-const estadoTone = (s: string) => (s === 'Completada' ? '#6aa8ff' : s === 'Cancelada' ? '#ff4757' : 'var(--acc)');
-
 type CitaRow = Cita & Partial<CitaApiRow>;
 
-/** Metadatos secundarios de la tarjeta según el vertical — equivalente a las columnas
- * extra de la tabla que sustituye (crm-citas-por-sector), sin repetir cliente/estado. */
-function metaFields(c: CitaRow, sector?: SectorFieldsDef): [string, string][] {
-  if (sector?.formComponent === 'entrenamiento') {
-    return [['Campo', c.recurso ?? '—'], ['Día', diaSemanaLabel(c.fecha)], ['Entrenador', c.empleado || '—']];
-  }
-  if (sector?.formComponent === 'clase') {
-    return [['Instructor', c.empleado || '—'], ['Sala', c.recurso ?? '—'], ['Día', diaSemanaLabel(c.fecha)], ['Aforo', String(c.aforo ?? '—')]];
-  }
-  if (sector?.formComponent === 'reunion') {
-    return [['Comercial', c.empleado || '—'], ['Canal', extractCanal(c.notes)]];
-  }
-  return [['Servicio', c.servicio || '—'], ['Profesional', c.empleado || '—']];
-}
-
-/** Tarjeta de evento de la agenda full-screen (WU1). En vista compacta (semana/día)
- * se recorta a hora + cliente, igual que AgendaWidget. */
-function CitaAgendaCard({ c, compact, sector, apiEnabled, onCliente, onEdit, onDelete }: {
+/** Tarjeta de evento de la agenda full-screen (WU1). Card grande (paridad visual
+ * con AppointmentCard de agents-agency); en vista compacta (semana/día) se recorta
+ * a hora + cliente pero con letra más grande que el widget del inicio.
+ * Click en cualquier parte de la tarjeta (fuera del nombre y de Editar/Eliminar)
+ * abre el detalle — mismo comportamiento que AgendaWidget (editarCita). */
+function CitaAgendaCard({ c, compact, sector, apiEnabled, onCliente, onOpenDetalle, onEdit, onDelete }: {
   c: CitaRow; compact: boolean; sector?: SectorFieldsDef; apiEnabled: boolean;
-  onCliente: (customerId: string) => void; onEdit: () => void; onDelete: () => void;
+  onCliente: (customerId: string) => void; onOpenDetalle: () => void; onEdit: () => void; onDelete: () => void;
 }) {
   return (
     <div
-      className={compact ? 'appointment-card appointment-card-compact' : 'appointment-card'}
+      className={compact ? 'cita-full-card cita-full-card-compact' : 'cita-full-card'}
       style={{ borderLeftColor: estadoTone(c.estado) }}
-      onClick={(e) => e.stopPropagation()}
+      onClick={onOpenDetalle}
     >
       <div className="time">{c.hora}</div>
       <div className="client">
         {apiEnabled && c.customerId ? (
-          <button type="button" className="hover:underline hover:text-[var(--acc)]" onClick={() => onCliente(c.customerId!)}>
+          <button type="button" className="hover:underline hover:text-[var(--acc)]"
+            onClick={(e) => { e.stopPropagation(); onCliente(c.customerId!); }}>
             {c.cliente}
           </button>
         ) : c.cliente}
@@ -114,7 +89,7 @@ function CitaAgendaCard({ c, compact, sector, apiEnabled, onCliente, onEdit, onD
           <div className="meta">
             {metaFields(c, sector).map(([label, value]) => `${label}: ${value}`).join(' · ')}
           </div>
-          <div className="mt-1 flex items-center justify-between gap-2">
+          <div className="mt-1 flex items-center justify-between gap-2" onClick={(e) => e.stopPropagation()}>
             <Badge tone={tone(c.estado)}>{c.estado}</Badge>
             <RowActions onEdit={onEdit} onDelete={onDelete} />
           </div>
@@ -133,14 +108,23 @@ export default function Page() {
   // Modo generador: localStorage / mock.
   const { items: collectionItems, create, update, remove, refresh: collectionRefresh } = useCollection<Cita>('citas', seed);
 
-  // Modo API: paginación server-side.
-  const paged = usePaginatedApi<CitaApiRow>('/bookings', 20, apiEnabled);
+  // Rango visible del calendario (mes/semana/día) — AgendaGrid lo reporta tras cada
+  // navegación. Sin esto, /bookings solo devolvía una página fija de 20 reservas sin
+  // filtrar por fecha: cambiar de día en el calendario no traía datos nuevos (bug).
+  const [range, setRange] = useState<{ from: string; to: string } | null>(null);
+
+  // Modo API: paginación server-side, escopada al rango visible del calendario.
+  const paged = usePaginatedApi<CitaApiRow>('/bookings', 100, apiEnabled, {
+    from: range?.from, to: range?.to,
+  });
 
   const dialog = useDialog();
   const [open, setOpen] = useState(false);
   const [openNueva, setOpenNueva] = useState(false);
   const [editing, setEditing] = useState<(Cita & Partial<Omit<CitaApiRow, 'id'>>) | null>(null);
   const [clienteId, setClienteId] = useState<string | null>(null);
+  // Detalle de cita al pulsar la tarjeta (paridad con AgendaWidget.editarCita).
+  const [detalleId, setDetalleId] = useState<CitaRow['id'] | null>(null);
   // Fallback WU6 (paridad con NuevaCitaModal): si GET /bookings/slots falla al
   // editar, se degrada al <input type="time"> de siempre.
   const [chipsFallback, setChipsFallback] = useState(false);
@@ -220,6 +204,28 @@ export default function Page() {
     void dialog.confirm({ message: '¿Eliminar?', danger: true }).then((ok) => { if (ok) remove(c.id); });
   }
 
+  // Detalle de cita (paridad AgendaWidget): click en tarjeta abre CitaDetalleModal.
+  const detalleCita = (displayItems as CitaConNotas[]).find((c) => c.id === detalleId) ?? null;
+  async function onGuardarNotas(notes: string) {
+    if (!detalleCita) return;
+    if (apiEnabled) {
+      try {
+        await apiFetch(`/bookings/${detalleCita.id}`, { method: 'PATCH', body: JSON.stringify({ notes }) });
+        paged.refresh();
+      } catch (err) {
+        await dialog.alert(err instanceof Error ? err.message : 'No se pudo guardar la anotación.');
+      }
+      return;
+    }
+    update(detalleCita.id, { notes } as unknown as Partial<Cita>);
+  }
+  // Ya estamos en /citas: "Ir a agenda" del modal abre directamente el formulario de edición.
+  function onIrAgendaDesdeDetalle() {
+    const c = detalleCita;
+    setDetalleId(null);
+    if (c) onEditar(c as CitaRow);
+  }
+
   return (
     <ModuleGuard module="citas">
       <div className="panel-fill">
@@ -236,17 +242,24 @@ export default function Page() {
         )}
 
         {/* Vista full-screen — misma gramática que el widget Agenda del inicio (AC1).
-            En modo API, el rango visible sigue siendo la página paginada actual de
-            /bookings (20 ítems); mostrar el mes/rango completo queda para WU2
-            (calendar CRUD, ver design.md). */}
+            En modo API, el rango se escopa al mes/semana/día visible (onRangeChange). */}
         <AgendaGrid<CitaRow>
           items={displayItems}
           getKey={(c) => c.id}
           emptyLabel={`Sin ${term.toLowerCase()} este día.`}
+          onRangeChange={(from, to) => {
+            // `to` de AgendaGrid es inclusivo (último día visible); el back filtra
+            // startAt con `lte: new Date(to)`, que parsea a medianoche — sin el +1
+            // día, se excluían TODAS las citas del propio día `to` (bug reportado:
+            // filtrar por día no mostraba nada agendado ese día).
+            const toExclusivo = addDays(to, 1);
+            setRange((prev) => (prev?.from === from && prev?.to === toExclusivo ? prev : { from, to: toExclusivo }));
+          }}
           renderCard={(c, { compact }) => (
             <CitaAgendaCard
               c={c} compact={compact} sector={sector} apiEnabled={apiEnabled}
-              onCliente={setClienteId} onEdit={() => onEditar(c)} onDelete={() => onEliminar(c)}
+              onCliente={setClienteId} onOpenDetalle={() => setDetalleId(c.id)}
+              onEdit={() => onEditar(c)} onDelete={() => onEliminar(c)}
             />
           )}
         />
@@ -260,6 +273,14 @@ export default function Page() {
         initial={editing as unknown as Record<string, string | number> | null} onSubmit={onSubmit} onClose={() => setOpen(false)} />
 
       <ClienteInfoModal customerId={clienteId} onClose={() => setClienteId(null)} />
+
+      <CitaDetalleModal
+        cita={detalleCita}
+        onClose={() => setDetalleId(null)}
+        onSave={onGuardarNotas}
+        onIrAgenda={onIrAgendaDesdeDetalle}
+        irAgendaLabel="Editar"
+      />
 
       {sector?.formComponent === 'entrenamiento' && (
         <NuevaEntrenamientoModal open={openNueva} onClose={() => setOpenNueva(false)} onCreated={() => paged.refresh()} />

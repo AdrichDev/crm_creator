@@ -68,10 +68,15 @@ export interface AgendaGridProps<T extends AgendaItem> {
   /** Solo para tests: fija la fecha inicial en vez de `new Date()`. */
   initialDate?: Date;
   onSelectedChange?: (fecha: string) => void;
+  /** Rango de fechas visible (mes/semana/día) tras cada navegación o cambio de
+   * vista — permite al consumidor re-pedir datos escopados a ese rango en vez
+   * de filtrar dentro de una página fija (bug: cambiar de día no actualizaba
+   * los registros en modo API paginado). */
+  onRangeChange?: (from: string, to: string) => void;
 }
 
 export function AgendaGrid<T extends AgendaItem>({
-  items, emptyLabel, getKey, renderCard, initialDate, onSelectedChange,
+  items, emptyLabel, getKey, renderCard, initialDate, onSelectedChange, onRangeChange,
 }: AgendaGridProps<T>) {
   const [vista, setVista] = useState<AgendaVista>('mes');
   const [cursor, setCursor] = useState<Date | null>(null);
@@ -90,6 +95,52 @@ export function AgendaGrid<T extends AgendaItem>({
     for (const it of items) map.set(it.fecha, (map.get(it.fecha) ?? 0) + 1);
     return map;
   }, [items]);
+
+  // Notifica el rango visible (mes/semana/día) al consumidor tras cada cambio de
+  // vista o navegación, para que pueda re-pedir datos escopados a ese rango.
+  useEffect(() => {
+    if (!cursor || !onRangeChange) return;
+    if (vista === 'dia') {
+      const d = buildDayCell(cursor);
+      onRangeChange(d.date, d.date);
+      return;
+    }
+    if (vista === 'semana') {
+      const week = buildWeekCells(cursor);
+      onRangeChange(week[0].date, week[6].date);
+      return;
+    }
+    const monthCells = buildMonthCells(cursor.getFullYear(), cursor.getMonth());
+    const nonNull = monthCells.filter((c): c is CalCell => c !== null);
+    if (nonNull.length > 0) onRangeChange(nonNull[0].date, nonNull[nonNull.length - 1].date);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vista, cursor]);
+
+  // Mantiene `selected` sincronizado con `cursor` tras navegar (</>) o cambiar de
+  // vista. Sin esto, `navegar()` solo movía `cursor` — `eventosDelDia` (filtrado
+  // por `selected`) y el resaltado "activo" quedaban anclados al día clicado
+  // originalmente: bug reportado (avanzar/retroceder día, semana o en el widget
+  // no actualizaba el listado de citas).
+  useEffect(() => {
+    if (!cursor) return;
+    if (vista === 'dia') {
+      // En día no hay ambigüedad: el único día visible ES el seleccionado.
+      setSelected(buildDayCell(cursor).date);
+      return;
+    }
+    const rangeCells: CalCell[] = vista === 'semana'
+      ? buildWeekCells(cursor)
+      : buildMonthCells(cursor.getFullYear(), cursor.getMonth()).filter((c): c is CalCell => c !== null);
+    setSelected((prev) => {
+      if (rangeCells.some((c) => c.date === prev)) return prev;
+      // Conserva el mismo día del mes/semana al navegar cuando existe (p.ej.
+      // "día 15" del mes siguiente); si no (mes más corto), usa el primer día visible.
+      const prevDay = prev ? Number(prev.slice(-2)) : null;
+      const mismoDia = prevDay != null ? rangeCells.find((c) => c.d === prevDay) : undefined;
+      return (mismoDia ?? rangeCells[0])?.date ?? prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vista, cursor]);
 
   if (!cursor) return <p className="empty-state">Cargando agenda…</p>;
 

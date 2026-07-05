@@ -58,3 +58,14 @@ export function buildWeekCells(date: Date): CalCell[] {
 export function buildDayCell(date: Date): CalCell {
   return { d: date.getDate(), date: dateStr(date.getFullYear(), date.getMonth(), date.getDate()) };
 }
+
+/** Suma `days` días a una fecha 'YYYY-MM-DD' (puede ser negativo). Útil para
+ * convertir un rango inclusivo (ej. último día visible del calendario) en el
+ * límite exclusivo que espera un filtro `lte`/`lt` de backend sobre datetime:
+ * un `to` de solo fecha se parsea a medianoche, así que hay que pedir el día
+ * siguiente para no excluir las citas del propio día `to`. */
+export function addDays(fecha: string, days: number): string {
+  const [y, m, d] = fecha.split('-').map(Number);
+  const dt = new Date(y, (m ?? 1) - 1, (d ?? 1) + days);
+  return dateStr(dt.getFullYear(), dt.getMonth(), dt.getDate());
+}

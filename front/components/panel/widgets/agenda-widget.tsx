@@ -5,9 +5,8 @@ import { useTerm } from '@/lib/tenant-config-context';
 import { useCollection } from '@/lib/data/use-collection';
 import { citas as seedCitas, type Cita } from '@/lib/mock/data';
 import { CitaDetalleModal, type CitaConNotas } from '@/components/crm/cita-detalle-modal';
+import { estadoTone } from '@/components/agenda/shared';
 import { AgendaGrid } from './agenda-grid';
-
-const estadoTone = (s: string) => (s === 'Completada' ? '#6aa8ff' : s === 'Cancelada' ? '#ff4757' : 'var(--acc)');
 
 /**
  * Widget Agenda: calendario mes/semana/día sobre la colección `citas` (mock).
@@ -40,7 +39,7 @@ export function AgendaWidget() {
         emptyLabel={`Sin ${termCitas.toLowerCase()} este día.`}
         renderCard={(c, { compact }) => (
           <div
-            className={compact ? 'appointment-card appointment-card-compact' : 'appointment-card'}
+            className={compact ? 'cita-full-card cita-full-card-compact' : 'cita-full-card'}
             style={{ borderLeftColor: estadoTone(c.estado) }}
             onClick={(e) => { e.stopPropagation(); editarCita(c.id); }}
           >

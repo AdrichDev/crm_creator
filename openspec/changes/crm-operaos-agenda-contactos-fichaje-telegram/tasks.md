@@ -16,19 +16,19 @@ Chain strategy: pending
 400-line budget risk: High
 
 ## Phase 1: Agenda visual
-- [ ] 1.1 Extraer gram?tica reusable desde `front/components/panel/widgets/agenda-widget.tsx`.
-- [ ] 1.2 Reemplazar `front/app/(crm)/citas/page.tsx` por vista full-screen equivalente.
-- [ ] 1.3 Tests de vista y terminolog?a sectorial.
+- [x] 1.1 Extraer gramática reusable desde `front/components/panel/widgets/agenda-widget.tsx`.
+- [x] 1.2 Reemplazar `front/app/(crm)/citas/page.tsx` por vista full-screen equivalente.
+- [x] 1.3 Tests de vista y terminología sectorial.
 
 ## Phase 2: Calendar CRUD y Google Maps
 - [x] 2.1 Unificar create/update/delete contra Google Calendar en `back/src/lib/integrations/calendar.ts`.
 - [x] 2.2 Asegurar idempotencia por `bookingId` en `back/src/routes/bookings.ts`.
-- [ ] 2.3 Sustituir mapa actual por URL/embed Google Maps y test de builder.
+- [x] 2.3 Sustituir mapa actual por URL/embed Google Maps y test de builder. (commit b795eba)
 
 ## Phase 3: Contactos
-- [ ] 3.1 Añadir `contactos` a módulos, tenant config y navegación.
-- [ ] 3.2 Replicar UI/lógica desde `agents-agency/front/app/contactos` y `components/contactos`.
-- [ ] 3.3 Crear/ajustar API y persistencia si el modelo no existe.
+- [x] 3.1 Añadir `contactos` a módulos, tenant config y navegación. (commit 1ed67ca)
+- [x] 3.2 Replicar UI/lógica desde `agents-agency/front/app/contactos` y `components/contactos`. (commit 1ed67ca)
+- [x] 3.3 Crear/ajustar API y persistencia si el modelo no existe. (commit 1ed67ca)
 
 ## Phase 4: Telegram UI
 - [x] 4.1 Modelar conversaciones/mensajes Telegram por tenant si falta persistencia.

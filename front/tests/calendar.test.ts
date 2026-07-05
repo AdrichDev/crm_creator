@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildMonthCells, buildWeekCells, buildDayCell, nextWeekdayAt } from '@/lib/utils/calendar';
+import { buildMonthCells, buildWeekCells, buildDayCell, nextWeekdayAt, addDays } from '@/lib/utils/calendar';
 
 describe('buildMonthCells', () => {
   it('alinea el día 1 según el día de la semana (lunes=0)', () => {
@@ -96,6 +96,31 @@ describe('nextWeekdayAt', () => {
 describe('buildDayCell', () => {
   it('devuelve la celda del día exacto', () => {
     expect(buildDayCell(new Date(2026, 5, 15))).toEqual({ d: 15, date: '2026-06-15' });
+  });
+});
+
+describe('addDays', () => {
+  it('suma días dentro del mismo mes', () => {
+    expect(addDays('2026-07-05', 1)).toBe('2026-07-06');
+    expect(addDays('2026-07-05', 5)).toBe('2026-07-10');
+  });
+
+  it('cruza de mes correctamente', () => {
+    expect(addDays('2026-07-31', 1)).toBe('2026-08-01');
+  });
+
+  it('cruza de año correctamente', () => {
+    expect(addDays('2026-12-31', 1)).toBe('2027-01-01');
+  });
+
+  it('acepta días negativos (restar)', () => {
+    expect(addDays('2026-07-05', -1)).toBe('2026-07-04');
+    expect(addDays('2026-07-01', -1)).toBe('2026-06-30'); // cruce de mes hacia atrás
+    expect(addDays('2027-01-01', -1)).toBe('2026-12-31'); // cruce de año hacia atrás
+  });
+
+  it('days=0 devuelve la misma fecha', () => {
+    expect(addDays('2026-07-05', 0)).toBe('2026-07-05');
   });
 });
 

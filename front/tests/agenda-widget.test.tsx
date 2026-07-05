@@ -77,7 +77,7 @@ describe('AgendaWidget — vistas mes/semana/día', () => {
     await flush();
     fireEvent.click(screen.getByRole('button', { name: 'Semana' }));
 
-    const tarjetas = container.querySelectorAll('.agenda-week-col-body .appointment-card-compact');
+    const tarjetas = container.querySelectorAll('.agenda-week-col-body .cita-full-card-compact');
     expect(tarjetas.length).toBeGreaterThan(0);
   });
 
@@ -98,7 +98,7 @@ describe('AgendaWidget — vistas mes/semana/día', () => {
     vi.setSystemTime(new Date(2026, 5, 16)); // el mock tiene citas el 2026-06-16
     const { container } = render(<AgendaWidget />);
     await flush();
-    const tarjeta = container.querySelector('.appointment-card');
+    const tarjeta = container.querySelector('.cita-full-card');
     expect(tarjeta).toBeTruthy();
     fireEvent.click(tarjeta!);
 
@@ -110,7 +110,7 @@ describe('AgendaWidget — vistas mes/semana/día', () => {
     vi.setSystemTime(new Date(2026, 5, 16)); // el mock tiene citas el 2026-06-16
     const { container } = render(<AgendaWidget />);
     await flush();
-    fireEvent.click(container.querySelector('.appointment-card')!);
+    fireEvent.click(container.querySelector('.cita-full-card')!);
     expect(screen.getByText('Detalle de cita')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Ir a agenda' }));
