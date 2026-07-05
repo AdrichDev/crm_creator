@@ -9,7 +9,7 @@ import { resolveModuleEmoji } from '@/lib/config/icons';
 import { cn } from '@/lib/utils';
 import { moduleAllowedForRole, moduleFromPath, memberRoleLabel, DEMO_USERS, type Role } from '@/lib/config/roles';
 import { GENERATED_TENANT } from '@/lib/config/generated-tenant';
-import { isApiEnabled } from '@/lib/api/client';
+import { isApiEnabled, apiFetch } from '@/lib/api/client';
 import { getAuthProfile } from '@/lib/api/profile';
 import { logout } from '@/lib/auth/session';
 import { LogOut, Settings } from 'lucide-react';
@@ -65,6 +65,20 @@ export function Sidebar() {
   const [realUser, setRealUser] = useState<{ nombre: string; iniciales: string; rolLabel: string; email: string } | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Contactos pendientes de contactar (badge del nav, paridad con agents-agency).
+  // Refetch en cada cambio de ruta: sin esto el contador queda obsoleto tras marcar
+  // un contacto como "contactado" desde /contactos (mismo gotcha ya resuelto en AA,
+  // ver Sidebar.tsx de agents-agency: aa-badge-contactos-pendientes-stale).
+  const [pendingContactos, setPendingContactos] = useState(0);
+  useEffect(() => {
+    if (!apiOn) { setPendingContactos(0); return; }
+    let cancelled = false;
+    apiFetch<{ count: number }>('/contactos/pending-count')
+      .then((d) => { if (!cancelled) setPendingContactos(d.count); })
+      .catch(() => { if (!cancelled) setPendingContactos(0); });
+    return () => { cancelled = true; };
+  }, [apiOn, pathname]);
 
   useEffect(() => {
     if (!apiOn) { setRealUser(null); return; }
@@ -152,6 +166,14 @@ export function Sidebar() {
                     <Link href={m.href} className={cn(isActive && 'active')}>
                       <span className="w-5 text-center text-base leading-none">{resolveModuleEmoji(config.business.vertical, m.id, config.moduleEmojis)}</span>
                       <span className="truncate">{label}</span>
+                      {m.id === 'contactos' && pendingContactos > 0 && (
+                        <span
+                          title={`${pendingContactos} contacto(s) pendiente(s) de contactar`}
+                          className="ml-auto grid h-5 min-w-[20px] shrink-0 place-items-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold leading-none text-white"
+                        >
+                          {pendingContactos}
+                        </span>
+                      )}
                     </Link>
                   </li>
                 );

@@ -19,7 +19,11 @@ vi.mock('@/lib/tenant-config-context', () => ({
   useRole: () => ({ role: 'admin' }),
 }));
 
-vi.mock('@/lib/api/client', () => ({ isApiEnabled: () => true }));
+const pendingCountMock = vi.fn().mockResolvedValue({ count: 0 });
+vi.mock('@/lib/api/client', () => ({
+  isApiEnabled: () => true,
+  apiFetch: (...args: unknown[]) => pendingCountMock(...args),
+}));
 // El usuario real es EMPLOYEE aunque el selector "Ver como" del contexto sea 'admin'.
 vi.mock('@/lib/api/profile', () => ({
   getAuthProfile: () =>
@@ -31,7 +35,23 @@ vi.mock('@/lib/config/generated-tenant', () => ({ GENERATED_TENANT: false }));
 import { Sidebar } from '@/components/layout/sidebar';
 import { memberRoleLabel } from '@/lib/config/roles';
 
-afterEach(() => cleanup());
+afterEach(() => { cleanup(); pendingCountMock.mockClear(); });
+
+describe('UC · Badge de contactos pendientes en el nav (paridad agents-agency)', () => {
+  it('llama a GET /contactos/pending-count y muestra el contador cuando hay pendientes', async () => {
+    pendingCountMock.mockResolvedValueOnce({ count: 3 });
+    render(<Sidebar />);
+    expect(await screen.findByText('3')).toBeInTheDocument();
+    expect(pendingCountMock).toHaveBeenCalledWith('/contactos/pending-count');
+  });
+
+  it('sin pendientes (count 0), no muestra el badge', async () => {
+    pendingCountMock.mockResolvedValueOnce({ count: 0 });
+    render(<Sidebar />);
+    await screen.findByText('Carlos Ruiz Pérez'); // espera a que el efecto asíncrono asiente
+    expect(screen.queryByTitle(/pendiente/)).toBeNull();
+  });
+});
 
 describe('UC · Sidebar pie con usuario real de sesión', () => {
   it('muestra el nombre real de la sesión (no el usuario demo)', async () => {
