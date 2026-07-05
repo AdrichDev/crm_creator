@@ -480,11 +480,11 @@ body {
 .appointment-card .client { color: var(--panel-text); }
 .appointment-card .meta { font-size: .85rem; color: var(--panel-muted); }
 
-/* Widget Agenda (panel/widgets/agenda-widget.tsx): cabecera + grid/lista compactas.
-   flex column de altura 100% del tile: cabecera fija, rejilla flexible (3),
-   lista del día flexible más pequeña (1) — entre las dos absorben el alto del
-   widget sin que la rejilla de mes necesite scroll propio. */
-.agenda-widget { display: flex; flex-direction: column; gap: .5rem; height: 100%; min-height: 0; }
+/* Grid Agenda (panel/widgets/agenda-grid.tsx): cabecera + grid/lista compactas.
+   flex column de altura 100%, usado tanto en el tile del widget (Inicio) como
+   en /citas full-screen (crm-operaos-agenda-contactos-fichaje-telegram WU1) —
+   `flex: 1` deja que absorba el alto restante de `.panel-fill` en ese caso. */
+.agenda-widget { display: flex; flex-direction: column; gap: .5rem; height: 100%; min-height: 0; flex: 1; }
 .agenda-widget-head { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; flex: 0 0 auto; }
 /* Nav (flechas + periodo) y el selector Mes/Semana/Día viven en la MISMA fila,
    el selector justo al lado del periodo — si no, queda pegado a la esquina y

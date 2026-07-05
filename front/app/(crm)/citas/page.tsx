@@ -4,7 +4,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useDialog } from '@/components/ui/dialog-provider';
 import { ModuleGuard } from '@/components/layout/module-guard';
 import { useTerm, useTenantConfig } from '@/lib/tenant-config-context';
-import { PageHeader, Stat, Table, Td, Badge, Button, RowActions } from '@/components/ui/primitives';
+import { PageHeader, Stat, Badge, Button, RowActions } from '@/components/ui/primitives';
 import { EntityModal, type Field } from '@/components/ui/entity-modal';
 import { useCollection } from '@/lib/data/use-collection';
 import { citas as seed, type Cita } from '@/lib/mock/data';
@@ -17,9 +17,10 @@ import { CalendarPlus } from 'lucide-react';
 import { usePaginatedApi } from '@/lib/data/use-paginated-api';
 import { SearchInput } from '@/components/ui/search-input';
 import { Pagination } from '@/components/ui/pagination';
-import { CITAS_SECTOR_FIELDS, CITAS_DEFAULT_COLUMNS } from '@/lib/config/citas-sector-fields';
+import { CITAS_SECTOR_FIELDS, type SectorFieldsDef } from '@/lib/config/citas-sector-fields';
 import { DOW_FULL } from '@/lib/config/constants';
 import { ClienteInfoModal } from '@/components/crm/cliente-info-modal';
+import { AgendaGrid } from '@/components/panel/widgets/agenda-grid';
 
 // Shape que devuelve el back para /bookings paginado.
 type CitaApiRow = {
@@ -67,6 +68,62 @@ function diaSemanaLabel(fecha: string): string {
   return DOW_FULL[(dt.getDay() + 6) % 7];
 }
 
+const tone = (s: string) => s === 'Confirmada' ? 'green' : s === 'Pendiente' ? 'amber' : s === 'Completada' ? 'blue' : 'red';
+// Mismo mapeo de color que AgendaWidget (borde izquierdo de la tarjeta) — paridad visual AC1.
+const estadoTone = (s: string) => (s === 'Completada' ? '#6aa8ff' : s === 'Cancelada' ? '#ff4757' : 'var(--acc)');
+
+type CitaRow = Cita & Partial<CitaApiRow>;
+
+/** Metadatos secundarios de la tarjeta según el vertical — equivalente a las columnas
+ * extra de la tabla que sustituye (crm-citas-por-sector), sin repetir cliente/estado. */
+function metaFields(c: CitaRow, sector?: SectorFieldsDef): [string, string][] {
+  if (sector?.formComponent === 'entrenamiento') {
+    return [['Campo', c.recurso ?? '—'], ['Día', diaSemanaLabel(c.fecha)], ['Entrenador', c.empleado || '—']];
+  }
+  if (sector?.formComponent === 'clase') {
+    return [['Instructor', c.empleado || '—'], ['Sala', c.recurso ?? '—'], ['Día', diaSemanaLabel(c.fecha)], ['Aforo', String(c.aforo ?? '—')]];
+  }
+  if (sector?.formComponent === 'reunion') {
+    return [['Comercial', c.empleado || '—'], ['Canal', extractCanal(c.notes)]];
+  }
+  return [['Servicio', c.servicio || '—'], ['Profesional', c.empleado || '—']];
+}
+
+/** Tarjeta de evento de la agenda full-screen (WU1). En vista compacta (semana/día)
+ * se recorta a hora + cliente, igual que AgendaWidget. */
+function CitaAgendaCard({ c, compact, sector, apiEnabled, onCliente, onEdit, onDelete }: {
+  c: CitaRow; compact: boolean; sector?: SectorFieldsDef; apiEnabled: boolean;
+  onCliente: (customerId: string) => void; onEdit: () => void; onDelete: () => void;
+}) {
+  return (
+    <div
+      className={compact ? 'appointment-card appointment-card-compact' : 'appointment-card'}
+      style={{ borderLeftColor: estadoTone(c.estado) }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="time">{c.hora}</div>
+      <div className="client">
+        {apiEnabled && c.customerId ? (
+          <button type="button" className="hover:underline hover:text-[var(--acc)]" onClick={() => onCliente(c.customerId!)}>
+            {c.cliente}
+          </button>
+        ) : c.cliente}
+      </div>
+      {!compact && (
+        <>
+          <div className="meta">
+            {metaFields(c, sector).map(([label, value]) => `${label}: ${value}`).join(' · ')}
+          </div>
+          <div className="mt-1 flex items-center justify-between gap-2">
+            <Badge tone={tone(c.estado)}>{c.estado}</Badge>
+            <RowActions onEdit={onEdit} onDelete={onDelete} />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function Page() {
   const term = useTerm('citas', 'Citas');
   const { config } = useTenantConfig();
@@ -109,7 +166,6 @@ export default function Page() {
       )
     ),
   });
-  const tone = (s: string) => s === 'Confirmada' ? 'green' : s === 'Pendiente' ? 'amber' : s === 'Completada' ? 'blue' : 'red';
 
   // Items de visualización.
   const displayItems = (apiEnabled ? paged.items : collectionItems) as unknown as (Cita & Partial<CitaApiRow>)[];
@@ -159,73 +215,46 @@ export default function Page() {
   // En modo CRM el alta es real (selectores por id + disponibilidad, sector-específico); en generador, el modal mock.
   function onNueva() { if (apiEnabled) setOpenNueva(true); else { setEditing(null); setOpen(true); } }
 
-  const columns = [...(sector?.columns ?? CITAS_DEFAULT_COLUMNS.slice(0, -1)), ''];
+  function onEditar(c: CitaRow) { setEditing(c); setChipsFallback(false); setOpen(true); }
+  function onEliminar(c: CitaRow) {
+    void dialog.confirm({ message: '¿Eliminar?', danger: true }).then((ok) => { if (ok) remove(c.id); });
+  }
 
   return (
     <ModuleGuard module="citas">
-      <PageHeader title={term} subtitle="Agenda y reservas con estados."
-        action={<Button onClick={onNueva}><CalendarPlus className="h-4 w-4" /> Añadir</Button>} />
-      <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <Stat label="Total" value={apiEnabled ? paged.total : displayItems.length} />
-        <Stat label="Confirmadas" value={displayItems.filter(c => c.estado === 'Confirmada').length} />
-        <Stat label="Pendientes" value={displayItems.filter(c => c.estado === 'Pendiente').length} />
-      </div>
-
-      {apiEnabled && (
-        <div className="mb-4">
-          <SearchInput value={paged.search} onChange={paged.setSearch} placeholder="Buscar cita..." />
+      <div className="panel-fill">
+        <PageHeader title={term} subtitle="Agenda y reservas con estados."
+          action={<Button onClick={onNueva}><CalendarPlus className="h-4 w-4" /> Añadir</Button>} />
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Stat label="Total" value={apiEnabled ? paged.total : displayItems.length} />
+          <Stat label="Confirmadas" value={displayItems.filter(c => c.estado === 'Confirmada').length} />
+          <Stat label="Pendientes" value={displayItems.filter(c => c.estado === 'Pendiente').length} />
         </div>
-      )}
 
-      <Table head={columns}>
-        {displayItems.map((c) => (
-          <tr key={c.id}>
-            <Td className="font-medium text-[var(--panel-text)]">
-              {apiEnabled && c.customerId ? (
-                <button type="button" className="hover:underline hover:text-[var(--acc)]" onClick={() => setClienteId(c.customerId!)}>
-                  {c.cliente}
-                </button>
-              ) : c.cliente}
-            </Td>
-            {sector?.formComponent === 'entrenamiento' && (
-              <>
-                <Td>{c.recurso ?? '—'}</Td>
-                <Td>{diaSemanaLabel(c.fecha)}</Td>
-                <Td>{c.hora}</Td>
-                <Td>{c.empleado}</Td>
-              </>
-            )}
-            {sector?.formComponent === 'clase' && (
-              <>
-                <Td>{c.empleado}</Td>
-                <Td>{c.recurso ?? '—'}</Td>
-                <Td>{diaSemanaLabel(c.fecha)}</Td>
-                <Td>{c.hora}</Td>
-                <Td>{c.aforo ?? '—'}</Td>
-              </>
-            )}
-            {sector?.formComponent === 'reunion' && (
-              <>
-                <Td>{c.empleado}</Td>
-                <Td>{extractCanal(c.notes)}</Td>
-                <Td>{c.fecha}</Td>
-                <Td>{c.hora}</Td>
-              </>
-            )}
-            {!sector && (
-              <>
-                <Td>{c.servicio}</Td><Td>{c.empleado}</Td><Td>{c.fecha}</Td><Td>{c.hora}</Td>
-              </>
-            )}
-            <Td><Badge tone={tone(c.estado)}>{c.estado}</Badge></Td>
-            <Td><RowActions onEdit={() => { setEditing(c); setChipsFallback(false); setOpen(true); }} onDelete={() => { void dialog.confirm({ message: '¿Eliminar?', danger: true }).then((ok) => { if (ok) remove(c.id); }); }} /></Td>
-          </tr>
-        ))}
-      </Table>
+        {apiEnabled && (
+          <SearchInput value={paged.search} onChange={paged.setSearch} placeholder="Buscar cita..." />
+        )}
 
-      {apiEnabled && (
-        <Pagination page={paged.page} totalPages={paged.totalPages} total={paged.total} limit={paged.limit} onChange={paged.setPage} />
-      )}
+        {/* Vista full-screen — misma gramática que el widget Agenda del inicio (AC1).
+            En modo API, el rango visible sigue siendo la página paginada actual de
+            /bookings (20 ítems); mostrar el mes/rango completo queda para WU2
+            (calendar CRUD, ver design.md). */}
+        <AgendaGrid<CitaRow>
+          items={displayItems}
+          getKey={(c) => c.id}
+          emptyLabel={`Sin ${term.toLowerCase()} este día.`}
+          renderCard={(c, { compact }) => (
+            <CitaAgendaCard
+              c={c} compact={compact} sector={sector} apiEnabled={apiEnabled}
+              onCliente={setClienteId} onEdit={() => onEditar(c)} onDelete={() => onEliminar(c)}
+            />
+          )}
+        />
+
+        {apiEnabled && (
+          <Pagination page={paged.page} totalPages={paged.totalPages} total={paged.total} limit={paged.limit} onChange={paged.setPage} />
+        )}
+      </div>
 
       <EntityModal open={open} title={editing ? 'Editar cita' : 'Nueva cita'} fields={FIELDS}
         initial={editing as unknown as Record<string, string | number> | null} onSubmit={onSubmit} onClose={() => setOpen(false)} />
