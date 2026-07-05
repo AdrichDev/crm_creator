@@ -62,10 +62,27 @@ export interface GoogleCalendarEvent {
   extendedProperties?: { private?: Record<string, string> };
 }
 
-/** 'created' con el id del evento, o 'missing' si el negocio no conectó Calendar. */
+/**
+ * Resultado de la creación idempotente (WU2): 'created' con el id del evento,
+ * 'exists' si ya había un evento activo para ese bookingId (no se duplica),
+ * o 'missing' si el negocio no conectó Calendar.
+ */
 export type CalendarCreateResult =
   | { status: 'missing' }
+  | { status: 'created'; eventId: string }
+  | { status: 'exists'; eventId: string };
+
+/** Resultado del update (WU2): si el evento no existe en Google, se crea (upsert). */
+export type CalendarUpdateResult =
+  | { status: 'missing' }
+  | { status: 'updated'; eventId: string }
   | { status: 'created'; eventId: string };
+
+/** Resultado del delete (WU2): 'not_found' = ya no hay evento activo (idempotente). */
+export type CalendarDeleteResult =
+  | { status: 'missing' }
+  | { status: 'deleted'; eventId: string }
+  | { status: 'not_found' };
 
 /** Puerto inyectable: obtención de token + fetch. */
 export interface CalendarDeps {
@@ -104,31 +121,136 @@ function throwForStatus(businessId: string, status: number): never {
 }
 
 /**
- * Crea un evento en el Calendar conectado del negocio (T3.4). Devuelve 'missing' si el
- * negocio no conectó Calendar. Lanza ReauthRequiredError (token muerto) o ProviderError
- * (5xx) — el caller (bookings.ts) los absorbe como soft-fail, sin romper la confirmación.
+ * Resuelve el token del negocio. 'missing' (IntegrationMissingError) se traduce a null
+ * para que el caller devuelva { status: 'missing' } sin duplicar el try/catch (WU2).
+ */
+async function resolveToken(businessId: string, deps: CalendarDeps): Promise<string | null> {
+  try {
+    return await deps.getToken(businessId);
+  } catch (e) {
+    if (e instanceof IntegrationMissingError) return null;
+    throw e; // ReauthRequiredError u otro → lo maneja el caller
+  }
+}
+
+/**
+ * Busca el evento ACTIVO (no cancelado) enlazado a un bookingId vía la etiqueta privada
+ * crmBookingId (WU2). Es la base de la idempotencia: create/update/delete consultan aquí
+ * antes de actuar, así reintentos o dobles llamadas nunca duplican eventos en Google.
+ */
+async function findActiveEventByBookingId(
+  businessId: string,
+  token: string,
+  bookingId: string,
+  fetchFn: typeof fetch,
+): Promise<GoogleCalendarEvent | null> {
+  const params = new URLSearchParams({
+    privateExtendedProperty: `${CRM_BOOKING_ID_KEY}=${bookingId}`,
+    singleEvents: 'true',
+    maxResults: '10',
+  });
+  const res = await fetchFn(`${EVENTS_URL}?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throwForStatus(businessId, res.status);
+  const data = (await res.json()) as { items?: GoogleCalendarEvent[] };
+  return (data.items ?? []).find((e) => e.status !== 'cancelled') ?? null;
+}
+
+/** POST del evento a la Calendar API (núcleo compartido por create y el upsert de update). */
+async function postEvent(
+  event: NewCalendarEvent,
+  token: string,
+  fetchFn: typeof fetch,
+): Promise<string> {
+  const res = await fetchFn(EVENTS_URL, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(toGoogleEventBody(event)),
+  });
+  if (!res.ok) throwForStatus(event.businessId, res.status);
+  const data = (await res.json()) as { id?: string };
+  return data.id ?? '';
+}
+
+/**
+ * Crea un evento en el Calendar conectado del negocio (T3.4 + WU2 idempotencia).
+ * IDEMPOTENTE por bookingId: si ya existe un evento activo con esa etiqueta, NO crea
+ * otro — devuelve 'exists' con el eventId encontrado. Devuelve 'missing' si el negocio
+ * no conectó Calendar. Lanza ReauthRequiredError (token muerto) o ProviderError (5xx) —
+ * el caller (bookings.ts) los absorbe como soft-fail, sin romper la confirmación.
  */
 export async function createCalendarEvent(
   event: NewCalendarEvent,
   deps: CalendarDeps = defaultDeps(),
 ): Promise<CalendarCreateResult> {
-  let token: string;
-  try {
-    token = await deps.getToken(event.businessId);
-  } catch (e) {
-    if (e instanceof IntegrationMissingError) return { status: 'missing' };
-    throw e; // ReauthRequiredError u otro → lo maneja el caller
+  const token = await resolveToken(event.businessId, deps);
+  if (token == null) return { status: 'missing' };
+
+  const existing = await findActiveEventByBookingId(
+    event.businessId, token, event.crmBookingId, deps.fetch,
+  );
+  if (existing) return { status: 'exists', eventId: existing.id };
+
+  const eventId = await postEvent(event, token, deps.fetch);
+  return { status: 'created', eventId };
+}
+
+/**
+ * Actualiza el evento enlazado a un bookingId (WU2). Busca primero el eventId en Google
+ * por la etiqueta crmBookingId; si existe → PATCH con los datos nuevos; si NO existe
+ * (evento borrado a mano o create fallido en su día) → lo crea (upsert), garantizando
+ * que la edición siempre queda reflejada en el Calendar del tenant (AC2).
+ */
+export async function updateCalendarEvent(
+  event: NewCalendarEvent,
+  deps: CalendarDeps = defaultDeps(),
+): Promise<CalendarUpdateResult> {
+  const token = await resolveToken(event.businessId, deps);
+  if (token == null) return { status: 'missing' };
+
+  const existing = await findActiveEventByBookingId(
+    event.businessId, token, event.crmBookingId, deps.fetch,
+  );
+  if (!existing) {
+    const eventId = await postEvent(event, token, deps.fetch);
+    return { status: 'created', eventId };
   }
 
-  const res = await deps.fetch(EVENTS_URL, {
-    method: 'POST',
+  const res = await deps.fetch(`${EVENTS_URL}/${encodeURIComponent(existing.id)}`, {
+    method: 'PATCH',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(toGoogleEventBody(event)),
   });
-
   if (!res.ok) throwForStatus(event.businessId, res.status);
-  const data = (await res.json()) as { id?: string };
-  return { status: 'created', eventId: data.id ?? '' };
+  return { status: 'updated', eventId: existing.id };
+}
+
+/**
+ * Elimina el evento enlazado a un bookingId (WU2). Busca primero el eventId en Google;
+ * si no hay evento activo → 'not_found' (idempotente: borrar dos veces no falla).
+ * 404/410 del DELETE (evento ya borrado en vuelo) también cuentan como eliminado.
+ */
+export async function deleteCalendarEvent(
+  businessId: string,
+  bookingId: string,
+  deps: CalendarDeps = defaultDeps(),
+): Promise<CalendarDeleteResult> {
+  const token = await resolveToken(businessId, deps);
+  if (token == null) return { status: 'missing' };
+
+  const existing = await findActiveEventByBookingId(businessId, token, bookingId, deps.fetch);
+  if (!existing) return { status: 'not_found' };
+
+  const res = await deps.fetch(`${EVENTS_URL}/${encodeURIComponent(existing.id)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  // 404/410: otro actor lo borró entre la búsqueda y el DELETE → el objetivo se cumplió.
+  if (!res.ok && res.status !== 404 && res.status !== 410) {
+    throwForStatus(businessId, res.status);
+  }
+  return { status: 'deleted', eventId: existing.id };
 }
 
 /** Opciones de listado del poller (ventana temporal para no traer todo el calendario). */
@@ -215,40 +337,108 @@ function defaultBookingCalendarDeps(): BookingCalendarDeps {
 }
 
 /**
- * Crea el evento en el Calendar conectado del negocio al confirmar una cita (T3.4).
+ * Telemetría compartida de los hooks soft-fail (Decisión 6): traduce la excepción a su
+ * evento de integración. La telemetría en sí nunca lanza (try/catch interno).
+ */
+async function reportCalendarFailure(
+  businessId: string,
+  bookingId: string,
+  accion: string,
+  err: unknown,
+  emit: typeof defaultEmit,
+): Promise<void> {
+  try {
+    if (err instanceof ReauthRequiredError) {
+      await emit('integracion.reauth_requerido', { servicio: 'calendar' }, { businessId });
+    } else if (err instanceof ProviderError) {
+      await emit('integracion.fallo_proveedor', { servicio: 'calendar', codigo: err.codigo }, { businessId });
+    } else {
+      await emit('integracion.fallo_proveedor', { servicio: 'calendar', codigo: 'error' }, { businessId });
+    }
+  } catch {
+    // La telemetría nunca rompe el flujo de la cita.
+  }
+  console.warn(`[calendar] no se pudo ${accion} el evento (business=${businessId}, booking=${bookingId}): ${(err as Error).name}`);
+}
+
+/** Mapea BookingCalendarData al shape del evento de la Calendar API. */
+function toNewCalendarEvent(data: BookingCalendarData): NewCalendarEvent {
+  return {
+    summary: data.summary,
+    description: data.description,
+    location: data.location,
+    start: data.start,
+    end: data.end,
+    crmBookingId: data.bookingId,
+    businessId: data.businessId,
+  };
+}
+
+/**
+ * Crea el evento en el Calendar conectado del negocio al confirmar una cita (T3.4 + WU2).
  * SIEMPRE soft-fail: el fallo de creación NUNCA bloquea la confirmación de la cita
- * (regla de negocio: integración caída no rompe el flujo). Devuelve true solo si se
- * creó el evento. 'missing' (negocio sin Calendar) → false silencioso; Reauth/Provider
- * → telemetría (Decisión 6) + false. Nunca lanza.
+ * (regla de negocio: integración caída no rompe el flujo). Devuelve true si el evento
+ * quedó en Google ('created' o 'exists' — idempotencia por bookingId). 'missing'
+ * (negocio sin Calendar) → false silencioso; Reauth/Provider → telemetría + false.
+ * Nunca lanza.
  */
 export async function createBookingCalendarEvent(
   data: BookingCalendarData,
   deps: BookingCalendarDeps = defaultBookingCalendarDeps(),
 ): Promise<boolean> {
   try {
-    const result = await deps.createEvent({
-      summary: data.summary,
-      description: data.description,
-      location: data.location,
-      start: data.start,
-      end: data.end,
-      crmBookingId: data.bookingId,
-      businessId: data.businessId,
-    });
-    return result.status === 'created';
+    const result = await deps.createEvent(toNewCalendarEvent(data));
+    return result.status === 'created' || result.status === 'exists';
   } catch (err) {
-    try {
-      if (err instanceof ReauthRequiredError) {
-        await deps.emit('integracion.reauth_requerido', { servicio: 'calendar' }, { businessId: data.businessId });
-      } else if (err instanceof ProviderError) {
-        await deps.emit('integracion.fallo_proveedor', { servicio: 'calendar', codigo: err.codigo }, { businessId: data.businessId });
-      } else {
-        await deps.emit('integracion.fallo_proveedor', { servicio: 'calendar', codigo: 'error' }, { businessId: data.businessId });
-      }
-    } catch {
-      // La telemetría nunca rompe el flujo de la cita.
-    }
-    console.warn(`[calendar] no se pudo crear el evento (business=${data.businessId}, booking=${data.bookingId}): ${(err as Error).name}`);
+    await reportCalendarFailure(data.businessId, data.bookingId, 'crear', err, deps.emit);
+    return false;
+  }
+}
+
+/** Dependencias inyectables del hook de edición (WU2). */
+export interface UpdateBookingCalendarDeps {
+  updateEvent: typeof updateCalendarEvent;
+  emit: typeof defaultEmit;
+}
+
+/**
+ * Refleja la edición de una cita (reprogramación, servicio, notas) en el Calendar del
+ * negocio (WU2, AC2). Upsert: si el evento no existe en Google, se crea. SIEMPRE
+ * soft-fail — nunca lanza ni bloquea el PATCH. true si el evento quedó actualizado/creado.
+ */
+export async function updateBookingCalendarEvent(
+  data: BookingCalendarData,
+  deps: UpdateBookingCalendarDeps = { updateEvent: updateCalendarEvent, emit: defaultEmit },
+): Promise<boolean> {
+  try {
+    const result = await deps.updateEvent(toNewCalendarEvent(data));
+    return result.status === 'updated' || result.status === 'created';
+  } catch (err) {
+    await reportCalendarFailure(data.businessId, data.bookingId, 'actualizar', err, deps.emit);
+    return false;
+  }
+}
+
+/** Dependencias inyectables del hook de cancelación (WU2). */
+export interface CancelBookingCalendarDeps {
+  deleteEvent: typeof deleteCalendarEvent;
+  emit: typeof defaultEmit;
+}
+
+/**
+ * Elimina del Calendar del negocio el evento de una cita cancelada o borrada (WU2, AC2).
+ * SIEMPRE soft-fail — nunca lanza ni bloquea la cancelación. true si ya no queda evento
+ * activo en Google ('deleted' o 'not_found' — cancelar dos veces es idempotente).
+ */
+export async function cancelBookingCalendarEvent(
+  data: { businessId: string; bookingId: string },
+  deps: CancelBookingCalendarDeps = { deleteEvent: deleteCalendarEvent, emit: defaultEmit },
+): Promise<boolean> {
+  try {
+    const result = await deps.deleteEvent(data.businessId, data.bookingId);
+    return result.status === 'deleted' || result.status === 'not_found';
+  } catch (err) {
+    await reportCalendarFailure(data.businessId, data.bookingId, 'eliminar', err, deps.emit);
     return false;
   }
 }

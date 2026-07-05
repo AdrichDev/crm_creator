@@ -7,7 +7,11 @@ import { assertFks, handleCrossTenant } from '../lib/tenant.js';
 import { joinNombre } from '../lib/nombre.js';
 import { notifyBookingConfirmed, notifyBookingNoShow } from '../lib/notify.js';
 import { maybePushCalendarEvent } from '../lib/calendarEmitter.js';
-import { createBookingCalendarEvent } from '../lib/integrations/calendar.js';
+import {
+  createBookingCalendarEvent,
+  updateBookingCalendarEvent,
+  cancelBookingCalendarEvent,
+} from '../lib/integrations/calendar.js';
 import { emit } from '../lib/automation/index.js';
 import { buildReviewRequest } from '../lib/eventPayloads.js';
 import { parsePagination } from '../lib/pagination.js';
@@ -270,7 +274,7 @@ bookingsRouter.post('/', async (req: AuthedRequest, res: Response) => {
 
 async function transition(req: AuthedRequest, res: Response, to: BookingStatus) {
   const booking = await prisma.booking.findFirst({ where: { id: req.params.id, businessId: req.businessId } });
-  if (!booking) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
+  if (!booking) { res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } }); return null; }
   const updated = await prisma.booking.update({ where: { id: booking.id }, data: { status: to } });
   await prisma.bookingStatusHistory.create({ data: { bookingId: booking.id, estadoAnterior: booking.status, estadoNuevo: to, cambiadoPor: req.userId, motivo: req.body?.reason } });
 
@@ -287,6 +291,7 @@ async function transition(req: AuthedRequest, res: Response, to: BookingStatus) 
     }
   }
   res.json(updated);
+  return updated;
 }
 
 // DELETE /:id → soft delete (la cita desaparece de la agenda; cancelar es un estado).
@@ -294,10 +299,23 @@ bookingsRouter.delete('/:id', async (req: AuthedRequest, res: Response) => {
   const booking = await prisma.booking.findFirst({ where: { id: req.params.id, businessId: req.businessId, eliminadoEn: null } });
   if (!booking) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
   await prisma.booking.update({ where: { id: booking.id }, data: { eliminadoEn: new Date() } });
+
+  // WU2 (AC2): la cita borrada desaparece también del Google Calendar del negocio.
+  // Fire-and-forget soft-fail: la integración caída nunca bloquea el 204.
+  void cancelBookingCalendarEvent({ businessId: req.businessId!, bookingId: booking.id })
+    .catch(() => { /* soft-fail ya logueado */ });
+
   res.status(204).end();
 });
 
-bookingsRouter.post('/:id/cancel', (req: AuthedRequest, res) => transition(req, res, 'CANCELLED'));
+// Cancelar: transición de estado + eliminación del evento en el Calendar del negocio
+// (WU2, AC2). Fire-and-forget soft-fail: nunca bloquea la respuesta.
+bookingsRouter.post('/:id/cancel', async (req: AuthedRequest, res: Response) => {
+  const updated = await transition(req, res, 'CANCELLED');
+  if (!updated) return; // 404 ya respondido por transition
+  void cancelBookingCalendarEvent({ businessId: req.businessId!, bookingId: updated.id })
+    .catch(() => { /* soft-fail ya logueado */ });
+});
 
 // Completar: transición + solicitud de reseña al cliente (fire-and-forget, emit
 // directo a n8n; NO usa el puerto de F2). Nunca bloquea la respuesta.
@@ -415,5 +433,37 @@ bookingsRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
     }
     return row;
   });
+
+  // WU2 (AC2): refleja la edición en el Google Calendar del negocio en directo.
+  // Cancelación → elimina el evento; resto de ediciones → upsert (si el evento no
+  // existe en Google, se crea). Fire-and-forget soft-fail: nunca bloquea el PATCH.
+  void (async () => {
+    try {
+      const businessId = req.businessId!;
+      if (updated.status === 'CANCELLED') {
+        if (booking.status !== 'CANCELLED') {
+          await cancelBookingCalendarEvent({ businessId, bookingId: booking.id });
+        }
+        return;
+      }
+      const fresh = await prisma.booking.findFirst({
+        where: { id: booking.id, businessId },
+        include: { service: true, customer: true, team: true, location: true },
+      });
+      if (!fresh) return;
+      await updateBookingCalendarEvent({
+        businessId,
+        bookingId: fresh.id,
+        summary: `${fresh.service?.nombre ?? 'Cita'} — ${fresh.team ? fresh.team.nombre : (joinNombre(fresh.customer) || 'Cliente')}`,
+        description: fresh.notes ?? undefined,
+        location: fresh.location?.direccion ?? undefined,
+        start: fresh.startAt,
+        end: fresh.endAt,
+      });
+    } catch (err) {
+      console.error('[booking.patch] error en sync con Google Calendar:', (err as Error).message);
+    }
+  })();
+
   res.json(updated);
 });
