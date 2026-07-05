@@ -23,6 +23,7 @@ import type { ColorMode } from '@/lib/comercial/marker-color';
 import { loadColorMode, saveColorMode } from '@/lib/comercial/color-mode-storage';
 import { buildFollowUpList } from '@/lib/comercial/follow-up';
 import { buildRouteUrl } from '@/lib/comercial/maps-link';
+import { pedirUbicacionActual } from '@/lib/comercial/geo';
 
 const MapaClientes = dynamic(() => import('@/components/comercial/mapa-clientes'), { ssr: false });
 
@@ -114,13 +115,9 @@ export default function Page() {
   }
 
   function pedirUbicacion() {
-    if (!navigator.geolocation) return;
-    // enableHighAccuracy: sin esto el navegador puede resolver por IP/red (impreciso,
-    // a veces a varios km) en vez de GPS/WiFi. maximumAge:0 evita reusar un fix viejo.
-    navigator.geolocation.getCurrentPosition(
+    pedirUbicacionActual(
       (pos) => setNear({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
       () => setNear(null),
-      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 0 },
     );
   }
 
