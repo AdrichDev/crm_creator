@@ -35,5 +35,5 @@ pegar a endpoints de staff y consume `/me/*` (+ catálogo de solo lectura si se 
 - Pagos.
 
 ## Ruteo (Gru)
-Nivel 3 → architect ligero + spec (este) + builder por unidades + tester + reviewer. Sin Ruflo salvo que
+Nivel 3 → architect ligero + spec (este) + builder por unidades + tester + reviewer. Sin Agentic Runtime salvo que
 A+B disparen migración + cambios transversales (entonces Nivel 4 → human approval para la migración).

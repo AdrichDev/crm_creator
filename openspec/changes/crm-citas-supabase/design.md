@@ -115,7 +115,7 @@ model Notification {
 
 `tipo` = `"booking.reminder.24h"` | `"booking.reminder.2h"`. El `@@unique` evita recordatorios duplicados; insert duplicado → upsert ignora (P2002).
 
-> CAVEAT (revisión Ruflo 2026-06-25): `destino` y `programadoEn` son nullable en el modelo. En Postgres
+> CAVEAT (revisión Agentic Runtime 2026-06-25): `destino` y `programadoEn` son nullable en el modelo. En Postgres
 > los NULL se consideran distintos, así que el `@@unique` NO garantiza unicidad si alguna fila lleva
 > NULL en esos campos. Por contrato de uso, las filas de recordatorio SIEMPRE setean `destino` (email)
 > y `programadoEn` (calculado) — nunca NULL — por lo que la idempotencia está cubierta para este change.

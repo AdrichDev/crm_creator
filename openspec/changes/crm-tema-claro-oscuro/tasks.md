@@ -16,4 +16,4 @@
 - [x] V.1 Toggle alterna claro↔oscuro y persiste en reload. (manual visual) — PENDIENTE VERIFICACIÓN MANUAL DEL USUARIO.
 - [x] V.2 localStorage con `system` previo → carga como resuelto sin romper. (cubierto por test; verificar visual) — PENDIENTE VERIFICACIÓN MANUAL DEL USUARIO.
 
-## Tras verde: gate Ruflo antes de commit.
+## Tras verde: gate Agentic Runtime antes de commit.

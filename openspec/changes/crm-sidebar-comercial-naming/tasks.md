@@ -1,6 +1,6 @@
 # Tareas — crm-sidebar-comercial-naming
 
-Alcance: front-only. Orden: tipos → config vertical → sidebar. Ruflo gate antes de push.
+Alcance: front-only. Orden: tipos → config vertical → sidebar. Agentic Runtime gate antes de push.
 
 ## WU1 — Override de categoría por vertical
 - [x] 1.1 `VerticalDef.moduleCategories?: Partial<Record<ModuleId, ModuleCategory>>` en
@@ -24,6 +24,6 @@ Alcance: front-only. Orden: tipos → config vertical → sidebar. Ruflo gate an
 ## Cierre
 - [x] Z.1 front tests + tsc limpios (42 archivos / 303 tests verdes; `tsc --noEmit` sin errores).
       Smoke visual con Playwright PENDIENTE (fuera de esta pasada — requiere levantar el front).
-- [x] Z.2 Ruflo review HECHO (02/07/2026, junto a los otros 2 changes): sin hallazgos en este
+- [x] Z.2 Agentic Runtime review HECHO (02/07/2026, junto a los otros 2 changes): sin hallazgos en este
       change; 🟡 informativo sobre reducción de defaultModules — cubierto por tests (módulos
       quedan activables). Sin commit todavía.

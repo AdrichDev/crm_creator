@@ -15,4 +15,4 @@
 - [x] CRM back tests (node:test) verde (75 unit).
 - [x] CRM front vitest verde (179, incl. model-effort 7). `next build` cubierto por CI en main (rama ya mergeada).
 
-## Estado: COMPLETO. Refactor puro, sin cambio de comportamiento. Revisado (Ruflo + Devil's Advocate, ver nota).
+## Estado: COMPLETO. Refactor puro, sin cambio de comportamiento. Revisado (AgenticRuntime + Devil's Advocate, ver nota).

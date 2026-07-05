@@ -23,8 +23,8 @@
 ## Fase D — Verificación
 - [x] D.1 `npm test` (con `--env-file=.env`) CRM back verde — **109 pass / 0 fail / 0 skip** (unit + e2e live Supabase). Adapter+cliente generado validados contra DB real.
 
-## Tras verde: gate Ruflo ANTES de cualquier commit/push.
-- [x] Ruflo PASS (2026-06-28). Hallazgos resueltos:
+## Tras verde: gate Agentic Runtime ANTES de cualquier commit/push.
+- [x] Agentic Runtime PASS (2026-06-28). Hallazgos resueltos:
       - 🔴 "$disconnect del singleton rompe e2e" = FALSO POSITIVO: `node --test` aísla cada fichero
         en su propio proceso (cada e2e tiene su singleton). Evidencia: 109/0/0 con los 3 e2e.
       - 🟡 cross-schema raw (aa.tenant) = cerrado con smoke P7: modelo crm.user (6) + raw aa.tenant (11)

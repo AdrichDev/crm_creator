@@ -59,7 +59,7 @@ revision (400 lineas): PR#2.1 (fundacion, HECHO), PR#2.2 (rutas HTTP), PR#2.3 (i
 ## WU3 - Calendar (HECHO)
 - [x] **T3.1** - Rutas admin `POST /admin/:servicio/{connect,revoke}` (solo `calendar`) en `routes/integrations.ts`; tenant ya cubierto por rutas genericas WU1.
 - [x] **T3.2** - Gate `requireOperatorToken()` en rutas `/admin/*`; identidad admin viaja en `state` nonce, un tenant no puede forjarlo.
-- [x] **T3.3** - Poller `lib/calendarSync.ts`: lista eventos via `getValidToken()`, concilia con `crm.reserva`; tolerante a fallos (token revocado/listado 5xx/evento roto no rompen el lote). Vinculo evento<->reserva via `extendedProperties.private.crmBookingId` (sin migracion). Fix post-Ruflo: `findImportedBooking` (businessId+serviceId marcador+startAt+endAt como clave idempotencia) evita reservas duplicadas si el write-back PATCH falla persistente.
+- [x] **T3.3** - Poller `lib/calendarSync.ts`: lista eventos via `getValidToken()`, concilia con `crm.reserva`; tolerante a fallos (token revocado/listado 5xx/evento roto no rompen el lote). Vinculo evento<->reserva via `extendedProperties.private.crmBookingId` (sin migracion). Fix post-AgenticRuntime: `findImportedBooking` (businessId+serviceId marcador+startAt+endAt como clave idempotencia) evita reservas duplicadas si el write-back PATCH falla persistente.
 - [x] **T3.4** - `integrations/calendar.ts::createBookingCalendarEvent` enganchado en confirmacion de booking (`routes/bookings.ts`), soft-fail, telemetria en fallo; nunca bloquea la cita.
 
 ## Validacion transversal
@@ -70,4 +70,4 @@ revision (400 lineas): PR#2.1 (fundacion, HECHO), PR#2.2 (rutas HTTP), PR#2.3 (i
 - [x] **V.5** - Tokens cifrados `enc:v1:...` verificado en persistencia y refresh; logs solo status/error.name/businessId, nunca token.
 - [x] **V.6** - Revoke soft-delete verificado: `estado='revoked'` + `revokedAt`, fila persiste.
 
-Ruflo gate (revision fresca, Opus, worktree aislado): WU1+WU2 LIMPIO; WU3 APTO merge con 1 MEDIUM (duplicacion reservas write-back fallido) ya corregido + 2 LOW aceptados (import calendario primario completo, sin paginacion listado >250 eventos — bajo impacto, acotado por ventana `updatedMin`).
+AgenticRuntime gate (revision fresca, Opus, worktree aislado): WU1+WU2 LIMPIO; WU3 APTO merge con 1 MEDIUM (duplicacion reservas write-back fallido) ya corregido + 2 LOW aceptados (import calendario primario completo, sin paginacion listado >250 eventos — bajo impacto, acotado por ventana `updatedMin`).

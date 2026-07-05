@@ -26,4 +26,4 @@
 - [x] V.3 "No recuerdo" envía email de reset. — PENDIENTE VERIFICACIÓN MANUAL DEL USUARIO.
 - [x] V.4 `tsc` + tests (front vitest) verde. ← 152 tests green, tsc clean.
 
-## Tras verde: gate Ruflo antes de commit.
+## Tras verde: gate Agentic Runtime antes de commit.

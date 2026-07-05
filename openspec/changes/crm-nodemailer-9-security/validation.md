@@ -9,7 +9,7 @@ subiendo de 6 a 9, sin cambiar el proveedor SMTP ni romper el envío de emails.
 - **AC2:** la API usada (`createTransport({host,port,secure,auth})` + `sendMail`) sigue idéntica;
   cambios de código solo si el typecheck lo exige.
 - **AC3:** `tsc` limpio y suite back verde tras el bump.
-- **AC4:** gate Ruflo superado antes de cualquier commit/push.
+- **AC4:** gate Agentic Runtime superado antes de cualquier commit/push.
 
 ## Por tarea (Given-When-Then + test)
 - **A.1 upgrade** → Given `package.json`, When se sube a `nodemailer@^9.0.1`, Then instala;
@@ -29,4 +29,4 @@ subiendo de 6 a 9, sin cambiar el proveedor SMTP ni romper el envío de emails.
 - `npx tsc --noEmit` limpio. ✓
 - `npm test` (con `--env-file`) CRM back verde — 109/0/0 (incluye email + drainer + e2e live). ✓
 - `npm audit`: el HIGH de nodemailer ya no aparece. ✓
-- Gate Ruflo PASS — bump de dep sin cambios de código; gate = tsc + suite verde + vuln cerrada. ✓
+- Gate Agentic Runtime PASS — bump de dep sin cambios de código; gate = tsc + suite verde + vuln cerrada. ✓

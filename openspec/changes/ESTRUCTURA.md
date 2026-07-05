@@ -16,7 +16,7 @@ No se toca `archive/` ni el código; `archive/2026-07-02-crm-castellano-supabase
 | crm-citas-supabase | ✓ | ✓ | ✓ | ✓ | ✗ | Ninguna abierta registrada. |
 | crm-cliente-estadisticas-fixes | ✓ | ✓ | ✓ (nuevo) | ✓ | ✓ | Ninguna. CERRADO (vitest 40/40, tsc limpio, next build OK). |
 | crm-cliente-solo-mi-cuenta | ✓ | ✓ | ✓ | ✓ | ✗ | Ninguna abierta registrada. |
-| crm-comercial-campo | ✓ | ✓ | ✓ | ✓ | ✓ | Ninguna. Migración APLICADA (Z.4, verificada sin drift); Ruflo review hecho (Z.2). CERRADO 100%. |
+| crm-comercial-campo | ✓ | ✓ | ✓ | ✓ | ✓ | Ninguna. Migración APLICADA (Z.4, verificada sin drift); Agentic Runtime review hecho (Z.2). CERRADO 100%. |
 | crm-deuda-buenas-practicas | ✓ (nuevo) | ✓ (nuevo) | ✓ (nuevo) | ✗ | ✗ | TODAS: PROPUESTA — sin iniciar. Audit de buenas prácticas 2026-07-02 (lotes A-D); prioriza el usuario. |
 | crm-deuda-p3 | ✓ | ✓ | ✓ | ✗ | ✗ | Ninguna abierta registrada. |
 | crm-estudios-clon-aa | ✓ | ✓ (nuevo) | ✓ (nuevo) | ✗ | ✗ | TODAS: PROPUESTA — sin iniciar (solo existía proposal). |
@@ -25,7 +25,7 @@ No se toca `archive/` ni el código; `archive/2026-07-02-crm-castellano-supabase
 | crm-integraciones-comunicacion | ✓ | ✓ (nuevo) | ✓ (nuevo) | ✗ | ✗ | TODAS: PROPUESTA — sin iniciar; requiere aprobación humana (OAuth2, tokens por tenant, costes API, nº WhatsApp). |
 | crm-migracion-supabase | ✓ | ✓ | ✓ | ✓ | ✓ | Ninguna abierta registrada. |
 | crm-n8n-automations | ✓ | ✓ | ✓ | ✓ | ✓ | 3.1 factura PDF por email (BLOQUEADA: falta email/FK cliente + PDF → migración + decisión); 5.3 estudio programado (BLOQUEADA: estudios solo en front/localStorage); V.2 rate limit del webhook (infra usuario). |
-| crm-nodemailer-9-security | ✓ | ✓ | ✓ (nuevo) | ✗ | ✗ | Ninguna. Verificado (tsc + back 109/0/0 + audit limpio + Ruflo PASS). |
+| crm-nodemailer-9-security | ✓ | ✓ | ✓ (nuevo) | ✗ | ✗ | Ninguna. Verificado (tsc + back 109/0/0 + audit limpio + Agentic Runtime PASS). |
 | crm-onboarding-edit-landing-ia | ✓ | ✓ | ✓ (nuevo) | ✓ | ✓ | Fase 2 (2.1-2.3 ZIP), Fase 3 (3.1-3.3 landing+login) y 4.1 (extractor paleta) POSPUESTAS POR EL USUARIO (seguridad: servir JS de terceros); V.2/V.3 pendientes con ellas. Fase 1 + IA branding HECHAS y verdes. |
 | crm-perfil-editable | ✓ | ✓ | ✓ | ✓ | ✗ | V.1/V.2/V.3 = PENDIENTE VERIFICACIÓN MANUAL DEL USUARIO (código + tests verde, falta vistazo humano). |
 | crm-portal-cliente | ✓ | ✓ | ✓ (nuevo) | ✓ | ✓ | V.3 flujo manual cliente = PENDIENTE VERIFICACIÓN MANUAL; "Mis bonos"/"Mi perfil" diferidos (falta módulo/página); facturas fuera (decisión B=NO). |

@@ -1,7 +1,7 @@
 # Tareas — crm-citas-ux-agenda
 
 Nivel 2-3. Sin migración. Orden: CSS → back slots → chips → persistencia → modales.
-Ruflo gate antes de push.
+AgenticRuntime gate antes de push.
 
 ## WU1 — Selects legibles en dark
 - [x] 1.1 Regla global de panel para `select`/`option` con tokens (`--panel-card`,
@@ -52,7 +52,7 @@ Ruflo gate antes de push.
 - [x] Z.1c tsc limpio en `back` y en `front` (sin errores).
 - [ ] Z.1d Smoke visual Playwright en dark (selects de nueva cita + chips + ambos
       modales) — NO ejecutado en esta sesión de apply; pendiente para verify/QA manual.
-- [x] Z.2 Ruflo review HECHO (02/07/2026): LIMPIO, cero hallazgos. Cross-tenant scoping
+- [x] Z.2 Agentic Runtime review HECHO (02/07/2026): LIMPIO, cero hallazgos. Cross-tenant scoping
       verificado en GET /bookings/slots y GET /customers/:id; refactor availability.ts
       conserva semántica; PATCH con manejo de error sin pisar estado local; CSS scoped
       sin regresión en tpv/onboarding; fetches cancelables en modales nuevos. Cambio

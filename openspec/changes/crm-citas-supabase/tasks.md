@@ -47,7 +47,7 @@
 - [x] V.5 Idempotencia: 0 duplicados en `notificacion`. → CUBIERTA 2026-07-02: duplicado mismo eventId → 200 sin reenvío (verificado en vivo).
 - [x] V.6 tsc + back tests verde (node:test). 94/94 verde (verificado 2026-06-25).
 
-## Tras verde: gate Ruflo (revisión refactor) ANTES de cualquier commit/push.
+## Tras verde: gate Agentic Runtime (revisión refactor) ANTES de cualquier commit/push.
 
 ## Deuda documentada (fuera de este change)
 - Multi-réplica: `SELECT FOR UPDATE SKIP LOCKED` en drainer.

@@ -1,7 +1,7 @@
 # Tareas — crm-citas-google-calendar
 
 Nivel 4 (seguridad tokens + integración externa) → aprobación humana antes de Apply.
-Orden: modelo → ICS → emisor n8n → UI. Ruflo gate antes de push.
+Orden: modelo → ICS → emisor n8n → UI. Agentic Runtime gate antes de push.
 
 ## WU1 — Modelo: token de calendario + preferencia
 - [x] 1.1 Migración aditiva: `calendar_token_hash` + `calendar_push_enabled` (o tabla
@@ -64,7 +64,7 @@ Orden: modelo → ICS → emisor n8n → UI. Ruflo gate antes de push.
       pass. tsc limpio en ambos. Smoke manual contra Google Calendar real: PENDIENTE
       (requiere migración aplicada + credencial OAuth real — fuera del alcance del
       builder, lo ejecuta el orquestador/usuario).
-- [x] Z.2 Revisión de seguridad + Ruflo review HECHO (02/07/2026): feed limpio (SHA-256,
+- [x] Z.2 Revisión de seguridad + Agentic Runtime review HECHO (02/07/2026): feed limpio (SHA-256,
       404 opaco, rate-limit 30/min bucket propio, rango acotado, sin notas comerciales,
       scoping cross-user íntegro); push al calendario del staff con gate calendarPushEnabled
       y soft-fail verificados. 🟡 pendiente operativo: deploy del workflow n8n con credencial

@@ -79,7 +79,7 @@ Para cada fichero: borrar el `registerAndToken` local e importar el de `_shared.
 - [x] T6.1 `back/README.md`: retirar la línea 73 (`POST /auth/register …`); dejar el bloque
       Auth coherente (register-client, me, login/stub 410, etc.).
 
-## Verificación final (antes del gate Ruflo)
+## Verificación final (antes del gate AgenticRuntime)
 - [x] V.1 Suite e2e completa en verde con el fixture reconstruido (salvo los tests borrados).
 - [x] V.2 `tsc` del back limpio.
 - [x] V.3 grep: 0 referencias a la ruta `/register` y a `registerSchema`; `registerLimiter`
@@ -96,7 +96,7 @@ Para cada fichero: borrar el `registerAndToken` local e importar el de `_shared.
 - [ ] T7.2 Decidir tratamiento (conservar / migrar a un tenant / hard delete) y registrar la
       decisión. Este ítem **cierra** el change; no bloquea la retirada de la ruta ni el spec.
 
-## Verificación final (antes del gate Ruflo)
+## Verificación final (antes del gate AgenticRuntime)
 - [ ] V.1 Suite e2e completa en verde con el fixture reconstruido (salvo los tests borrados).
 - [ ] V.2 `tsc` del back limpio.
 - [ ] V.3 grep: 0 referencias a la ruta `/register` y a `registerSchema`; `registerLimiter` sigue presente; `registerAndToken` solo en `_shared.e2e.ts`.
@@ -106,4 +106,4 @@ Para cada fichero: borrar el `registerAndToken` local e importar el de `_shared.
 - [ ] T7.1 En Supabase, listar `crm.negocio` con `tenant_id IS NULL` creados por la vía retirada; distinguir seeds/demo legítimos de negocios huérfanos reales de producción.
 - [ ] T7.2 Decidir tratamiento (conservar / migrar a un tenant / hard delete) y registrar la decisión. Este ítem **cierra** el change; no bloquea la retirada de la ruta ni el spec.
 
-## Tras verde: gate Ruflo antes de commit (convención del repo).
+## Tras verde: gate Agentic Runtime antes de commit (convención del repo).

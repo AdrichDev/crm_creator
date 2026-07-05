@@ -65,4 +65,4 @@ ruta a cada cliente, para gestionar mejor mis visitas desde el móvil.
 IMPLEMENTADO WU1-WU9. back 137/0 · front 284/0 · tsc back+front limpio. 28 tests nuevos
 (back: geocoder 8, import 4, visit-states 5; front: maps-link 3, activación 4, csv 4).
 PENDIENTE: (1) aplicar migración a Supabase + backfill para verificación e2e con dato real;
-(2) Ruflo review antes de push; (3) e2e Playwright del mapa (opcional, requiere DB aplicada).
+(2) Agentic Runtime review antes de push; (3) e2e Playwright del mapa (opcional, requiere DB aplicada).

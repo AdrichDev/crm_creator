@@ -1,7 +1,7 @@
 # Propuesta — crm-deuda-p3 (refactor mantenibilidad, SIN cambio de comportamiento)
 
 ## Intención
-Pagar deuda P3 de clean-code en CRM detectada por la auditoría Ruflo. Refactor PURO:
+Pagar deuda P3 de clean-code en CRM detectada por la auditoría Agentic Runtime. Refactor PURO:
 la salida observable (UI, respuestas REST, estados) NO cambia. Solo estructura.
 
 ## Alcance

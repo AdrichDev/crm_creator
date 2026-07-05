@@ -15,5 +15,5 @@
 - [x] B.2 `npm test` (CRM front) verde — 179 pass.
 - [x] B.3 Grep: sin OWNER/RECEPTIONIST/PROFESSIONAL/ACCOUNTANT en fuente (salvo comentario + test defensivo).
 
-## Tras verde: gate Ruflo ANTES de cualquier commit/push.
-- [x] Ruflo PASS — ya revisado y aprobado por Ruflo previamente (sin findings).
+## Tras verde: gate Agentic Runtime ANTES de cualquier commit/push.
+- [x] Agentic Runtime PASS — ya revisado y aprobado por Agentic Runtime previamente (sin findings).

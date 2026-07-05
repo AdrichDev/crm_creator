@@ -1,7 +1,7 @@
 # Tareas — crm-comercial-campo
 
 Alcance: **P0+P1 (RF-01…RF-19)**. Mapa Leaflet+OSM, geocoder desacoplado, "Ir" deep-link Google.
-Orden = por dependencia (modelo → back → activación → front). Ruflo gate antes de cualquier push.
+Orden = por dependencia (modelo → back → activación → front). Agentic Runtime gate antes de cualquier push.
 
 ## WU1 — Modelo de datos + migración (back/DB) ✅ HECHO (tsc + test 5/5 verde)
 - [x] 1.1 Enums + campos aditivos en `Customer`.
@@ -54,7 +54,7 @@ Orden = por dependencia (modelo → back → activación → front). Ruflo gate 
 
 ## Cierre
 - [x] Z.1 back 137/0 · front 284/0 · tsc back+front limpio (+28 tests nuevos: back 17, front 11).
-- [x] Z.2 Ruflo review HECHO (5 hallazgos). Aplicados 3: import geocode (🔴), Leaflet cleanup en
+- [x] Z.2 Agentic Runtime review HECHO (5 hallazgos). Aplicados 3: import geocode (🔴), Leaflet cleanup en
   unmount (🟡), try/catch en mutaciones de la ficha (🟡). Skip justificado 2 (filtros
   estadoVisitaId/customerId ya scoped por businessId → sin fuga cross-tenant). Commit bf40a8b
   en rama ac/comercial-campo-geolocalizado (NO pusheado).

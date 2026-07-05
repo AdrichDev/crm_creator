@@ -11,5 +11,5 @@
 - [x] B.2 `npm test` (con --env-file) CRM back verde — 109/0/0 (incluye email + drainer + e2e live).
 - [x] B.3 `npm audit`: el HIGH de nodemailer ya no aparece.
 
-## Tras verde: gate Ruflo ANTES de cualquier commit/push.
-- [x] Ruflo PASS — bump de dep sin cambios de código; gate = tsc + suite verde + vuln cerrada.
+## Tras verde: gate Agentic Runtime ANTES de cualquier commit/push.
+- [x] Agentic Runtime PASS — bump de dep sin cambios de código; gate = tsc + suite verde + vuln cerrada.

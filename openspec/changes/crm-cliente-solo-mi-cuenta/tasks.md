@@ -25,4 +25,4 @@
 - [x] V.2 Guard en `sidebar.tsx` redirige cliente desde `/configuracion` a `/cuenta`. Página `/cuenta` ya existe.
 - [x] V.3 Admin/trabajador: ROLE_MODULES.admin = '*', trabajador incluye `mi-cuenta` explícitamente; configuracion se mantiene para admin. `tsc` limpio. 170 tests verde.
 
-## Tras verde: gate Ruflo antes de commit.
+## Tras verde: gate Agentic Runtime antes de commit.

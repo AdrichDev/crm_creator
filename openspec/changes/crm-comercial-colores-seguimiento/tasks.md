@@ -1,7 +1,7 @@
 # Tareas — crm-comercial-colores-seguimiento
 
 Prerequisito: migración de `crm-comercial-campo` aplicada en Supabase.
-Orden: front color → panel → back summary → campana. Ruflo gate antes de push.
+Orden: front color → panel → back summary → campana. Agentic Runtime gate antes de push.
 
 ## WU1 — Modo de color del mapa
 - [x] 1.1 Helper puro `markerColor(cliente, modo)` + colores ABC fijos (A dorado, B azul, C gris)
@@ -31,6 +31,6 @@ Orden: front color → panel → back summary → campana. Ruflo gate antes de p
 - [x] Z.1 back + front tests + tsc limpios (back: 225 pass/0 fail/52 skip sin back vivo; front:
       334/334 vitest + tsc limpio). Smoke Playwright NO ejecutado: requiere front+back live, fuera
       del alcance de este entorno de apply.
-- [x] Z.2 Ruflo review HECHO (02/07/2026): summary y campana limpios (scoping
+- [x] Z.2 Agentic Runtime review HECHO (02/07/2026): summary y campana limpios (scoping
       businessId+responsableId correcto, polling solo en focus, sin fugas cross-tenant).
       Sin bloqueantes. Sin commit todavía.
