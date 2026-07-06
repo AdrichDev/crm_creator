@@ -5,16 +5,42 @@ import { CitaDetalleModal, type CitaConNotas } from '@/components/crm/cita-detal
 afterEach(() => cleanup());
 
 const CITA: CitaConNotas = {
-  id: 1, cliente: 'Lucía Fernández', servicio: 'Corte + peinado', empleado: 'Sara',
+  id: 1, cliente: 'Lucía Fernández', clienteComercial: 'Comercial Demo IA', servicio: 'Corte + peinado', empleado: 'Sara',
   fecha: '2026-06-16', hora: '10:00', estado: 'Confirmada', notes: 'Alérgica al amoníaco',
 };
+
+// crm-cita-sin-cliente: se puede agendar sin cliente vinculado (visita médica, comida,
+// recado personal…) — el detalle NO debe mostrar filas "Cliente:"/"Persona de contacto:"
+// vacías cuando la cita no tiene cliente.
+describe('CitaDetalleModal — cita PERSONAL sin cliente vinculado', () => {
+  it('sin cliente: no muestra las filas Cliente ni Persona de contacto', () => {
+    const cita: CitaConNotas = { ...CITA, cliente: '', clienteComercial: undefined };
+    render(<CitaDetalleModal cita={cita} onClose={vi.fn()} onSave={vi.fn()} onIrAgenda={vi.fn()} />);
+    expect(screen.queryByText('Cliente')).not.toBeInTheDocument();
+    expect(screen.queryByText('Persona de contacto')).not.toBeInTheDocument();
+    expect(screen.getByText('Corte + peinado')).toBeInTheDocument(); // el resto de la ficha sigue
+  });
+});
 
 describe('CitaDetalleModal (crm-citas-ux-agenda WU5 / AC5)', () => {
   it('muestra los datos de la cita y las anotaciones precargadas', () => {
     render(<CitaDetalleModal cita={CITA} onClose={vi.fn()} onSave={vi.fn()} onIrAgenda={vi.fn()} />);
-    expect(screen.getByText('Lucía Fernández')).toBeInTheDocument();
     expect(screen.getByText('Corte + peinado')).toBeInTheDocument();
     expect(screen.getByDisplayValue('Alérgica al amoníaco')).toBeInTheDocument();
+  });
+
+  it('Cliente (nombre comercial) y Persona de contacto son registros SEPARADOS', () => {
+    render(<CitaDetalleModal cita={CITA} onClose={vi.fn()} onSave={vi.fn()} onIrAgenda={vi.fn()} />);
+    expect(screen.getByText('Cliente')).toBeInTheDocument();
+    expect(screen.getByText('Comercial Demo IA')).toBeInTheDocument(); // razón social
+    expect(screen.getByText('Persona de contacto')).toBeInTheDocument();
+    expect(screen.getByText('Lucía Fernández')).toBeInTheDocument(); // persona
+  });
+
+  it('sin razón social registrada: Cliente cae al nombre de la persona (mismo valor en ambas filas)', () => {
+    const cita: CitaConNotas = { ...CITA, clienteComercial: undefined };
+    render(<CitaDetalleModal cita={cita} onClose={vi.fn()} onSave={vi.fn()} onIrAgenda={vi.fn()} />);
+    expect(screen.getAllByText('Lucía Fernández')).toHaveLength(2); // Cliente + Persona de contacto
   });
 
   it('Guardar anotación llama a onSave con el texto editado', () => {

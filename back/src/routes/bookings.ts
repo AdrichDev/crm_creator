@@ -65,6 +65,11 @@ bookingsRouter.get('/', async (req: AuthedRequest, res: Response) => {
       id: b.id,
       // Si es una reserva de equipo (entrenamiento), "cliente" muestra el nombre del equipo.
       cliente: b.team ? b.team.nombre : joinNombre(b.customer),
+      // Nombre COMERCIAL (razón social) del cliente visitado, distinto de la persona de
+      // contacto (`cliente`, arriba): en el detalle de cita, comerciales necesita ver ambos
+      // por separado. Fallback al nombre de la persona si no hay razón social registrada
+      // (o si es una cita de equipo, sin cliente vinculado).
+      clienteComercial: b.team ? b.team.nombre : (b.customer?.razonSocial || joinNombre(b.customer)),
       servicio: b.service?.nombre ?? '',
       empleado: joinNombre(b.employee),
       fecha: b.startAt.toISOString().slice(0, 10),

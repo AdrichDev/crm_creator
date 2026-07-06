@@ -44,6 +44,13 @@ export function extractAccion(notes?: string | null): string {
   return extractField(notes, 'Acción') ?? '—';
 }
 
+/** Extrae el comentario libre cuando el Servicio elegido es "Otros" (ver nueva-cita-modal
+ *  y citas/page.tsx: el select de servicio revela un input "Comentarios" que se pliega
+ *  aquí como un segmento más del formato canónico). */
+export function extractComentarios(notes?: string | null): string {
+  return extractField(notes, 'Comentarios') ?? '—';
+}
+
 /** Metadatos secundarios de tarjeta según vertical sectorial (entrenamiento/clase/reunión). */
 export function metaFields(
   c: { recurso?: string | null; fecha: string; empleado?: string | null; aforo?: number | null; notes?: string | null; servicio?: string | null },

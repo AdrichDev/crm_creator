@@ -47,4 +47,14 @@ describe('HoraChips (crm-citas-ux-agenda WU3 / AC3)', () => {
     await flush();
     expect(onFallback).toHaveBeenCalledTimes(1);
   });
+
+  // Regresión (pedido varias veces): el chip disponible y NO elegido debe verse gris
+  // (--panel-muted, theme-aware) — antes usaba --panel-text (el texto fuerte del panel).
+  it('chip disponible y no elegido usa --panel-muted (gris en ambos temas)', async () => {
+    apiFetchMock.mockResolvedValue({ slots: [{ hora: '11:00', disponible: true }] });
+    render(<HoraChips fecha="2026-07-10" serviceId="sv1" value="" onChange={vi.fn()} onFallback={vi.fn()} />);
+    const chip = await screen.findByRole('button', { name: '11:00' });
+    expect(chip.className).toMatch(/text-\[var\(--panel-muted\)\]/);
+    expect(chip.className).not.toMatch(/text-\[var\(--panel-text\)\]/);
+  });
 });

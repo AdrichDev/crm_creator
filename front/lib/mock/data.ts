@@ -4,7 +4,9 @@
 // `datos`: data URL (base64) del archivo para previsualizar/descargar. Opcional:
 // las semillas y archivos grandes (> límite localStorage) guardan solo metadatos.
 export interface Documento { id: number | string; nombre: string; tipo: string; tam: number; fecha: string; datos?: string; }
-export interface Cliente { id: number; nombre: string; email: string; telefono: string; visitas: number; gastoTotal: number; segmento: string; ultimaVisita: string; cif?: string; direccion?: string; contacto?: string; razonSocial?: string; documentos?: Documento[]; extra?: Record<string, string>; gastoPendiente?: number; latitud?: number | null; longitud?: number | null; }
+// Dirección estructurada (crm-operaos 9.2): numero/piso/localidad/provincia/codigoPostal
+// llegan de `/customers` (crm.cliente). Opcionales: el mock generador no los rellena.
+export interface Cliente { id: number; nombre: string; email: string; telefono: string; visitas: number; gastoTotal: number; segmento: string; ultimaVisita: string; cif?: string; direccion?: string; numero?: string; piso?: string; localidad?: string; provincia?: string; codigoPostal?: string; contacto?: string; razonSocial?: string; documentos?: Documento[]; extra?: Record<string, string>; gastoPendiente?: number; latitud?: number | null; longitud?: number | null; }
 // `pedidoId`: vínculo al pedido origen (crm-paridad-facturas-pedidos-aa, PR-2b). Lo puebla
 // la API en modo remoto (columna crm.factura.pedido_id); null/undefined en facturas manuales,
 // del operador (bot Telegram) o del mock local. La vista previa lo muestra solo si existe.
@@ -50,20 +52,27 @@ export interface Venta { id: number; fecha: string; cliente: string; items: numb
 export interface Campana { id: number; nombre: string; canal: string; estado: string; enviados: number; aperturas: string; }
 export interface Resena { id: number; autor: string; estrellas: number; texto: string; fecha: string; }
 
+// Mismos 4 nombres que `clientesMock` (front/lib/config/sector-data.ts NAMES) — así el
+// combobox de vinculación de Pedidos y el widget "Clientes nuevos" (que usan este array fijo)
+// referencian los MISMOS clientes que la página Clientes muestra de verdad (cualquier
+// vertical). Antes incluía una "Elena Páez" huérfana que no existía en ninguna lista real.
 export const clientes: Cliente[] = [
   { id: 1, nombre: 'Lucía Fernández', email: 'lucia@mail.com', telefono: '600 111 222', visitas: 12, gastoTotal: 480, segmento: 'VIP', ultimaVisita: '2026-06-10' },
   { id: 2, nombre: 'Marcos Ruiz', email: 'marcos@mail.com', telefono: '600 333 444', visitas: 3, gastoTotal: 95, segmento: 'Nuevo', ultimaVisita: '2026-06-12' },
   { id: 3, nombre: 'Ana Gómez', email: 'ana@mail.com', telefono: '600 555 666', visitas: 27, gastoTotal: 1120, segmento: 'VIP', ultimaVisita: '2026-06-14' },
   { id: 4, nombre: 'David Soler', email: 'david@mail.com', telefono: '600 777 888', visitas: 7, gastoTotal: 210, segmento: 'Recurrente', ultimaVisita: '2026-05-29' },
-  { id: 5, nombre: 'Elena Páez', email: 'elena@mail.com', telefono: '600 999 000', visitas: 1, gastoTotal: 30, segmento: 'Nuevo', ultimaVisita: '2026-06-15' },
 ];
 
+// Citas del modo generador: referencian nombres REALES de `clientes` (arriba) y de
+// `CONTACTOS_SEED` (front/components/crm/contactos-lista.tsx) — mismo criterio que el seed
+// en vivo de Supabase (mitad clientes, mitad leads/contactos), en vez de nombres inventados
+// sin correlato en ninguna lista visible de la app.
 export const citas: Cita[] = [
   { id: 1, cliente: 'Lucía Fernández', servicio: 'Corte + peinado', empleado: 'Sara', fecha: '2026-06-16', hora: '10:00', estado: 'Confirmada' },
   { id: 2, cliente: 'Marcos Ruiz', servicio: 'Afeitado clásico', empleado: 'Jorge', fecha: '2026-06-16', hora: '11:30', estado: 'Pendiente' },
   { id: 3, cliente: 'Ana Gómez', servicio: 'Color + corte', empleado: 'Sara', fecha: '2026-06-16', hora: '13:00', estado: 'Confirmada' },
   { id: 4, cliente: 'David Soler', servicio: 'Corte', empleado: 'Carlos', fecha: '2026-06-17', hora: '09:30', estado: 'Cancelada' },
-  { id: 5, cliente: 'Elena Páez', servicio: 'Manicura', empleado: 'Marta', fecha: '2026-06-17', hora: '16:00', estado: 'Pendiente' },
+  { id: 5, cliente: 'Diego Serrano', servicio: 'Manicura', empleado: 'Marta', fecha: '2026-06-17', hora: '16:00', estado: 'Pendiente' },
 ];
 
 export const servicios: Servicio[] = [

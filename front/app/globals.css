@@ -302,6 +302,37 @@ body {
 :root[data-theme="light"] .opera-shell input[type="date"],
 :root[data-theme="light"] .opera-shell input[type="time"] { color-scheme: light; }
 
+/* NUEVA CITA (fix usuario, repetido varias veces: "fecha, horas disponibles y
+   Comentarios salen en blanco/color equivocado; quiero gris en ambos temas"):
+   `--panel-muted` YA es un gris theme-aware (#8e8e8e oscuro, #6b6456 claro) — ni
+   fijo a un tema ni el texto fuerte (--panel-text) que se usaba antes. Selector
+   COMBINADO `.crm-modal-panel.crm-cita-modal` (en vez de solo `.crm-cita-modal`):
+   el formulario lleva AMBAS clases a la vez, así que esta regla gana SIEMPRE por
+   especificidad (0,0,3,0 > 0,0,2,0) sin depender del orden de cascada — la regla
+   `.crm-modal-panel input[...]` (más abajo, comparte destino en nueva-clase/
+   nueva-entrenamiento) tenía la MISMA especificidad que la vieja `.crm-cita-modal`
+   sola y, por ir después en el archivo, pisaba silenciosamente este fix. Incluye
+   `textarea` (Comentarios, el único textarea de este modal) — antes no tenía
+   ningún `color` propio y heredaba lo que tocara según el tema.
+   FONDO explícito (`--panel-card`, la superficie de control estándar de la app —
+   ver `.opera-shell select option`, sidebar, etc.): antes se dejaba `transparent`
+   confiando en que el fondo del <form> (`bg-[var(--panel-bg,#fff)]`) se viera a
+   través, pero el `#fff` de ese fallback se colaba (Comentarios sin fondo propio
+   en absoluto, Fecha con `transparent` perdiendo contra el blanco de fallback) →
+   el campo quedaba BLANCO en vez de gris/oscuro en ambos temas. Fondo explícito
+   elimina la dependencia de que el padre resuelva bien su propio fondo. */
+.crm-modal-panel.crm-cita-modal input[type="date"],
+.crm-modal-panel.crm-cita-modal input[type="time"],
+.crm-modal-panel.crm-cita-modal textarea {
+  background-color: var(--panel-card);
+  color: var(--panel-muted);
+}
+.crm-modal-panel.crm-cita-modal input[type="date"]::-webkit-calendar-picker-indicator,
+.crm-modal-panel.crm-cita-modal input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: grayscale(1);
+  opacity: 0.5;
+}
+
 /* Header superior del panel */
 .opera-header {
   display: flex; justify-content: space-between; align-items: center; gap: 1rem;
@@ -684,15 +715,13 @@ body {
    sobre el backdrop en ambos temas — --panel-text ya es blanco en oscuro y casi negro
    cálido en claro, así que deriva el borde de ahí: nunca se funde con el fondo. */
 .crm-modal-panel { border: 1px solid color-mix(in srgb, var(--panel-text) 22%, transparent); }
-/* Input de fecha del modal "Nueva cita": sin esta regla hereda del scope .opera-shell
-   un fondo var(--panel-card) que no casa con los <select> hermanos (Cliente/Servicio/
-   Canal), que van sobre la superficie del panel — el campo se veía descolgado y con
-   mal contraste en ambos temas. Se re-alinea al tono de los hermanos (transparente
-   sobre --panel-bg) con texto legible, y se fija color-scheme por tema para que el
-   texto y el icono nativo de calendario tengan el chroma correcto en claro y oscuro. */
+/* Input de fecha de los modales "nueva-*" (clase/entrenamiento — nueva-cita-modal usa
+   su propia regla, arriba, con más especificidad y fondo explícito): hereda el fondo
+   `--panel-card` de `.opera-shell input[...]` (línea ~296), que es la superficie de
+   control estándar de la app — NO `transparent`, que dependía de que el `<form>` padre
+   resolviera bien su propio fondo y en la práctica dejaba el campo en blanco. */
 .crm-modal-panel input[type="date"],
 .crm-modal-panel input[type="time"] {
-  background-color: transparent;
   color: var(--panel-text);
   color-scheme: dark;
 }

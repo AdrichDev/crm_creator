@@ -52,7 +52,10 @@ export function HoraChips({ fecha, serviceId, employeeId, locationId, value, onC
             'rounded-lg border px-2 py-1.5 text-xs font-medium transition',
             !s.disponible && 'cursor-not-allowed border-[var(--line)] text-[var(--panel-muted)] opacity-40',
             s.disponible && value === s.hora && 'border-[var(--acc)] bg-[var(--acc)] text-black',
-            s.disponible && value !== s.hora && 'border-[var(--line)] text-[var(--panel-text)] hover:border-[var(--acc)]',
+            // Chip disponible y no elegido: gris (--panel-muted, theme-aware) — no el texto
+            // fuerte del panel (--panel-text). Pedido varias veces: "las horas disponibles
+            // tienen que aparecer igualmente grises" en ambos temas.
+            s.disponible && value !== s.hora && 'border-[var(--line)] text-[var(--panel-muted)] hover:border-[var(--acc)]',
           )}>
           {s.hora}
         </button>

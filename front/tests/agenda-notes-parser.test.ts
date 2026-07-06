@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractCanal, extractAccion, metaFields } from '@/components/agenda/shared';
+import { extractCanal, extractAccion, extractComentarios, metaFields } from '@/components/agenda/shared';
 import { buildCitaNotes } from '@/components/crm/nueva-cita-modal';
 
 // crm-operaos-agenda-contactos-fichaje-telegram (sub-item): el parser de notes de agenda
@@ -49,6 +49,13 @@ describe('parser de notes (Acción / Canal)', () => {
     expect(notes).toBe('Acción: Confirmar / urgente | Canal: Llamada');
     expect(extractAccion(notes)).toBe('Confirmar / urgente');
     expect(extractCanal(notes)).toBe('Llamada');
+  });
+
+  it('extrae Comentarios (Servicio "Otros") como tercer segmento', () => {
+    const notes = 'Acción: Visita comercial | Canal: Presencial | Comentarios: Cliente pide revisar el jardín';
+    expect(extractComentarios(notes)).toBe('Cliente pide revisar el jardín');
+    expect(extractComentarios('Sin comentarios aquí')).toBe('—');
+    expect(extractComentarios(null)).toBe('—');
   });
 
   it('metaFields (reunion) expone Acción y Canal', () => {

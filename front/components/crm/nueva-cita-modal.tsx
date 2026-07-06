@@ -4,6 +4,7 @@ import { apiFetch } from '@/lib/api/client';
 import { useTerm } from '@/lib/tenant-config-context';
 import { Button } from '@/components/ui/primitives';
 import { HoraChips } from '@/components/crm/hora-chips';
+import { ServicioSelect, type ServiceOpt } from '@/components/crm/servicio-select';
 import { Loader2, CalendarPlus } from 'lucide-react';
 
 interface Opt { id: string; nombre: string }
@@ -23,21 +24,19 @@ export const ACCIONES_COMERCIALES = [
   'Visita de cortesía',
 ];
 
-// Construye el string canónico de `notes` para citas comerciales (acción + canal).
-// Formato FIJO (acordado con la seed paralela que puebla el mismo tenant):
-//   - ambos presentes → `Acción: <accion> | Canal: <canal>`
-//   - solo canal      → `Canal: <canal>`  (retrocompatible con notas antiguas)
-//   - solo acción     → `Acción: <accion>`
-//   - ninguno         → undefined
-export function buildCitaNotes(accion: string, canal: string): string | undefined {
-  // El separador de segmentos es ` | `: si el texto libre de Acción lo contiene, rompería
-  // el parseo (extractField parte por ` | `). Se colapsa cualquier `|` del texto libre a `/`.
-  const a = accion.trim().replace(/\s*\|\s*/g, ' / ');
-  const c = canal.trim().replace(/\s*\|\s*/g, ' / ');
-  if (a && c) return `Acción: ${a} | Canal: ${c}`;
-  if (c) return `Canal: ${c}`;
-  if (a) return `Acción: ${a}`;
-  return undefined;
+// Construye el string canónico de `notes` para citas comerciales (acción + canal +
+// comentarios). Formato FIJO (acordado con la seed paralela que puebla el mismo tenant):
+// segmentos ` | `-separados, en orden Acción → Canal → Comentarios, cada uno opcional;
+// ninguno presente → undefined. `comentarios` se rellena cuando el Servicio elegido es
+// "Otros" (ver ServicioSelect/groupServices): una tarea sembrada sin tarifa que no
+// describe por sí misma qué es la cita, así que el usuario lo explica en texto libre.
+export function buildCitaNotes(accion: string, canal: string, comentarios = ''): string | undefined {
+  // El separador de segmentos es ` | `: si el texto libre de cualquier campo lo contiene,
+  // rompería el parseo (extractField parte por ` | `). Se colapsa cualquier `|` a `/`.
+  const clean = (s: string) => s.trim().replace(/\s*\|\s*/g, ' / ');
+  const parts = ([['Acción', clean(accion)], ['Canal', clean(canal)], ['Comentarios', clean(comentarios)]] as [string, string][])
+    .filter(([, v]) => v);
+  return parts.length ? parts.map(([label, v]) => `${label}: ${v}`).join(' | ') : undefined;
 }
 
 // Alta REAL de cita (modo CRM/Supabase): selecciona cliente/servicio/profesional
@@ -47,10 +46,10 @@ export function buildCitaNotes(accion: string, canal: string): string | undefine
 // crm-citas-por-sector sobre si merece columna propia en el futuro.
 export function NuevaCitaModal({ open, onClose, onCreated, mostrarCanal = false }: { open: boolean; onClose: () => void; onCreated: () => void; mostrarCanal?: boolean }) {
   const [customers, setCustomers] = useState<Opt[]>([]);
-  const [services, setServices] = useState<Opt[]>([]);
+  const [services, setServices] = useState<ServiceOpt[]>([]);
   const [employees, setEmployees] = useState<Opt[]>([]);
   const [locationId, setLocationId] = useState('');
-  const [form, setForm] = useState({ customerId: '', serviceId: '', employeeId: '', fecha: '', hora: '', canal: CANALES[0], accion: '' });
+  const [form, setForm] = useState({ customerId: '', serviceId: '', employeeId: '', fecha: '', hora: '', canal: CANALES[0], accion: '', comentarios: '' });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   // Fallback WU3: si GET /bookings/slots falla, se degrada al <input type="time"> de siempre.
@@ -61,30 +60,42 @@ export function NuevaCitaModal({ open, onClose, onCreated, mostrarCanal = false 
   useEffect(() => {
     if (!open) return;
     setError(''); setChipsFallback(false);
-    setForm({ customerId: '', serviceId: '', employeeId: '', fecha: '', hora: '', canal: CANALES[0], accion: '' });
+    setForm({ customerId: '', serviceId: '', employeeId: '', fecha: '', hora: '', canal: CANALES[0], accion: '', comentarios: '' });
     // Los endpoints devuelven { items, total, page, limit } tras añadir paginación server-side.
+    // `limit=100` en servicios y empleados: el catálogo real del negocio supera las 20 filas
+    // por defecto (22 servicios sembrados) y el vertical comerciales materializa al admin como
+    // empleado — sin subir el límite, la página 1 dejaría fuera servicios o al propio admin.
     Promise.all([
       apiFetch<{ items: Opt[] }>('/customers').then(r => r.items ?? []).catch(() => [] as Opt[]),
-      apiFetch<{ items: Opt[] }>('/services').then(r => r.items ?? []).catch(() => [] as Opt[]),
-      apiFetch<{ items: Opt[] }>('/employees').then(r => r.items ?? []).catch(() => [] as Opt[]),
+      apiFetch<{ items: ServiceOpt[] }>('/services?limit=100').then(r => r.items ?? []).catch(() => [] as ServiceOpt[]),
+      apiFetch<{ items: Opt[] }>('/employees?limit=100').then(r => r.items ?? []).catch(() => [] as Opt[]),
       apiFetch<{ items: { id: string }[] }>('/locations').then(r => r.items ?? []).catch(() => [] as { id: string }[]),
     ]).then(([c, s, e, l]) => { setCustomers(c); setServices(s); setEmployees(e); setLocationId(l[0]?.id ?? ''); });
   }, [open]);
 
   if (!open) return null;
 
+  // "Otros" es una tarea sembrada sin tarifa (ver seed-otros-servicio-demo-live.ts) que no
+  // describe por sí misma qué es la cita: al elegirla se revela un input "Comentarios" que
+  // se pliega en `notes` junto a Acción/Canal (buildCitaNotes).
+  const servicioSeleccionado = services.find((s) => s.id === form.serviceId);
+  const esOtros = servicioSeleccionado?.nombre === 'Otros';
+
   async function submit(ev: React.FormEvent) {
     ev.preventDefault();
-    if (!form.customerId || !form.serviceId || !form.fecha || !form.hora) { setError('Cliente, servicio, fecha y hora son obligatorios.'); return; }
+    // Cliente es OPCIONAL: el back ya admite bookings sin customerId (POST /bookings solo
+    // exige locationId/serviceId/start — el mismo camino que las citas de equipo). Permite
+    // agendar cosas personales sin cliente vinculado (visita médica, comida, recado…).
+    if (!form.serviceId || !form.fecha || !form.hora) { setError('Servicio, fecha y hora son obligatorios.'); return; }
     if (!locationId) { setError('El negocio no tiene sucursal configurada.'); return; }
     setSaving(true); setError('');
     try {
       await apiFetch('/bookings', {
         method: 'POST',
         body: JSON.stringify({
-          locationId, serviceId: form.serviceId, customerId: form.customerId,
+          locationId, serviceId: form.serviceId, customerId: form.customerId || undefined,
           employeeId: form.employeeId || undefined, start: `${form.fecha}T${form.hora}:00`,
-          notes: mostrarCanal ? buildCitaNotes(form.accion, form.canal) : undefined,
+          notes: mostrarCanal || esOtros ? buildCitaNotes(form.accion, form.canal, esOtros ? form.comentarios : '') : undefined,
         }),
       });
       onCreated(); onClose();
@@ -96,20 +107,30 @@ export function NuevaCitaModal({ open, onClose, onCreated, mostrarCanal = false 
   const inputCls = 'mt-1 w-full rounded-xl border border-[var(--line)] px-3 py-2 text-sm';
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 px-4 backdrop-blur-sm" onClick={onClose}>
-      <form onClick={(e) => e.stopPropagation()} onSubmit={submit} className="crm-modal-panel w-full max-w-md rounded-2xl bg-[var(--panel-bg,#fff)] p-6 shadow-xl">
+      <form onClick={(e) => e.stopPropagation()} onSubmit={submit} className="crm-modal-panel crm-cita-modal w-full max-w-md rounded-2xl bg-[var(--panel-bg,#fff)] p-6 shadow-xl">
         <p className="mb-4 font-display text-lg font-semibold text-[var(--panel-text)]">Nueva cita</p>
 
-        <label className="block text-xs font-medium text-[var(--panel-muted)]">{termCliente} *</label>
+        {/* Opcional: se puede agendar sin cliente (visita médica, comida, recado personal…). */}
+        <label className="block text-xs font-medium text-[var(--panel-muted)]">{termCliente}</label>
         <select className={inputCls} value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })}>
-          <option value="">Selecciona {termCliente.toLowerCase()}…</option>
+          <option value="">— Sin {termCliente.toLowerCase()} (cita personal) —</option>
           {customers.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
         </select>
 
         <label className="mt-3 block text-xs font-medium text-[var(--panel-muted)]">Servicio *</label>
-        <select className={inputCls} value={form.serviceId} onChange={(e) => setForm({ ...form, serviceId: e.target.value })}>
-          <option value="">Selecciona servicio…</option>
-          {services.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-        </select>
+        {/* Selector seccionado: catálogo real del negocio en "Servicios y tarifas" y las
+            tareas/reuniones comerciales en "Tareas y reuniones" (ver ServicioSelect).
+            Toda opción lleva un serviceId real → POST /bookings sigue validando el FK. */}
+        <ServicioSelect className={inputCls} services={services} value={form.serviceId}
+          onChange={(serviceId) => setForm({ ...form, serviceId })} />
+
+        {esOtros && (
+          <>
+            <label className="mt-3 block text-xs font-medium text-[var(--panel-muted)]">Comentarios</label>
+            <textarea className={inputCls} rows={2} value={form.comentarios} placeholder="Describe de qué trata esta cita…"
+              onChange={(e) => setForm({ ...form, comentarios: e.target.value })} />
+          </>
+        )}
 
         <label className="mt-3 block text-xs font-medium text-[var(--panel-muted)]">{termEmpleado}</label>
         <select className={inputCls} value={form.employeeId} onChange={(e) => setForm({ ...form, employeeId: e.target.value })}>

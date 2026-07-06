@@ -13,6 +13,7 @@ import { NuevaCitaModal } from '@/components/crm/nueva-cita-modal';
 import { NuevaEntrenamientoModal } from '@/components/crm/nueva-entrenamiento-modal';
 import { NuevaClaseModal } from '@/components/crm/nueva-clase-modal';
 import { HoraChips } from '@/components/crm/hora-chips';
+import { ServicioSelect, type ServiceOpt } from '@/components/crm/servicio-select';
 import { CalendarPlus } from 'lucide-react';
 import { usePaginatedApi } from '@/lib/data/use-paginated-api';
 import { SearchInput } from '@/components/ui/search-input';
@@ -28,6 +29,9 @@ import { addDays } from '@/lib/utils/calendar';
 type CitaApiRow = {
   id: string;
   cliente: string;
+  // Nombre COMERCIAL (razón social) del cliente visitado, distinto de la persona de
+  // contacto (`cliente`). Ver back/src/routes/bookings.ts.
+  clienteComercial?: string | null;
   servicio: string;
   empleado: string;
   fecha: string;
@@ -85,7 +89,11 @@ function CitaAgendaCard({ c, compact, sector, apiEnabled, onCliente, onOpenDetal
             onClick={(e) => { e.stopPropagation(); onCliente(c.customerId!); }}>
             {c.cliente}
           </button>
-        ) : c.cliente}
+        ) : (
+          // Cita personal sin cliente vinculado (visita médica, comida, recado…): sin esto
+          // la tarjeta quedaba con el bloque de nombre vacío en blanco.
+          c.cliente || <span className="text-[var(--panel-muted)]">Personal</span>
+        )}
       </div>
       {!compact && (
         <>
@@ -145,27 +153,76 @@ export default function Page() {
   // Fallback WU6 (paridad con NuevaCitaModal): si GET /bookings/slots falla al
   // editar, se degrada al <input type="time"> de siempre.
   const [chipsFallback, setChipsFallback] = useState(false);
+  // Comentarios cuando el Servicio elegido es "Otros" (paridad con NuevaCitaModal). Vive
+  // FUERA de los `values` internos de EntityModal (el campo Servicio solo expone su propio
+  // onChange, no uno para un campo hermano) y se pliega en `notes` al enviar (onSubmit).
+  const [comentariosOtros, setComentariosOtros] = useState('');
 
-  // Campo "hora" del editor: chips de slots reales (igual que NuevaCitaModal) en modo
-  // API; input de hora plano si la API no está habilitada o si el fetch de slots falló.
-  const FIELDS: Field[] = BASE_FIELDS.map((f) => f.name !== 'hora' ? f : {
-    ...f,
-    render: ({ value, onChange, values }) => (
-      apiEnabled && !chipsFallback ? (
-        <HoraChips
-          fecha={String(values.fecha ?? '')}
-          serviceId={editing?.serviceId ?? ''}
-          employeeId={editing?.employeeId ?? undefined}
-          locationId={editing?.locationId ?? undefined}
-          value={String(value ?? '')}
-          onChange={onChange}
-          onFallback={() => setChipsFallback(true)}
-        />
-      ) : (
-        <input type="time" className="opera-control" value={String(value ?? '')}
-          onChange={(e) => onChange(e.target.value)} />
-      )
-    ),
+  // Catálogo de servicios para el selector seccionado del editor (modo API). Se pide
+  // con limit=100 porque el catálogo real supera las 20 filas por defecto (22 sembradas).
+  const [services, setServices] = useState<ServiceOpt[]>([]);
+  useEffect(() => {
+    if (!apiEnabled) return;
+    apiFetch<{ items: ServiceOpt[] }>('/services?limit=100')
+      .then((r) => setServices(r.items ?? []))
+      .catch(() => setServices([]));
+  }, [apiEnabled]);
+
+  // Campos del editor. En modo API:
+  //  - "Servicio" pasa de texto plano a un <select> seccionado (ServicioSelect) que
+  //    edita el serviceId real; el back revalida disponibilidad al cambiar de servicio.
+  //  - "Hora" usa chips de slots reales (igual que NuevaCitaModal), con fallback a
+  //    <input type="time"> si el fetch de slots falla o la API no está habilitada.
+  // En modo generador/mock se conserva el campo "servicio" de texto (Cita local).
+  const FIELDS: Field[] = BASE_FIELDS.flatMap((f) => {
+    if (f.name === 'servicio') {
+      if (!apiEnabled) return [f];
+      return [{
+        name: 'serviceId', label: 'Servicio',
+        render: ({ value, onChange }) => {
+          // "Otros" es una tarea sembrada sin tarifa que no describe por sí misma qué es
+          // la cita: revela un input "Comentarios" (paridad con NuevaCitaModal), que vive
+          // en `comentariosOtros` (fuera de los `values` de EntityModal) y se pliega en
+          // `notes` en onSubmit.
+          const seleccionado = services.find((s) => s.id === String(value ?? ''));
+          const esOtros = seleccionado?.nombre === 'Otros';
+          return (
+            <>
+              <ServicioSelect className="opera-control" services={services}
+                value={String(value ?? '')} onChange={onChange} currentLabel={editing?.servicio} />
+              {esOtros && (
+                <div className="opera-field mt-2">
+                  <label className="opera-label">Comentarios</label>
+                  <textarea className="opera-control" rows={2} value={comentariosOtros}
+                    placeholder="Describe de qué trata esta cita…"
+                    onChange={(e) => setComentariosOtros(e.target.value)} />
+                </div>
+              )}
+            </>
+          );
+        },
+      }];
+    }
+    if (f.name !== 'hora') return [f];
+    return [{
+      ...f,
+      render: ({ value, onChange, values }) => (
+        apiEnabled && !chipsFallback ? (
+          <HoraChips
+            fecha={String(values.fecha ?? '')}
+            serviceId={String(values.serviceId ?? editing?.serviceId ?? '')}
+            employeeId={editing?.employeeId ?? undefined}
+            locationId={editing?.locationId ?? undefined}
+            value={String(value ?? '')}
+            onChange={onChange}
+            onFallback={() => setChipsFallback(true)}
+          />
+        ) : (
+          <input type="time" className="opera-control" value={String(value ?? '')}
+            onChange={(e) => onChange(e.target.value)} />
+        )
+      ),
+    }];
   });
 
   // Items de visualización.
@@ -190,14 +247,24 @@ export default function Page() {
       // Mapea la etiqueta ES del selector al enum del back; si no coincide con
       // ninguna opción conocida, no se envía status (el back conserva el actual).
       const status = ESTADO_TO_STATUS[String(v.estado ?? '')];
-      const notes = v.notes !== undefined && v.notes !== '' ? String(v.notes) : (editing.notes ?? undefined);
+      let notes = v.notes !== undefined && v.notes !== '' ? String(v.notes) : (editing.notes ?? undefined);
+      // Servicio final tras el submit (tocado o no): si resuelve a "Otros" y el usuario
+      // escribió un comentario, se añade como segmento más (sin pisar el resto de `notes`
+      // — p. ej. Acción/Canal ya presentes se conservan tal cual).
+      const serviceIdFinal = v.serviceId ? String(v.serviceId) : editing.serviceId;
+      const esOtrosFinal = services.find((s) => s.id === serviceIdFinal)?.nombre === 'Otros';
+      if (esOtrosFinal && comentariosOtros.trim()) {
+        const segmento = `Comentarios: ${comentariosOtros.trim().replace(/\s*\|\s*/g, ' / ')}`;
+        notes = notes ? `${notes} | ${segmento}` : segmento;
+      }
       try {
         await apiFetch(`/bookings/${editing.id}`, {
           method: 'PATCH',
           body: JSON.stringify({
             start: `${v.fecha}T${v.hora}:00`,
             employeeId: editing.employeeId ?? undefined,
-            serviceId: editing.serviceId ?? undefined,
+            // serviceId editable vía el <select> seccionado; si no se tocó, cae al actual.
+            serviceId: serviceIdFinal ?? undefined,
             notes,
             ...(status ? { status } : {}),
           }),
@@ -217,7 +284,7 @@ export default function Page() {
   // En modo CRM el alta es real (selectores por id + disponibilidad, sector-específico); en generador, el modal mock.
   function onNueva() { if (apiEnabled) setOpenNueva(true); else { setEditing(null); setOpen(true); } }
 
-  function onEditar(c: CitaRow) { setEditing(c); setChipsFallback(false); setOpen(true); }
+  function onEditar(c: CitaRow) { setEditing(c); setChipsFallback(false); setComentariosOtros(''); setOpen(true); }
   function onEliminar(c: CitaRow) {
     void dialog.confirm({ message: '¿Eliminar?', danger: true }).then(async (ok) => {
       if (!ok) return;

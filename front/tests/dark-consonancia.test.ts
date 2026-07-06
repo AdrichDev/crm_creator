@@ -124,3 +124,38 @@ describe('WU6 · hover del sidebar con contraste invertido a prueba de tenant', 
     expect(rule).not.toMatch(/%, transparent\)/);
   });
 });
+
+// crm-cita-gris (regresión reportada varias veces): Fecha/Hora/Comentarios de Nueva Cita
+// se veían en el color equivocado porque DOS reglas con la MISMA especificidad
+// (`.crm-cita-modal input[...]` y `.crm-modal-panel input[...]`) competían por cascada —
+// la que iba después en el archivo ganaba en silencio y pisaba el gris. El selector
+// COMBINADO `.crm-modal-panel.crm-cita-modal` tiene más especificidad que cualquiera de
+// las dos por separado, así que gana siempre, sin depender del orden en el archivo.
+describe('crm-cita-gris · Fecha/Hora/Comentarios grises en ambos temas (selector a prueba de cascada)', () => {
+  it('usa el selector combinado .crm-modal-panel.crm-cita-modal (no solo .crm-cita-modal)', () => {
+    expect(GLOBALS_CSS).toMatch(/\.crm-modal-panel\.crm-cita-modal input\[type="date"\]/);
+    expect(GLOBALS_CSS).toMatch(/\.crm-modal-panel\.crm-cita-modal input\[type="time"\]/);
+  });
+
+  it('la regla cubre también textarea (Comentarios) y pinta con --panel-muted (gris theme-aware)', () => {
+    const start = GLOBALS_CSS.indexOf('.crm-modal-panel.crm-cita-modal input[type="date"]');
+    const rule = GLOBALS_CSS.slice(start, GLOBALS_CSS.indexOf('}', start) + 1);
+    expect(rule).toMatch(/\.crm-modal-panel\.crm-cita-modal textarea/);
+    expect(rule).toMatch(/color:\s*var\(--panel-muted\)/);
+  });
+
+  // Regresión (2ª vuelta del mismo bug): el fondo quedaba BLANCO porque la regla ponía
+  // `background-color: transparent` confiando en que el <form> padre resolviera bien su
+  // propio fondo (y no lo hacía). Ahora el fondo es EXPLÍCITO (--panel-card), sin depender
+  // de ningún padre.
+  it('fija un fondo EXPLÍCITO (--panel-card), no "transparent"', () => {
+    const start = GLOBALS_CSS.indexOf('.crm-modal-panel.crm-cita-modal input[type="date"]');
+    const rule = GLOBALS_CSS.slice(start, GLOBALS_CSS.indexOf('}', start) + 1);
+    expect(rule).toMatch(/background-color:\s*var\(--panel-card\)/);
+    expect(rule).not.toMatch(/background-color:\s*transparent/);
+  });
+
+  it('no queda un selector .crm-cita-modal SIN combinar (ambigüedad de cascada reintroducida)', () => {
+    expect(GLOBALS_CSS).not.toMatch(/(?<!\.crm-modal-panel)\.crm-cita-modal input\[type="date"\]/);
+  });
+});

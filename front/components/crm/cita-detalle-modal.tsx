@@ -8,7 +8,9 @@ import { buildGoogleMapsEmbedUrl, buildGoogleMapsSearchUrl } from '@/lib/citas/g
 
 // direccion: opcional — viene de Location.direccion (back/src/routes/bookings.ts) cuando
 // la cita tiene locationId asociado. Sin dirección, el bloque de mapa no se muestra (AC3, WU3).
-export type CitaConNotas = Cita & { notes?: string | null; direccion?: string | null };
+// clienteComercial: nombre COMERCIAL (razón social) del cliente visitado — distinto de
+// `cliente` (persona de contacto). Se muestran como dos registros separados en el detalle.
+export type CitaConNotas = Cita & { notes?: string | null; direccion?: string | null; clienteComercial?: string | null };
 
 // Modal de detalle de cita desde el widget Agenda (Inicio) — crm-citas-ux-agenda WU5.
 // Patrón visual del ContactInfoModal de agents-agency (dl/dt/dd + ✕ rotatorio, ver
@@ -33,8 +35,14 @@ export function CitaDetalleModal({ cita, onClose, onSave, onIrAgenda, irAgendaLa
   const mapaEmbedUrl = buildGoogleMapsEmbedUrl(cita.direccion);
   const mapaEnlaceUrl = buildGoogleMapsSearchUrl(cita.direccion);
 
+  // Cliente = nombre COMERCIAL (razón social) de la empresa visitada; Persona de contacto =
+  // el individuo (lo que antes ocupaba la única fila "Cliente"). Si no hay razón social
+  // registrada, `clienteComercial` ya cae al nombre de la persona (back), así que ambas
+  // filas coinciden — no se oculta ninguna, evita un salto de layout entre citas.
+  // Cita PERSONAL sin cliente vinculado (visita médica, comida, recado…): `cita.cliente`
+  // llega vacío — se omiten ambas filas en vez de mostrar "Cliente:" en blanco.
   const campos: [string, string][] = [
-    ['Cliente', cita.cliente],
+    ...(cita.cliente ? ([['Cliente', cita.clienteComercial || cita.cliente], ['Persona de contacto', cita.cliente]] as [string, string][]) : []),
     ['Servicio', cita.servicio],
     ['Profesional', cita.empleado || '—'],
     ['Fecha', cita.fecha],
