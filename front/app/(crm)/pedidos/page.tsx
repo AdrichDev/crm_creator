@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ModuleGuard } from '@/components/layout/module-guard';
 import { useDialog } from '@/components/ui/dialog-provider';
 import { useTerm, useRole } from '@/lib/tenant-config-context';
@@ -19,13 +19,21 @@ import { usePedidoMetrics } from '@/lib/data/use-pedido-metrics';
 import { PedidoPreview } from '@/components/facturacion/pedido-preview';
 import { PedidoForm, type PedidoDraft, type Emisor, type ConceptoRow } from '@/components/facturacion/pedido-form';
 
-const eur = (n: unknown) => '€' + Number(n ?? 0).toFixed(2);
+const eur = (n: unknown) => Number(n ?? 0).toFixed(2) + ' €';
 const clienteNombre = (p: Pedido) => p.clienteSnapshot?.nombre || '—';
 
 // Set CERRADO de estados de un presupuesto (mismo ciclo que AA), ahora expuesto como opciones
 // del <select> de estado (crm 5a). El literal almacenado es en minúsculas; el <select> las
 // muestra en MAYÚSCULAS.
 const PEDIDO_ESTADOS = ['generada', 'aceptada', 'rechazada', 'caducada'] as const;
+
+// Colores del chip de estado (paridad AA `badgeVariantClass`): bg-X/20 + text-X-400 por estado.
+const PEDIDO_ESTADO_COLORS: Record<string, string> = {
+  generada: 'bg-blue-500/20 text-blue-400',
+  aceptada: 'bg-emerald-500/20 text-emerald-400',
+  rechazada: 'bg-red-500/20 text-red-400',
+  caducada: 'bg-slate-500/20 text-slate-400',
+};
 
 // Ordenación por cabecera. `numero`/`estado`/`createdAt` tienen respaldo escalar en BD → se
 // ordenan server-side en modo API (buildPedidosOrderBy). `cliente` vive en clienteSnapshot
@@ -82,6 +90,19 @@ export default function Page() {
   const { items: clientes } = useCollection<Cliente>('clientes', seedClientes);
   const { items: servicios } = useCollection<Servicio>('servicios', seedServicios);
 
+  // Modo API: la vinculación de cliente del formulario debe ofrecer los clientes REALES
+  // del negocio (crm.cliente vía GET /customers), no la colección localStorage de arriba
+  // (esa es solo el fallback del modo generador). Sin esto, el combobox de "Datos del
+  // cliente" mostraba nombres mock en vez de los 21 clientes reales del tenant.
+  const [apiClientes, setApiClientes] = useState<Cliente[]>([]);
+  useEffect(() => {
+    if (!apiEnabled) return;
+    apiFetch<{ items: Cliente[] }>('/customers?limit=100')
+      .then((r) => setApiClientes(r.items ?? []))
+      .catch(() => setApiClientes([]));
+  }, [apiEnabled]);
+  const clientsList = apiEnabled ? apiClientes : clientes;
+
   // Modo API: listado paginado con orden server-side (sort/order) para las columnas escalares.
   const paged = usePaginatedApi<Pedido>('/pedidos', 20, apiEnabled, {
     sort: sortKey && SERVER_SORTABLE.has(sortKey) ? sortKey : undefined,
@@ -120,6 +141,26 @@ export default function Page() {
     apiEnabled,
     mockItems.map((p) => ({ estado: p.estado, totalImpl: Number(p.totalImpl ?? 0) })),
   );
+
+  // Confirmación previa al cambio de estado (paridad AA): aceptar/rechazar piden visto bueno
+  // ANTES de tocar la API; si el usuario cancela, el chip se revierte y no se emite el PUT.
+  async function confirmEstado(next: string): Promise<boolean> {
+    if (next === 'aceptada') {
+      return dialog.confirm({
+        title: '¿Confirmas la aceptación?',
+        message: 'Al aceptar este presupuesto, el cliente habrá dado su visto bueno y se preparará para facturación.',
+        confirmLabel: 'Sí, aceptar', cancelLabel: 'Cancelar',
+      });
+    }
+    if (next === 'rechazada') {
+      return dialog.confirm({
+        title: '¿Rechazar presupuesto?',
+        message: '¿Confirmas que este presupuesto queda rechazado?',
+        confirmLabel: 'Sí, rechazar', cancelLabel: 'Cancelar', danger: true,
+      });
+    }
+    return true;
+  }
 
   async function updateEstado(id: Pedido['id'], estado: string) {
     if (apiEnabled) {
@@ -235,7 +276,7 @@ export default function Page() {
         <PedidoForm
           key={String(editingId ?? 'new') + draft.numero}
           draft={draft}
-          clientsList={clientes}
+          clientsList={clientsList}
           emisor={emisor}
           saving={saving}
           editing={editingId != null}
@@ -290,8 +331,10 @@ export default function Page() {
                   <EstadoSelect
                     value={p.estado}
                     options={PEDIDO_ESTADOS}
+                    colors={PEDIDO_ESTADO_COLORS}
                     disabled={!puedeEditar}
                     title="Cambiar el estado del presupuesto"
+                    onBeforeChange={confirmEstado}
                     onChange={(estado) => updateEstado(p.id, estado)}
                   />
                 </Td>

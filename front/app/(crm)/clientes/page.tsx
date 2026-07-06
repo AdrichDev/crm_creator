@@ -208,7 +208,7 @@ export default function Page() {
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <Stat label="Total" value={apiEnabled ? paged.total : displayItems.length} accent />
         <Stat label="VIP" value={displayItems.filter((c) => c.segmento === 'VIP').length} />
-        <Stat label="Gasto medio" value={'€' + (displayItems.length ? Math.round(displayItems.reduce((a, c) => a + Number(c.gastoTotal), 0) / displayItems.length) : 0)} />
+        <Stat label="Gasto medio" value={(displayItems.length ? Math.round(displayItems.reduce((a, c) => a + Number(c.gastoTotal), 0) / displayItems.length) : 0) + ' €'} />
       </div>
 
       {apiEnabled && (

@@ -44,6 +44,10 @@ vi.mock('@/lib/data/use-documents', () => ({
   useDocumentos: () => ({ docs: [], add: vi.fn(), remove: vi.fn(), refresh: vi.fn() }),
 }));
 
+vi.mock('@/components/ui/dialog-provider', () => ({
+  useDialog: () => ({ confirm: vi.fn(async () => true), alert: vi.fn() }),
+}));
+
 // Modo API activo + apiFetch devuelve el envelope con metrics (el hook lee `r.metrics`).
 vi.mock('@/lib/api/client', () => ({
   isApiEnabled: () => true,
@@ -65,17 +69,17 @@ describe('facturas/page — métricas server-side en modo API (PR-3)', () => {
   it('muestra los KPIs del conjunto COMPLETO (57 / €7350.00), no los de la página (20 / €200.00)', async () => {
     render(<Page />);
 
-    // Server-side: 57 facturas, €7350.00 importe total. Aparecen tras resolver el fetch.
+    // Server-side: 57 facturas, 7350.00 € importe total. Aparecen tras resolver el fetch.
     expect(await screen.findByText('57')).toBeInTheDocument();
-    expect(await screen.findByText('€7350.00')).toBeInTheDocument();
+    expect(await screen.findByText('7350.00 €')).toBeInTheDocument();
     // Importe pendiente server-side.
-    expect(await screen.findByText('€3000.00')).toBeInTheDocument();
+    expect(await screen.findByText('3000.00 €')).toBeInTheDocument();
     // KPI "Importe cobrado" (crm-operaos 10.3): Σ total de facturas Pagadas, server-side.
     expect(await screen.findByText('Importe cobrado')).toBeInTheDocument();
-    expect(await screen.findByText('€4000.00')).toBeInTheDocument();
+    expect(await screen.findByText('4000.00 €')).toBeInTheDocument();
 
     // El bug (cálculo sobre la página de 20) daría estos valores: NO deben aparecer.
     expect(screen.queryByText('20')).toBeNull();       // "Facturas" no es 20
-    expect(screen.queryByText('€200.00')).toBeNull();  // "Importe total" no es €200.00
+    expect(screen.queryByText('200.00 €')).toBeNull();  // "Importe total" no es 200.00 €
   });
 });

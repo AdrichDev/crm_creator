@@ -25,8 +25,8 @@ describe('LineasVentaModal (3.2.g)', () => {
     await flush();
 
     expect(screen.getByText('Corte')).toBeInTheDocument();
-    // €10.00 aparece 2 veces: subtotal de la línea y TOTAL inicial.
-    expect(screen.getAllByText('€10.00')).toHaveLength(2);
+    // 10.00 € aparece 2 veces: subtotal de la línea y TOTAL inicial.
+    expect(screen.getAllByText('10.00 €')).toHaveLength(2);
 
     fireEvent.change(screen.getByLabelText('Concepto'), { target: { value: 'Tinte' } });
     fireEvent.change(screen.getByLabelText('Cantidad'), { target: { value: '2' } });
@@ -37,7 +37,7 @@ describe('LineasVentaModal (3.2.g)', () => {
     const postCall = apiFetch.mock.calls.find((c) => c[1]?.method === 'POST');
     expect(JSON.parse(postCall![1].body)).toMatchObject({ concepto: 'Tinte', cantidad: 2, precioUnitario: 15 });
     expect(screen.getByText('Tinte')).toBeInTheDocument();
-    expect(screen.getByText('€40.00')).toBeInTheDocument(); // total recalculado en la UI (10 + 30)
+    expect(screen.getByText('40.00 €')).toBeInTheDocument(); // total recalculado en la UI (10 + 30)
     expect(onChanged).toHaveBeenCalled();
   });
 });

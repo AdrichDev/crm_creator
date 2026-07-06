@@ -14,6 +14,10 @@ const FACTURAS: Factura[] = [
 ];
 
 const updateMock = vi.fn();
+const confirmMock = vi.fn(async () => true);
+vi.mock('@/components/ui/dialog-provider', () => ({
+  useDialog: () => ({ confirm: confirmMock, alert: vi.fn() }),
+}));
 vi.mock('@/lib/data/use-collection', () => ({
   useCollection: () => ({ items: FACTURAS, create: vi.fn(), update: updateMock, remove: vi.fn(), reset: vi.fn(), refresh: vi.fn() }),
 }));
@@ -34,17 +38,17 @@ vi.mock('@/components/layout/module-guard', () => ({
   ModuleGuard: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
-afterEach(() => { cleanup(); updateMock.mockReset(); });
+afterEach(() => { cleanup(); updateMock.mockReset(); confirmMock.mockClear(); });
 
 describe('facturas/page — documental (Fase 2 + detalle 10.3)', () => {
   it('muestra métricas derivadas de las facturas, incluido "Importe cobrado" (10.3)', () => {
     render(<Page />);
-    expect(screen.getByText('€237.50')).toBeInTheDocument();  // importe total (incluye todas), único
-    // €72.50 aparece 2 veces: total de la fila F-2026-002 + métrica "Importe pendiente".
-    expect(screen.getAllByText('€72.50')).toHaveLength(2);
+    expect(screen.getByText('237.50 €')).toBeInTheDocument();  // importe total (incluye todas), único
+    // 72.50 € aparece 2 veces: total de la fila F-2026-002 + métrica "Importe pendiente".
+    expect(screen.getAllByText('72.50 €')).toHaveLength(2);
     // KPI "Importe cobrado" = Σ total de facturas Pagadas (120 + 45).
     expect(screen.getByText('Importe cobrado')).toBeInTheDocument();
-    expect(screen.getByText('€165.00')).toBeInTheDocument();
+    expect(screen.getByText('165.00 €')).toBeInTheDocument();
   });
 
   it('NO tiene columna "Docs" y SÍ columna "Fecha" (10.3), y rotula "Nº Factura"', () => {
@@ -60,24 +64,35 @@ describe('facturas/page — documental (Fase 2 + detalle 10.3)', () => {
     expect(screen.getAllByDisplayValue('PAGADA').length).toBeGreaterThan(0);
   });
 
-  it('cambiar el <select> de estado a Pagada llama a update y fija pagadaEn (local emula PUT /status)', () => {
+  it('cambiar el <select> de estado a Pagada CONFIRMA, llama a update y fija pagadaEn (local emula PUT /status)', async () => {
     render(<Page />);
-    // F-2026-002 está Pendiente → cambio a Pagada con pagadaEn.
+    // F-2026-002 está Pendiente → cambio a Pagada: pide confirmación y, tras aceptar, aplica pagadaEn.
     fireEvent.change(screen.getByDisplayValue('PENDIENTE'), { target: { value: 'Pagada' } });
-    expect(updateMock).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1));
+    expect(confirmMock).toHaveBeenCalledTimes(1);
     const [id, patch] = updateMock.mock.calls[0];
     expect(id).toBe(2002);
     expect(patch.estado).toBe('Pagada');
     expect(typeof patch.pagadaEn).toBe('string'); // a Pagada → pagadaEn = now()
   });
 
-  it('cambiar un <select> Pagada a Anulada LIMPIA pagadaEn', () => {
+  it('cambiar un <select> Pagada a Anulada CONFIRMA y LIMPIA pagadaEn', async () => {
     render(<Page />);
     fireEvent.change(screen.getAllByDisplayValue('PAGADA')[0], { target: { value: 'Anulada' } }); // F-2026-001
+    await waitFor(() => expect(updateMock).toHaveBeenCalled());
     const [id, patch] = updateMock.mock.calls[0];
     expect(id).toBe(2001);
     expect(patch.estado).toBe('Anulada');
     expect(patch.pagadaEn).toBeNull(); // salir de Pagada → limpia
+  });
+
+  it('si se CANCELA la confirmación no llama a update y revierte el chip', async () => {
+    confirmMock.mockResolvedValueOnce(false);
+    render(<Page />);
+    fireEvent.change(screen.getByDisplayValue('PENDIENTE'), { target: { value: 'Pagada' } });
+    await waitFor(() => expect(confirmMock).toHaveBeenCalled());
+    expect(updateMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByDisplayValue('PENDIENTE')).toBeInTheDocument()); // revertido
   });
 
   it('el filtro oculta las facturas que no casan por cliente/nº', async () => {

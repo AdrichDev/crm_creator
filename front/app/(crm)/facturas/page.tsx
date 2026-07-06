@@ -1,6 +1,7 @@
 'use client';
 import { useMemo, useState } from 'react';
 import { ModuleGuard } from '@/components/layout/module-guard';
+import { useDialog } from '@/components/ui/dialog-provider';
 import { useTerm, useRole } from '@/lib/tenant-config-context';
 import { canWrite } from '@/lib/config/roles';
 import { PageHeader, Stat, Table, Td, EmptyState, EstadoSelect } from '@/components/ui/primitives';
@@ -14,11 +15,18 @@ import { isApiEnabled, apiFetch } from '@/lib/api/client';
 import { useInvoiceMetrics } from '@/lib/data/use-invoice-metrics';
 import { FacturaPreview } from '@/components/facturacion/factura-preview';
 
-const eur = (n: number) => '€' + n.toFixed(2);
+const eur = (n: number) => n.toFixed(2) + ' €';
 
 // Set CERRADO de estados de una factura (PUT /invoices/:id/status), expuesto como opciones del
 // <select> de estado (crm 5a). El literal se muestra en MAYÚSCULAS y conserva su forma real.
 const INVOICE_ESTADOS = ['Pendiente', 'Pagada', 'Anulada'] as const;
+
+// Colores del chip de estado (paridad AA `badgeVariantClass`): bg-X/20 + text-X-400 por estado.
+const INVOICE_ESTADO_COLORS: Record<string, string> = {
+  Pendiente: 'bg-amber-500/20 text-amber-400',
+  Pagada: 'bg-emerald-500/20 text-emerald-400',
+  Anulada: 'bg-red-500/20 text-red-400',
+};
 
 // Ordenación por cabecera (crm-operaos 10.3). Las 4 columnas tienen respaldo escalar en BD
 // (cliente_nombre y fecha son columnas reales, a diferencia de pedidos) → TODAS se ordenan
@@ -53,6 +61,7 @@ export default function Page() {
   // Vista cliente: todas las facturas son suyas → se muestra el servicio recibido, no el cliente.
   const vistaCliente = role === 'cliente';
   const apiEnabled = isApiEnabled();
+  const dialog = useDialog();
 
   // Ordenación por cabecera (asc/desc toggle). Vacío = orden por defecto del back (createdAt desc).
   const [sortKey, setSortKey] = useState<'' | SortKey>('');
@@ -99,6 +108,26 @@ export default function Page() {
     serverList,
     mockItems.map((f) => ({ estado: f.estado, total: Number(f.total) })),
   );
+
+  // Confirmación previa (paridad AA): marcar Pagada o Anulada pide visto bueno ANTES de emitir
+  // el PUT; si el usuario cancela, el chip se revierte y no se toca la factura.
+  async function confirmEstado(next: string): Promise<boolean> {
+    if (next === 'Pagada') {
+      return dialog.confirm({
+        title: '¿Marcar como pagada?',
+        message: 'Se registrará el cobro de esta factura.',
+        confirmLabel: 'Sí, marcar pagada', cancelLabel: 'Cancelar',
+      });
+    }
+    if (next === 'Anulada') {
+      return dialog.confirm({
+        title: '¿Anular factura?',
+        message: '¿Confirmas que esta factura queda anulada?',
+        confirmLabel: 'Sí, anular', cancelLabel: 'Cancelar', danger: true,
+      });
+    }
+    return true;
+  }
 
   // Edición de estado desde la fila (10.3): badge → siguiente estado del ciclo cerrado.
   // API: PUT /invoices/:id/status (el back gestiona pagadaEn); local: emula la misma regla.
@@ -185,8 +214,10 @@ export default function Page() {
                   <EstadoSelect
                     value={f.estado}
                     options={INVOICE_ESTADOS}
+                    colors={INVOICE_ESTADO_COLORS}
                     disabled={!puedeEditar}
                     title="Cambiar el estado de la factura"
+                    onBeforeChange={confirmEstado}
                     onChange={(estado) => updateEstado(f.id, estado)}
                   />
                 </Td>

@@ -4,7 +4,7 @@ import { Badge, Button } from '@/components/ui/primitives';
 import { useTenantBranding } from '@/lib/tenant-config-context';
 import type { Pedido } from '@/lib/mock/data';
 
-const eur = (n: number) => '€' + Number(n).toFixed(2);
+const eur = (n: number) => Number(n).toFixed(2) + ' €';
 const num = (n: unknown) => Number(n ?? 0);
 
 /** Ciclo de estados idéntico al de AA (generada|aceptada|rechazada|caducada). */

@@ -3,11 +3,11 @@ import { useState } from 'react';
 import { useDialog } from '@/components/ui/dialog-provider';
 import { ModuleGuard } from '@/components/layout/module-guard';
 import { useTerm } from '@/lib/tenant-config-context';
-import { PageHeader, Stat, Table, Td, Badge, Button, RowActions } from '@/components/ui/primitives';
+import { PageHeader, Stat, Table, Td, Badge, Button, IconButton } from '@/components/ui/primitives';
 import { EntityModal, type Field } from '@/components/ui/entity-modal';
 import { useCollection } from '@/lib/data/use-collection';
 import { productos as seed, type Producto } from '@/lib/mock/data';
-import { PackagePlus } from 'lucide-react';
+import { PackagePlus, Pencil, Trash2 } from 'lucide-react';
 import { isApiEnabled } from '@/lib/api/client';
 import { usePaginatedApi } from '@/lib/data/use-paginated-api';
 import { SearchInput } from '@/components/ui/search-input';
@@ -68,7 +68,7 @@ export default function Page() {
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <Stat label="Referencias" value={apiEnabled ? paged.total : displayItems.length} />
         <Stat label="Stock bajo" value={displayItems.filter(p => Number(p.stock) < Number(p.minimo)).length} hint="por debajo del mínimo" />
-        <Stat label="Valor stock" value={'€' + displayItems.reduce((a, p) => a + Number(p.stock) * Number(p.precio), 0).toFixed(0)} />
+        <Stat label="Valor stock" value={displayItems.reduce((a, p) => a + Number(p.stock) * Number(p.precio), 0).toFixed(0) + ' €'} />
       </div>
       {bajoStock.length > 0 && (
         <div className="low-stock-alert">
@@ -99,8 +99,18 @@ export default function Page() {
             </Td>
             <Td><Badge>{p.categoria}</Badge></Td>
             <Td><span className={Number(p.stock) < Number(p.minimo) ? 'font-semibold text-red-600' : ''}>{p.stock}</span></Td>
-            <Td>{p.minimo}</Td><Td>€{p.precio}</Td><Td>{p.proveedor}</Td>
-            <Td><RowActions onEdit={() => { setEditing(p); setOpen(true); }} onDelete={() => { void dialog.confirm({ message: '¿Eliminar?', danger: true }).then((ok) => { if (ok) remove(p.id); }); }} /></Td>
+            <Td>{p.minimo}</Td><Td>{p.precio} €</Td><Td>{p.proveedor}</Td>
+            <Td>
+              <div className="flex items-center justify-end gap-2">
+                <IconButton tone="edit" title="Editar" ariaLabel="Editar" onClick={() => { setEditing(p); setOpen(true); }}>
+                  <Pencil className="h-4 w-4" />
+                </IconButton>
+                <IconButton tone="delete" title="Eliminar" ariaLabel="Eliminar"
+                  onClick={() => { void dialog.confirm({ message: '¿Eliminar?', danger: true }).then((ok) => { if (ok) remove(p.id); }); }}>
+                  <Trash2 className="h-4 w-4" />
+                </IconButton>
+              </div>
+            </Td>
           </tr>
         ))}
       </Table>

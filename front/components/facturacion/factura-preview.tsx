@@ -6,7 +6,7 @@ import { DocumentosPanel } from '@/components/ui/documentos-panel';
 import { useTenantBranding } from '@/lib/tenant-config-context';
 import type { Documento, Factura } from '@/lib/mock/data';
 
-const eur = (n: number) => '€' + n.toFixed(2);
+const eur = (n: number) => n.toFixed(2) + ' €';
 const tone = (s: string) => (s === 'Pagada' ? 'green' : s === 'Anulada' ? 'red' : 'amber');
 
 interface FacturaPreviewProps {

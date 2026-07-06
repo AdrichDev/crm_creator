@@ -1,5 +1,5 @@
 'use client';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useRole } from '@/lib/tenant-config-context';
@@ -146,27 +146,62 @@ export function IconButton({ title, ariaLabel, onClick, danger, tone, className,
   );
 }
 
+// Chip neutro cuando el estado no tiene color asignado en `colors`.
+const CHIP_NEUTRAL = 'bg-white/10 text-white';
+// Color de la <option> del desplegable: fondo oscuro (como AA) + el token `text-*` del chip.
+const optionColor = (chip?: string): string =>
+  chip?.split(' ').find((c) => c.startsWith('text-')) ?? 'text-white';
+
 /**
- * Selector de estado compartido por Presupuestos y Facturas (crm 5a). Un `<select>` nativo con
- * el mismo estilo que el resto de controles (`opera-control`) cuyas opciones se muestran en
- * MAYÚSCULAS. `value` conserva el literal REAL almacenado (p. ej. `'generada'` | `'Pendiente'`)
- * y `onChange` emite ese literal para llamar a los endpoints de estado existentes
- * (PUT /pedidos/:id/status | PUT /invoices/:id/status). `disabled` deja el estado visible pero
- * no editable (rol sin escritura). Reutilizado en ambas pantallas: una sola pieza de UI.
+ * Selector de estado compartido por Presupuestos y Facturas (crm 5a), renderizado como CHIP
+ * redondeado de color — paridad con el `<select>` de estado de agents-agency (BudgetList +
+ * `badgeVariantClass`). `colors` mapea cada literal de estado a sus clases de color Tailwind
+ * (bg + text); si falta cae a un chip neutro. `value` conserva el literal REAL almacenado
+ * (p. ej. `'generada'` | `'Pendiente'`) y `onChange` emite ese literal para llamar a los
+ * endpoints de estado existentes (PUT /pedidos/:id/status | PUT /invoices/:id/status).
+ *
+ * `onBeforeChange` (opcional) confirma un cambio ANTES de emitirlo: recibe el estado destino y,
+ * si resuelve `false`, cancela el cambio y revierte el `<select>` al valor real (vía `nonce`,
+ * que remonta el control controlado — de otro modo no vuelve solo). `disabled` deja el estado
+ * visible pero no editable (rol sin escritura). Reutilizado en ambas pantallas: una sola pieza.
  */
-export function EstadoSelect({ value, options, onChange, disabled, title, ariaLabel = 'Estado' }:
-  { value: string; options: readonly string[]; onChange: (v: string) => void; disabled?: boolean; title?: string; ariaLabel?: string }) {
+export function EstadoSelect({ value, options, onChange, onBeforeChange, colors, disabled, title, ariaLabel = 'Estado' }:
+  {
+    value: string; options: readonly string[]; onChange: (v: string) => void;
+    onBeforeChange?: (next: string) => boolean | Promise<boolean>;
+    colors?: Record<string, string>;
+    disabled?: boolean; title?: string; ariaLabel?: string;
+  }) {
+  const [nonce, setNonce] = useState(0);
+  const chip = colors?.[value] ?? CHIP_NEUTRAL;
+
+  async function handleChange(next: string) {
+    if (next === value) return;
+    if (onBeforeChange) {
+      const ok = await onBeforeChange(next);
+      if (!ok) { setNonce((n) => n + 1); return; } // cancelado → revierte el chip al valor real
+    }
+    onChange(next);
+  }
+
   return (
     <select
-      className="opera-control uppercase w-auto min-w-[9rem] cursor-pointer disabled:cursor-default disabled:opacity-70"
+      key={nonce}
+      className={cn(
+        'estado-chip appearance-none rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider cursor-pointer text-center outline-none disabled:cursor-default disabled:opacity-70',
+        chip,
+      )}
+      style={{ textAlignLast: 'center' }}
       value={value}
       title={title}
       aria-label={ariaLabel}
       disabled={disabled}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(e) => handleChange(e.target.value)}
     >
       {options.map((o) => (
-        <option key={o} value={o}>{o.toUpperCase()}</option>
+        <option key={o} value={o} className={cn('bg-[#0b0c10]', optionColor(colors?.[o]))}>
+          {o.toUpperCase()}
+        </option>
       ))}
     </select>
   );

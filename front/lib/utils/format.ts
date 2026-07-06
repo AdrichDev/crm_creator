@@ -1,7 +1,7 @@
 // Formateadores compartidos del CRM. Evita duplicar `eur`/`pad`/`dateStr` por página.
 
-/** Importe en euros sin decimales: 1234 → "€1.234". */
-export const eur = (n: number): string => '€' + n.toLocaleString('es-ES', { maximumFractionDigits: 0 });
+/** Importe en euros sin decimales, símbolo € DETRÁS (convención AA): 1234 → "1.234 €". */
+export const eur = (n: number): string => n.toLocaleString('es-ES', { maximumFractionDigits: 0 }) + ' €';
 
 /** Importe con el símbolo € DETRÁS y 2 decimales: 1234.5 → "1.234,50 €" (ficha de cliente). */
 export const eurSuffix = (n: number): string =>

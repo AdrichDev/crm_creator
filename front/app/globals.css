@@ -712,3 +712,15 @@ body {
 .opera-label { display: block; color: #fff; font-size: .8rem; font-weight: 500; margin-bottom: .4rem; }
 .opera-control { width: 100%; padding: .6rem .75rem; border-radius: 6px; border: 1px solid #333; background: #222; color: #fff; font-size: .9rem; }
 .opera-control:focus { outline: none; border-color: var(--acc); }
+
+/* =========================== CHIP DE ESTADO (Presupuestos/Facturas) ===========================
+   El chip reutiliza las clases de color de agents-agency (bg-*-500/20 + text-*-400), pensadas
+   para fondo OSCURO. En el tema oscuro (por defecto) se ven idénticas a AA. En el tema claro
+   (crema) el tinte queda claro y `text-*-400` pierde contraste → oscurecemos el texto a una
+   tonalidad -600/-700 manteniendo el color semántico. Especificidad (root+attr+2 clases) gana
+   a la utilidad Tailwind de una sola clase. */
+:root[data-theme="light"] .estado-chip.text-blue-400 { color: #1d4ed8; }
+:root[data-theme="light"] .estado-chip.text-emerald-400 { color: #047857; }
+:root[data-theme="light"] .estado-chip.text-red-400 { color: #b91c1c; }
+:root[data-theme="light"] .estado-chip.text-slate-400 { color: #475569; }
+:root[data-theme="light"] .estado-chip.text-amber-400 { color: #b45309; }

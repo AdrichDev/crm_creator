@@ -108,7 +108,7 @@ describe('UC-3.5 · agregador de estadísticas', () => {
       expect(byLabel['Citas']).toBe('2');
       expect(byLabel['Servicios']).toBe('1');
       expect(byLabel['Productos']).toBe('4');
-      expect(byLabel['Ingresos']).toBe('€200');
+      expect(byLabel['Ingresos']).toBe('200 €');
     });
 
     it('Clientes e Ingresos llevan accent', () => {

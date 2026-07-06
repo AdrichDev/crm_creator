@@ -40,7 +40,7 @@ describe('FacturaPreview (task 2.3)', () => {
     render(<FacturaPreview factura={BASE} vistaCliente={false} onBack={vi.fn()} docs={[]} canUpload onAddDoc={vi.fn()} />);
     expect(screen.getByRole('heading', { name: 'Factura' })).toBeInTheDocument();
     expect(screen.getByText('FAC - 2026-007')).toBeInTheDocument();
-    expect(screen.getByText('€340.50')).toBeInTheDocument();
+    expect(screen.getByText('340.50 €')).toBeInTheDocument();
     expect(screen.getByText('Ana Gómez')).toBeInTheDocument();
     expect(screen.getByText('Consultoría')).toBeInTheDocument();
   });
@@ -83,28 +83,28 @@ describe('FacturaPreview — detalle documental (crm-operaos 10.3)', () => {
     expect(screen.getByText('Implantación CRM (mensual)')).toBeInTheDocument();
     expect(screen.getByText('Setup inicial')).toBeInTheDocument();
     // €250.00 aparece como precio unitario e importe (cantidad 1) de la primera línea.
-    expect(screen.getAllByText('€250.00')).toHaveLength(2);
+    expect(screen.getAllByText('250.00 €')).toHaveLength(2);
     // Desglose: subtotal + IVA (por diferencia: 332.75 - 275 = 57.75) + total, que CUADRAN.
     expect(screen.getByText('Base imponible:')).toBeInTheDocument();
-    expect(screen.getByText('€275.00')).toBeInTheDocument();
+    expect(screen.getByText('275.00 €')).toBeInTheDocument();
     expect(screen.getByText('IVA (21%):')).toBeInTheDocument();
-    expect(screen.getByText('€57.75')).toBeInTheDocument();
-    expect(screen.getByText('€332.75')).toBeInTheDocument();
+    expect(screen.getByText('57.75 €')).toBeInTheDocument();
+    expect(screen.getByText('332.75 €')).toBeInTheDocument();
   });
 
   it('factura legacy migrada (1 línea, tasaIva 0) muestra IVA (0%) €0.00 y total EXACTO', () => {
     render(<FacturaPreview factura={LEGACY_MIGRADA} vistaCliente={false} onBack={vi.fn()} docs={[]} canUpload onAddDoc={vi.fn()} />);
     expect(screen.getByText('Servicio comercial mensual')).toBeInTheDocument(); // línea del backfill
     expect(screen.getByText('IVA (0%):')).toBeInTheDocument();
-    expect(screen.getByText('€0.00')).toBeInTheDocument();
+    expect(screen.getByText('0.00 €')).toBeInTheDocument();
     // subtotal = total (aparece 3 veces: precio unit., importe de línea, base y total → 4).
-    expect(screen.getAllByText('€620.50').length).toBeGreaterThanOrEqual(3);
+    expect(screen.getAllByText('620.50 €').length).toBeGreaterThanOrEqual(3);
   });
 
   it('sin líneas degrada al bloque simple (sin tabla ni desglose de IVA)', () => {
     render(<FacturaPreview factura={BASE} vistaCliente={false} onBack={vi.fn()} docs={[]} canUpload onAddDoc={vi.fn()} />);
     expect(screen.queryByText('Base imponible:')).toBeNull();
     expect(screen.queryByText(/^IVA \(/)).toBeNull();
-    expect(screen.getByText('€340.50')).toBeInTheDocument(); // total simple
+    expect(screen.getByText('340.50 €')).toBeInTheDocument(); // total simple
   });
 });

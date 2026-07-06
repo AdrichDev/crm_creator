@@ -27,8 +27,9 @@ const PEDIDOS: Pedido[] = [
 const updateMock = vi.fn();
 const createMock = vi.fn();
 const alertMock = vi.fn().mockResolvedValue(undefined);
+const confirmMock = vi.fn(async () => true);
 vi.mock('@/components/ui/dialog-provider', () => ({
-  useDialog: () => ({ alert: alertMock, confirm: vi.fn().mockResolvedValue(true) }),
+  useDialog: () => ({ alert: alertMock, confirm: confirmMock }),
 }));
 vi.mock('@/lib/data/use-collection', () => ({
   useCollection: (key: string) => {
@@ -55,7 +56,7 @@ vi.mock('@/components/layout/module-guard', () => ({
   ModuleGuard: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
-afterEach(() => { cleanup(); updateMock.mockReset(); createMock.mockReset(); apiFetchMock.mockReset(); apiState.enabled = false; });
+afterEach(() => { cleanup(); updateMock.mockReset(); createMock.mockReset(); apiFetchMock.mockReset(); confirmMock.mockClear(); apiState.enabled = false; });
 
 describe('pedidos/page — documental (Fase 3)', () => {
   it('muestra métricas y lista los pedidos', () => {
@@ -63,11 +64,11 @@ describe('pedidos/page — documental (Fase 3)', () => {
     expect(screen.getByText('P-2026-001')).toBeInTheDocument();
     expect(screen.getByText('Ana Gómez')).toBeInTheDocument();
     expect(screen.getAllByText('Ver / Imprimir')).toHaveLength(PEDIDOS.length);
-    expect(screen.getByText('€1452.00')).toBeInTheDocument(); // total pago único fila 1
+    expect(screen.getByText('1452.00 €')).toBeInTheDocument(); // total pago único fila 1
     // KPIs en modo local/demo: cálculo cliente sobre el array COMPLETO (sin paginación).
     expect(screen.getByText('2')).toBeInTheDocument();        // Pedidos
     expect(screen.getByText('1')).toBeInTheDocument();        // Aceptados
-    expect(screen.getByText('€2480.50')).toBeInTheDocument(); // Importe = 1452 + 1028.5
+    expect(screen.getByText('2480.50 €')).toBeInTheDocument(); // Importe = 1452 + 1028.5
   });
 
   it('modo API: los KPIs vienen de `metrics` del server (todo el negocio), no de la página cargada', async () => {
@@ -82,9 +83,11 @@ describe('pedidos/page — documental (Fase 3)', () => {
     render(<Page />);
     expect(await screen.findByText('57')).toBeInTheDocument();
     expect(screen.getByText('21')).toBeInTheDocument();
-    expect(screen.getByText('€12345.00')).toBeInTheDocument();
-    expect(screen.queryByText('€2480.50')).toBeNull(); // ya no se subcuenta sobre la página
+    expect(screen.getByText('12345.00 €')).toBeInTheDocument();
+    expect(screen.queryByText('2480.50 €')).toBeNull(); // ya no se subcuenta sobre la página
     expect(apiFetchMock).toHaveBeenCalledWith('/pedidos');
+    // El formulario de alta vincula clientes REALES (GET /customers), no el mock local.
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/customers?limit=100'));
 
     // La sugerencia de nº también sale del total del negocio (57 + 1), no de items.length.
     fireEvent.click(screen.getByText('+ Nuevo presupuesto'));
@@ -113,13 +116,23 @@ describe('pedidos/page — documental (Fase 3)', () => {
     expect(screen.getByDisplayValue('ACEPTADA')).toBeInTheDocument();
   });
 
-  it('cambiar el <select> de estado llama a update con el nuevo estado (local)', () => {
+  it('cambiar el <select> a ACEPTADA confirma y luego llama a update con el nuevo estado (local)', async () => {
     render(<Page />);
     fireEvent.change(screen.getByDisplayValue('GENERADA'), { target: { value: 'aceptada' } });
-    expect(updateMock).toHaveBeenCalledWith(3101, { estado: 'aceptada' });
+    await waitFor(() => expect(updateMock).toHaveBeenCalledWith(3101, { estado: 'aceptada' }));
+    expect(confirmMock).toHaveBeenCalledTimes(1); // aceptar pide visto bueno antes del cambio
   });
 
-  it('modo API: cambiar el <select> llama a PUT /pedidos/:id/status', async () => {
+  it('si se CANCELA la confirmación de ACEPTADA no llama a update y revierte el chip', async () => {
+    confirmMock.mockResolvedValueOnce(false);
+    render(<Page />);
+    fireEvent.change(screen.getByDisplayValue('GENERADA'), { target: { value: 'aceptada' } });
+    await waitFor(() => expect(confirmMock).toHaveBeenCalled());
+    expect(updateMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByDisplayValue('GENERADA')).toBeInTheDocument()); // revertido
+  });
+
+  it('modo API: cambiar el <select> a RECHAZADA confirma y llama a PUT /pedidos/:id/status', async () => {
     apiState.enabled = true;
     apiFetchMock.mockResolvedValue({
       items: PEDIDOS, total: 2, page: 1, limit: 20,
@@ -127,7 +140,7 @@ describe('pedidos/page — documental (Fase 3)', () => {
     });
     render(<Page />);
     fireEvent.change(await screen.findByDisplayValue('GENERADA'), { target: { value: 'rechazada' } });
-    expect(apiFetchMock).toHaveBeenCalledWith('/pedidos/3101/status', { method: 'PUT', body: JSON.stringify({ estado: 'rechazada' }) });
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/pedidos/3101/status', { method: 'PUT', body: JSON.stringify({ estado: 'rechazada' }) }));
   });
 
   it('el filtro oculta las filas que no casan por cliente', async () => {

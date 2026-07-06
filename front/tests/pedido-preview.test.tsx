@@ -25,7 +25,7 @@ describe('PedidoPreview (task 3.1)', () => {
     expect(screen.getByText('P-2026-001')).toBeInTheDocument();
     expect(screen.getByText('Ana Gómez')).toBeInTheDocument();
     expect(screen.getByText('Implantación CRM')).toBeInTheDocument();
-    expect(screen.getByText('€1452.00')).toBeInTheDocument();  // total pago único (con IVA)
+    expect(screen.getByText('1452.00 €')).toBeInTheDocument();  // total pago único (con IVA)
   });
 
   it('el botón Imprimir invoca window.print', () => {

@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { shortClienteId } from '@/lib/utils/format';
+import { shortClienteId, eur } from '@/lib/utils/format';
+
+// eur: convención AA — símbolo € SIEMPRE detrás del número (nunca "€1234").
+describe('eur', () => {
+  it('coloca el símbolo € detrás del importe', () => {
+    expect(eur(200)).toBe('200 €');
+    expect(eur(1452).endsWith(' €')).toBe(true);
+    expect(eur(1452).startsWith('€')).toBe(false);
+  });
+});
 
 // shortClienteId: código visual "Id Cliente" en Cartera de Clientes (no existe
 // columna `codigo` en el modelo Customer, es puramente de presentación).

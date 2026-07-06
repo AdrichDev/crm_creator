@@ -57,8 +57,8 @@ export default function Page() {
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <Stat label="Tickets" value={items.length} accent />
-        <Stat label="Facturación" value={'€' + facturado.toFixed(2)} />
-        <Stat label="Ticket medio" value={'€' + (items.length ? (facturado / items.length).toFixed(2) : '0.00')} />
+        <Stat label="Facturación" value={facturado.toFixed(2) + ' €'} />
+        <Stat label="Ticket medio" value={(items.length ? (facturado / items.length).toFixed(2) : '0.00') + ' €'} />
       </div>
 
       {puedeCobrar && (
@@ -70,7 +70,7 @@ export default function Page() {
               {productos.map((p) => (
                 <button key={p.id} type="button" className="tpv-product" onClick={() => add(p)}>
                   <div className="name">{p.nombre}</div>
-                  <div className="price">€{Number(p.precio).toFixed(2)}</div>
+                  <div className="price">{Number(p.precio).toFixed(2)} €</div>
                 </button>
               ))}
               {productos.length === 0 && <p className="empty-state">No hay {termProd.toLowerCase()} en catálogo.</p>}
@@ -89,12 +89,12 @@ export default function Page() {
                   <span>{l.nombre}</span>
                   <span className="flex items-center gap-2">
                     <button className="row-action edit" onClick={() => dec(l.id)}>−</button>
-                    {l.qty} × €{l.precio.toFixed(2)}
+                    {l.qty} × {l.precio.toFixed(2)} €
                   </span>
                 </div>
               ))}
             </div>
-            <div className="tpv-total"><span>TOTAL</span><span>€{total.toFixed(2)}</span></div>
+            <div className="tpv-total"><span>TOTAL</span><span>{total.toFixed(2)} €</span></div>
             <select className="tpv-select" value={metodo} onChange={(e) => setMetodo(e.target.value)}>
               <option value="Tarjeta">💳 Tarjeta</option>
               <option value="Efectivo">💵 Efectivo</option>
@@ -111,7 +111,7 @@ export default function Page() {
             <Td className="font-medium text-white">#{v.id}</Td>
             <Td>{v.fecha}</Td><Td>{v.cliente}</Td><Td>{v.items}</Td>
             <Td><Badge tone={tone(v.metodo)}>{v.metodo}</Badge></Td>
-            <Td className="font-medium">€{Number(v.total).toFixed(2)}</Td>
+            <Td className="font-medium">{Number(v.total).toFixed(2)} €</Td>
             <Td>
               <div className="flex items-center justify-end gap-2">
                 {apiEnabled && (

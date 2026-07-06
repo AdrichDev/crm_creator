@@ -88,9 +88,9 @@ export function LineasVentaModal({ open, saleId, onClose, onChanged }: {
                 <li key={l.id} className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm text-white">{l.concepto}</p>
-                    <p className="text-[11px] text-[var(--panel-muted)]">{l.cantidad} × €{Number(l.precioUnitario).toFixed(2)}</p>
+                    <p className="text-[11px] text-[var(--panel-muted)]">{l.cantidad} × {Number(l.precioUnitario).toFixed(2)} €</p>
                   </div>
-                  <span className="text-sm font-medium text-white">€{Number(l.subtotal).toFixed(2)}</span>
+                  <span className="text-sm font-medium text-white">{Number(l.subtotal).toFixed(2)} €</span>
                   <button className="row-action danger" onClick={() => remove(l.id)} title="Quitar línea" aria-label="Quitar línea">
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -100,7 +100,7 @@ export function LineasVentaModal({ open, saleId, onClose, onChanged }: {
           )}
 
           <div className="flex items-center justify-between border-t border-white/10 pt-2 text-sm font-semibold text-white">
-            <span>TOTAL</span><span>€{total.toFixed(2)}</span>
+            <span>TOTAL</span><span>{total.toFixed(2)} €</span>
           </div>
 
           <form onSubmit={add} className="flex flex-wrap items-end gap-2 border-t border-white/10 pt-3">
