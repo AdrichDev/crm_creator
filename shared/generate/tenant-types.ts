@@ -135,6 +135,8 @@ export interface TenantConfig {
     secondary: string;
     logoText: string;
     logoImage?: string;
+    /** Segunda imagen de marca: cabecera de documentos imprimibles (fallback → logoImage). */
+    logoImage2?: string;
     designSource?: string;
     tokens?: DesignTokens;
   };

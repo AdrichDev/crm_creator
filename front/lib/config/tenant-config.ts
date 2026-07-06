@@ -66,6 +66,12 @@ export interface TenantConfig {
     logoText: string;
     /** Imagen de marca (data URL) para el sidebar; si existe, sustituye a las iniciales. */
     logoImage?: string;
+    /**
+     * Segunda imagen de marca (data URL) usada como cabecera de los documentos
+     * imprimibles (presupuestos/albaranes/facturas). Si no se define, la cabecera
+     * cae a `logoImage`; si tampoco existe, no se muestra imagen (nunca iniciales).
+     */
+    logoImage2?: string;
     /** Nombre del zip de la landing importado (referencia del diseño origen). */
     designSource?: string;
     /** Tokens completos extraídos por la IA de la landing (paleta, tipografía, forma). */

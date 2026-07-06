@@ -329,6 +329,16 @@ export function useProjects(): Ctx { return useTenantConfig(); }
 export function useModuleEnabled(id: ModuleId): boolean {
   return useTenantConfig().config.modules[id] ?? false;
 }
+
+/**
+ * Branding del tenant activo, null-safe: si se usa FUERA del provider (p. ej. un
+ * documento imprimible renderizado en un test aislado) cae al branding por defecto
+ * en lugar de lanzar. Lee la MISMA fuente que el resto del panel (el contexto).
+ */
+export function useTenantBranding(): TenantConfig['branding'] {
+  const ctx = useContext(C);
+  return (ctx?.config ?? DEFAULT_CONFIG).branding;
+}
 /** Perfil activo del panel + setter. */
 export function useRole(): { role: Role; setRole: (r: Role) => void } {
   const { role, setRole } = useTenantConfig();

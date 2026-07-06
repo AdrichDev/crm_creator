@@ -112,7 +112,7 @@ function OnboardingInner() {
       return { ...d, modules, views: v };
     });
   }
-  function brand(patch: Partial<{ primary: string; secondary: string; logoText: string; logoImage: string; designSource: string; tokens: DesignTokens }>) {
+  function brand(patch: Partial<{ primary: string; secondary: string; logoText: string; logoImage: string; logoImage2: string; designSource: string; tokens: DesignTokens }>) {
     setDraft({ ...draft, branding: { ...draft.branding, ...patch } });
   }
   function db(patch: Partial<NonNullable<typeof draft.database>>) {
@@ -252,7 +252,7 @@ function OnboardingInner() {
           <div className="space-y-4">
             {/* Marca: importar diseño de la landing y, justo debajo, sugerir branding
                 con IA (trabajo del operador → no cuenta tokens del cliente). */}
-            <BrandingForm primary={draft.branding.primary} secondary={draft.branding.secondary} logoText={draft.branding.logoText} logoImage={draft.branding.logoImage} designSource={draft.branding.designSource} onChange={brand}
+            <BrandingForm primary={draft.branding.primary} secondary={draft.branding.secondary} logoText={draft.branding.logoText} logoImage={draft.branding.logoImage} logoImage2={draft.branding.logoImage2} designSource={draft.branding.designSource} onChange={brand}
               aiSlot={
                 <AiBrandingSuggest
                   business={{ name: draft.business.name, vertical: draft.business.vertical }}

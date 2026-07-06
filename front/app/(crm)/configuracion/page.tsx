@@ -195,7 +195,7 @@ export default function ConfiguracionPage() {
 
       {tab === 'marca' && (
         <BrandingForm primary={config.branding.primary} secondary={config.branding.secondary} logoText={config.branding.logoText}
-          logoImage={config.branding.logoImage} designSource={config.branding.designSource}
+          logoImage={config.branding.logoImage} logoImage2={config.branding.logoImage2} designSource={config.branding.designSource}
           onChange={(patch) => update({ branding: { ...config.branding, ...patch } })} />
       )}
 

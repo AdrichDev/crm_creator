@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react';
 import { ArrowLeft, Printer } from 'lucide-react';
 import { Badge, Button } from '@/components/ui/primitives';
 import { DocumentosPanel } from '@/components/ui/documentos-panel';
+import { useTenantBranding } from '@/lib/tenant-config-context';
 import type { Documento, Factura } from '@/lib/mock/data';
 
 const eur = (n: number) => '€' + n.toFixed(2);
@@ -48,6 +49,10 @@ export function FacturaPreview({
   const tasaIva = f.tasaIva != null ? Number(f.tasaIva) : 0;
   // IVA por diferencia (no subtotal*tasa): garantiza subtotal + IVA = total al céntimo.
   const iva = Math.round((total - subtotal + Number.EPSILON) * 100) / 100;
+  // Cabecera del documento: imagen de marca 2 con fallback a la imagen de marca.
+  // Si ninguna existe, no se muestra imagen (nunca iniciales).
+  const branding = useTenantBranding();
+  const headerImg = branding.logoImage2 || branding.logoImage;
 
   const th: CSSProperties = { padding: '10px 12px', fontWeight: 700, color: '#475569', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, borderBottom: '2px solid #e2e8f0' };
 
@@ -94,6 +99,10 @@ export function FacturaPreview({
                 <p style={{ margin: 0 }}><strong>Estado:</strong> {f.estado}</p>
               </div>
             </div>
+            {/* Imagen de cabecera por tenant (logoImage2 → logoImage). */}
+            {headerImg && (
+              <img src={headerImg} alt="Marca" style={{ maxHeight: 64, maxWidth: 200, objectFit: 'contain' }} />
+            )}
           </div>
 
           {/* CLIENTE / SERVICIO */}

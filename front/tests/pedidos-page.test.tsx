@@ -44,6 +44,7 @@ vi.mock('@/lib/api/client', () => ({ isApiEnabled: () => apiState.enabled, apiFe
 vi.mock('@/lib/tenant-config-context', () => ({
   useTerm: (_key: string, fallback: string) => fallback,
   useRole: () => ({ role: 'admin', setRole: vi.fn() }),
+  useTenantBranding: () => ({ primary: '#000', secondary: '#fff', logoText: 'AB' }),
 }));
 
 vi.mock('@/components/layout/module-guard', () => ({

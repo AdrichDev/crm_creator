@@ -1,6 +1,7 @@
 'use client';
 import { ArrowLeft, Printer } from 'lucide-react';
 import { Badge, Button } from '@/components/ui/primitives';
+import { useTenantBranding } from '@/lib/tenant-config-context';
 import type { Pedido } from '@/lib/mock/data';
 
 const eur = (n: number) => '€' + Number(n).toFixed(2);
@@ -39,6 +40,10 @@ export function PedidoPreview({ pedido: p, onBack }: PedidoPreviewProps) {
   const vatMant = subtotalMant * tasaIva;
   const cli = p.clienteSnapshot ?? {};
   const emi = p.emisorSnapshot ?? {};
+  // Cabecera del documento: imagen de marca 2 con fallback a la imagen de marca.
+  // Si ninguna existe, no se muestra imagen (nunca iniciales).
+  const branding = useTenantBranding();
+  const headerImg = branding.logoImage2 || branding.logoImage;
 
   return (
     <div className="w-full">
@@ -83,6 +88,10 @@ export function PedidoPreview({ pedido: p, onBack }: PedidoPreviewProps) {
                 <p style={{ margin: 0 }}><strong>Validez:</strong> {p.diasValidez ?? 30} días</p>
               </div>
             </div>
+            {/* Imagen de cabecera por tenant (logoImage2 → logoImage). */}
+            {headerImg && (
+              <img src={headerImg} alt="Marca" style={{ maxHeight: 64, maxWidth: 200, objectFit: 'contain' }} />
+            )}
           </div>
 
           {/* EMISOR + CLIENTE */}

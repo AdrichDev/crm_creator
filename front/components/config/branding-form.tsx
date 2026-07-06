@@ -7,13 +7,15 @@ import { apiFetch, isApiEnabled } from '@/lib/api/client';
 import type { DesignTokens } from '@/lib/config/tenant-config';
 import { Image as ImageIcon, FileArchive, Loader2, Sparkles, Check } from 'lucide-react';
 
-type Patch = Partial<{ primary: string; secondary: string; logoText: string; logoImage: string; designSource: string; tokens: DesignTokens }>;
+type Patch = Partial<{ primary: string; secondary: string; logoText: string; logoImage: string; logoImage2: string; designSource: string; tokens: DesignTokens }>;
 
 interface Props {
   primary: string;
   secondary: string;
   logoText: string;
   logoImage?: string;
+  /** Segunda imagen de marca: cabecera de documentos imprimibles (fallback → logoImage). */
+  logoImage2?: string;
   designSource?: string;
   onChange: (patch: Patch) => void;
   /** Bloque que se renderiza JUSTO debajo de "Importar diseño" (p. ej. Sugerir branding con IA). */
@@ -49,16 +51,25 @@ function extractPalette(css: string): { primary?: string; secondary?: string } {
   return out;
 }
 
-export function BrandingForm({ primary, secondary, logoText, logoImage, designSource, onChange, aiSlot }: Props) {
+export function BrandingForm({ primary, secondary, logoText, logoImage, logoImage2, designSource, onChange, aiSlot }: Props) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const logoRef = useRef<HTMLInputElement>(null);
+  const logo2Ref = useRef<HTMLInputElement>(null);
   const zipRef = useRef<HTMLInputElement>(null);
 
   function onLogoFile(file?: File) {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => onChange({ logoImage: String(reader.result) });
+    reader.readAsDataURL(file);
+  }
+
+  // Imagen de marca 2 (cabecera de documentos imprimibles): campo INDEPENDIENTE de logoImage.
+  function onLogo2File(file?: File) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => onChange({ logoImage2: String(reader.result) });
     reader.readAsDataURL(file);
   }
 
@@ -126,9 +137,10 @@ export function BrandingForm({ primary, secondary, logoText, logoImage, designSo
 
   // Estado de cada paso de la cadena de montaje (para los indicadores numerados).
   const steps = [
-    { n: 1, label: 'Importar diseño', done: !!designSource },
-    { n: 2, label: 'Imagen de marca', done: !!logoImage },
-    { n: 3, label: 'Colores', done: !!primary },
+    { n: 1, label: "Importar diseño", done: !!designSource },
+    { n: 2, label: "Imagen de marca", done: !!logoImage },
+    { n: 3, label: "Imagen de marca 2", done: !!logoImage2 },
+    { n: 4, label: "Colores", done: !!primary },
   ];
 
   return (
@@ -153,7 +165,7 @@ export function BrandingForm({ primary, secondary, logoText, logoImage, designSo
         <div className="rounded-xl border border-dashed border-gray-300 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="flex items-center gap-1.5 text-sm font-medium text-gray-800"><Sparkles className="h-4 w-4 text-[var(--gold)]" /> Archivo .zip</p>
+              <p className="flex items-center gap-1.5 text-sm font-medium text-gray-400"><Sparkles className="h-4 w-4 text-[var(--gold)]" /> Archivo .zip</p>
               {designSource
                 ? <p className="mt-1 text-[11px] text-gray-400">Diseño actual: {designSource}</p>
                 : <p className="mt-1 text-[11px] text-gray-400">Aún no has importado ningún diseño.</p>}
@@ -192,10 +204,40 @@ export function BrandingForm({ primary, secondary, logoText, logoImage, designSo
           </div>
         </div>
       </CardBody></Card>
-
-      {/* Paso 3 — Colores / paleta (ajuste final) */}
+      {/* Paso 3 — Imagen de marca 2: cabecera de documentos imprimibles */}
       <Card><CardBody className="space-y-3">
-        <StepHead n={3} title="Colores" hint="Se rellenan al importar el .zip; ajústalos a mano si hace falta." />
+        <StepHead n={3} title="Imagen de marca 2" hint="Se usará como imagen de cabecera tanto en presupuesto, albaranes o facturas. En caso de no seleccionar imagen se usa la imagen de marca (paso 2)." />
+        <div className="flex items-center gap-4">
+          {/* Previsualización: la propia imagen 2 si existe; si no, la imagen de marca
+              del paso 2 atenuada como pista del fallback (nunca iniciales). */}
+          <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-xl text-lg font-bold text-white" style={{ background: primary }}>
+            {logoImage2
+              ? <img src={logoImage2} alt="imagen de cabecera" className="h-full w-full object-cover" />
+              : logoImage
+                ? <img src={logoImage} alt="imagen de marca (fallback)" className="h-full w-full object-cover opacity-40" />
+                : <span className="text-[10px] font-medium text-white/80">cabecera</span>}
+          </div>
+          <div className="flex-1">
+            {!logoImage2 && (
+              <p className="text-[11px] text-gray-400">
+                Sin imagen propia: usa la imagen de marca del paso 2 como cabecera.
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col gap-1">
+            <button type="button" onClick={() => logo2Ref.current?.click()}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+              <ImageIcon className="h-4 w-4" /> Imagen de marca 2
+            </button>
+            {logoImage2 && <button type="button" onClick={() => onChange({ logoImage2: undefined })} className="text-[11px] text-red-600 hover:underline">Quitar imagen</button>}
+            <input ref={logo2Ref} type="file" accept="image/*" className="hidden" onChange={(e) => onLogo2File(e.target.files?.[0] ?? undefined)} />
+          </div>
+        </div>
+      </CardBody></Card>
+
+      {/* Paso 4 — Colores / paleta (ajuste final) */}
+      <Card><CardBody className="space-y-3">
+        <StepHead n={4} title="Colores" hint="Se rellenan al importar el .zip; ajústalos a mano si hace falta." />
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="text-xs font-medium text-gray-500">Color principal</label>
