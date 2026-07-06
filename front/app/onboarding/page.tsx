@@ -25,7 +25,7 @@ import { cn } from '@/lib/utils';
 const STEPS = ['Tipo de negocio', 'Módulos', 'Marca', 'Base de datos', 'Datos'];
 
 function OnboardingInner() {
-  const { createProject, openProject, setConfig, projects } = useProjects();
+  const { createProject, updateProject, openProject, projects } = useProjects();
   const router = useRouter();
   const params = useSearchParams();
   const dialog = useDialog();
@@ -121,10 +121,20 @@ function OnboardingInner() {
       branding: { ...draft.branding, logoText: draft.branding.logoText || name.slice(0, 2).toUpperCase() },
       setupComplete: true };
     if (isEdit && editing) {
-      // UC-1: persistir SOBRE el proyecto existente, sin crear uno nuevo.
-      openProject(editing.id);
-      setConfig(cfg);
-      router.push('/dashboard');
+      // UC-1: persistir SOBRE el proyecto existente (PATCH /projects/:id), sin crear
+      // uno nuevo. Se ESPERA el guardado con el id explícito del proyecto editado; si
+      // falla, se muestra el error y NO se navega (no declarar "guardado" en falso).
+      setErrorMsg('');
+      try {
+        await updateProject(editing.id, cfg);
+        // Deja el proyecto editado como activo (como antes de este fix): evita que
+        // /dashboard u otras vistas queden apuntando al proyecto activo anterior.
+        openProject(editing.id);
+        router.push('/dashboard');
+      } catch (e) {
+        const msg = (e as { message?: string })?.message ?? '';
+        setErrorMsg(msg || 'No se pudieron guardar los cambios. Verifica que tienes sesión activa y el backend responde.');
+      }
       return;
     }
     // En modo CRM hay que vincular un cliente (tenant) existente de agents-agency.

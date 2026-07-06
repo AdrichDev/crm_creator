@@ -49,6 +49,8 @@ interface Ctx {
   setRole: (r: Role) => void;
   // gestión de proyectos
   createProject: (config: TenantConfig) => Promise<string>;
+  // Persiste la config SOBRE un proyecto existente (edición del onboarding → BD).
+  updateProject: (id: string, config: TenantConfig) => Promise<void>;
   openProject: (id: string) => void;
   closeProject: () => void;
   deleteProject: (id: string) => void;
@@ -223,6 +225,25 @@ export function TenantConfigProvider({ children }: { children: ReactNode }) {
     return id;
   }, [apiMode]);
 
+  // Persiste la config SOBRE un proyecto existente (modo edición del onboarding).
+  // A diferencia de setConfig (copia de trabajo del panel, solo memoria), este SÍ
+  // escribe en la BD (PATCH /projects/:id) de forma ESPERADA y con el id EXPLÍCITO
+  // (evita el activeId obsoleto del cierre de setConfig). Actualiza el estado local
+  // tras el éxito; si el PATCH falla, propaga el error para que el llamador no navegue
+  // como "guardado".
+  const updateProject = useCallback(async (id: string, cfg: TenantConfig): Promise<void> => {
+    const config = { ...cfg, setupComplete: true };
+    if (apiMode) {
+      await apiFetch(`/projects/${id}`, { method: 'PATCH', body: JSON.stringify({ config }) });
+    }
+    setProjects((prev) => {
+      const next = prev.map((p) => (p.id === id ? { ...p, config } : p));
+      // Modo generador (sin API): la persistencia real es localStorage.
+      if (!apiMode) { try { localStorage.setItem(PROJECTS_KEY, JSON.stringify(next)); } catch { /* noop */ } }
+      return next;
+    });
+  }, [apiMode]);
+
   const openProject = useCallback((id: string) => {
     persistActive(id);
     // En modo CRM, el proyecto ES el negocio: fija el tenant activo para el scoping
@@ -251,12 +272,11 @@ export function TenantConfigProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setConfig = useCallback((next: TenantConfig) => {
+    // Copia de trabajo LOCAL del panel (/panel): NO escribe en la BD. La persistencia
+    // de la config del proyecto ocurre SOLO al pulsar "Guardar cambios" en el onboarding
+    // (updateProject → PATCH /projects/:id). Editar en /panel es efímero por diseño.
     mutateActive(() => next);
-    // En modo CRM persiste la config del proyecto (Business+BusinessSetting).
-    if (apiMode && activeId) {
-      void apiFetch(`/projects/${activeId}`, { method: 'PATCH', body: JSON.stringify({ config: next }) }).catch(() => { /* best-effort */ });
-    }
-  }, [mutateActive, apiMode, activeId]);
+  }, [mutateActive]);
   const update = useCallback((patch: Partial<TenantConfig>) => mutateActive((c) => ({ ...c, ...patch })), [mutateActive]);
   const toggleModule = useCallback((id: ModuleId, on: boolean) => {
     if (MODULE_MAP[id]?.mandatory) return;
@@ -290,9 +310,9 @@ export function TenantConfigProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<Ctx>(() => ({
     ready, projects, activeId, hasActive: !!active, config, role, setRole,
-    createProject, openProject, closeProject, deleteProject, markGenerated,
+    createProject, updateProject, openProject, closeProject, deleteProject, markGenerated,
     setConfig, update, toggleModule, setModuleEmoji, toggleWorkerChip, toggleDashboardWidget, applyVertical, reset,
-  }), [ready, projects, activeId, active, config, role, setRole, createProject, openProject, closeProject,
+  }), [ready, projects, activeId, active, config, role, setRole, createProject, updateProject, openProject, closeProject,
        deleteProject, markGenerated, setConfig, update, toggleModule, setModuleEmoji, toggleWorkerChip, toggleDashboardWidget, applyVertical, reset]);
 
   return <C.Provider value={value}>{children}</C.Provider>;
