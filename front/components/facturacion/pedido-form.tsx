@@ -1,10 +1,48 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/primitives';
+import { apiFetch, isApiEnabled } from '@/lib/api/client';
 import type { Cliente, Pedido } from '@/lib/mock/data';
 
-const eur = (n: number) => '€' + n.toFixed(2);
+const eur = (n: number) => n.toFixed(2) + ' €';
 const toNum = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+
+/** Nombre COMERCIAL del cliente (razón social del tenant); cae a `nombre` (persona de
+ *  contacto) si el cliente no tiene razón social registrada. El combobox de vinculación
+ *  debe mostrar/buscar por este nombre, no por la persona de contacto. */
+const nombreComercial = (c: Pick<Cliente, 'nombre' | 'razonSocial'>): string => c.razonSocial || c.nombre || '';
+
+/** Dirección completa en una sola línea, separada por comas: calle, número, CP, localidad.
+ *  Ej. "Avenida Canillejas a Vicálvaro, 120, 28022, Madrid". Omite partes vacías. */
+function direccionCompleta(c: Pick<Cliente, 'direccion' | 'numero' | 'codigoPostal' | 'localidad'>): string {
+  return [c.direccion, c.numero, c.codigoPostal, c.localidad].filter((p) => p && String(p).trim()).join(', ');
+}
+
+/** Fila de servicio del back (GET /services → crm.servicio) usada como concepto. */
+interface ServiceApiRow { id: string; nombre: string; descripcion?: string | null; categoria?: string | null; precio: number | string; }
+
+/** Servicio real → ConceptoRow: precio único como pago único (precioImpl); la columna
+ *  mensual (precioMant) queda a 0 — el modelo Service no lleva precio recurrente. */
+function serviceToConcepto(s: ServiceApiRow): ConceptoRow {
+  return {
+    id: String(s.id), nombre: s.nombre, descripcion: s.descripcion ?? s.categoria ?? '',
+    precioImpl: Number(s.precio) || 0, precioMant: 0, selected: false, cantidad: 1,
+  };
+}
+
+/** Funde el catálogo del back con las líneas ya seleccionadas del draft (edición):
+ *  preserva selected/cantidad/precios/nombre de las marcadas y añade las líneas
+ *  manuales del draft que no existan en el catálogo del negocio. */
+function mergeCatalog(catalog: ConceptoRow[], draft: ConceptoRow[]): ConceptoRow[] {
+  const selectedById = new Map(draft.filter((c) => c.selected).map((c) => [c.id, c]));
+  const merged = catalog.map((c) => {
+    const sel = selectedById.get(c.id);
+    return sel ? { ...c, selected: true, cantidad: sel.cantidad, precioImpl: sel.precioImpl, precioMant: sel.precioMant, nombre: sel.nombre, descripcion: sel.descripcion || c.descripcion } : c;
+  });
+  const catalogIds = new Set(catalog.map((c) => c.id));
+  for (const sel of selectedById.values()) if (!catalogIds.has(sel.id)) merged.push(sel);
+  return merged;
+}
 
 /** Emisor (datos fiscales) persistidos por el negocio; espejo de `IssuerData` de AA. */
 export interface Emisor { empresa: string; cif: string; direccion: string; email: string; telefono: string; }
@@ -67,19 +105,34 @@ export function PedidoForm({ draft, clientsList, emisor, saving, editing, onSave
   const [clientContact, setClientContact] = useState(draft.clientContact);
   const [numero, setNumero] = useState(draft.numero);
 
-  // Combobox de vinculación (búsqueda filtrable).
+  // Combobox de vinculación (búsqueda filtrable). Busca/muestra el nombre COMERCIAL
+  // (razón social del tenant), no la persona de contacto.
   const initialLinked = clientsList.find((c) => String(c.id) === draft.linkedClientId);
-  const [clientSearch, setClientSearch] = useState(initialLinked ? initialLinked.nombre : '');
+  const [clientSearch, setClientSearch] = useState(initialLinked ? nombreComercial(initialLinked) : '');
   const [showList, setShowList] = useState(false);
   const filtered = clientSearch.trim()
     ? clientsList.filter((c) => {
         const q = clientSearch.toLowerCase();
-        return (c.nombre ?? '').toLowerCase().includes(q) || (c.cif ?? '').toLowerCase().includes(q);
+        return nombreComercial(c).toLowerCase().includes(q) || (c.cif ?? '').toLowerCase().includes(q);
       })
     : clientsList;
 
   // Conceptos.
   const [conceptos, setConceptos] = useState<ConceptoRow[]>(draft.conceptos);
+
+  // En modo API el catálogo de conceptos son los servicios REALES del negocio
+  // (GET /services → crm.servicio), no la colección localStorage `servicios` que sólo
+  // vive en modo generador. Sin esto, los 22 servicios sembrados (interiorismo/paisajismo)
+  // no eran seleccionables al construir un presupuesto en modo API. En edición, se preservan
+  // las líneas ya marcadas del draft. En modo generador/mock se conserva draft.conceptos.
+  useEffect(() => {
+    if (!isApiEnabled()) return;
+    let cancelled = false;
+    apiFetch<{ items: ServiceApiRow[] }>('/services?limit=100')
+      .then((r) => { if (!cancelled) setConceptos(mergeCatalog((r.items ?? []).map(serviceToConcepto), draft.conceptos)); })
+      .catch(() => { /* fallback: se mantiene draft.conceptos */ });
+    return () => { cancelled = true; };
+  }, [draft]);
 
   const linkClient = (id: string) => {
     setLinkedClientId(id);
@@ -89,11 +142,13 @@ export function PedidoForm({ draft, clientsList, emisor, saving, editing, onSave
     setClientName(c.nombre || '');
     setClientRazonSocial(c.razonSocial || c.nombre || '');
     setClientCif(c.cif || '');
-    setClientAddress(c.direccion || '');
+    // Dirección completa (calle, número, CP, localidad) en una sola línea, separada por
+    // comas — cae a `c.direccion` sola si el cliente no tiene los campos estructurados.
+    setClientAddress(direccionCompleta(c) || c.direccion || '');
     setClientEmail(c.email || '');
     setClientPhone(c.telefono || '');
     setClientContact(c.contacto || c.nombre || '');
-    setClientSearch(c.nombre);
+    setClientSearch(nombreComercial(c));
     setShowList(false);
   };
 
@@ -139,18 +194,22 @@ export function PedidoForm({ draft, clientsList, emisor, saving, editing, onSave
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* Emisor */}
-        <div className="panel p-5">
-          <div className="mb-3 flex items-center justify-between">
+        {/* Emisor — UI/UX espejo de agents-agency BudgetForm (mismo layout/iconos,
+            adaptado a los tokens de tema del CRM en vez de los colores fijos de AA). */}
+        <div className="panel flex flex-col gap-5 p-5">
+          <div className="flex items-center justify-between">
             <h2 className="text-xs font-bold uppercase tracking-widest text-[var(--panel-muted)]">Datos del emisor</h2>
-            {!editingEmisor && <button className="row-action edit" onClick={() => { setTmp(emisor); setEditingEmisor(true); }}>Editar</button>}
+            {!editingEmisor && (
+              <button className="text-xs font-semibold text-[var(--acc)] transition hover:opacity-80"
+                onClick={() => { setTmp(emisor); setEditingEmisor(true); }}>✏️ Editar</button>
+            )}
           </div>
           {editingEmisor ? (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {([['empresa', 'Empresa'], ['cif', 'NIF/CIF'], ['direccion', 'Dirección'], ['email', 'Email'], ['telefono', 'Teléfono']] as const).map(([k, label]) => (
-                <div className="opera-field" key={k}>
-                  <label className="opera-label">{label}</label>
-                  <input className="opera-control" value={tmp[k]} onChange={(e) => setTmp({ ...tmp, [k]: e.target.value })} />
+                <div key={k}>
+                  <label className="mb-0.5 block text-[10px] font-medium text-[var(--panel-muted)]">{label}</label>
+                  <input className="opera-control !py-1.5 text-xs" value={tmp[k]} onChange={(e) => setTmp({ ...tmp, [k]: e.target.value })} />
                 </div>
               ))}
               <div className="flex gap-2 pt-1">
@@ -159,15 +218,24 @@ export function PedidoForm({ draft, clientsList, emisor, saving, editing, onSave
               </div>
             </div>
           ) : emisor.empresa ? (
-            <div className="space-y-1 text-sm text-[var(--panel-text)]">
-              <p className="font-semibold">{emisor.empresa}</p>
-              {emisor.cif && <p className="text-[var(--panel-muted)]">{emisor.cif}</p>}
-              {emisor.direccion && <p className="text-[var(--panel-muted)]">{emisor.direccion}</p>}
-              {emisor.email && <p className="text-[var(--panel-muted)]">{emisor.email}</p>}
-              {emisor.telefono && <p className="text-[var(--panel-muted)]">{emisor.telefono}</p>}
+            <div className="divide-y divide-[var(--line)]">
+              <p className="mb-3 text-sm font-bold text-[var(--panel-text)]">{emisor.empresa}</p>
+              {[
+                { icon: '🪪', val: emisor.cif },
+                { icon: '📍', val: emisor.direccion },
+                { icon: '✉️', val: emisor.email },
+                { icon: '📞', val: emisor.telefono },
+              ].filter((d) => d.val).map((d, i) => (
+                <div key={i} className="flex items-center gap-2.5 py-2.5 text-xs text-[var(--panel-muted)]">
+                  <span className="shrink-0">{d.icon}</span> <span>{d.val}</span>
+                </div>
+              ))}
             </div>
           ) : (
-            <p className="text-sm text-[var(--panel-muted)]">Sin datos del emisor. <button className="row-action edit" onClick={() => { setTmp(emisor); setEditingEmisor(true); }}>Configurar</button></p>
+            <div className="py-6 text-center text-sm text-[var(--panel-muted)]">
+              Sin datos del emisor.<br />
+              <button className="mt-2 font-bold text-[var(--acc)] hover:underline" onClick={() => { setTmp(emisor); setEditingEmisor(true); }}>Configurar</button>
+            </div>
           )}
         </div>
 
@@ -192,7 +260,14 @@ export function PedidoForm({ draft, clientsList, emisor, saving, editing, onSave
                     <li className="px-3 py-2 text-xs text-[var(--panel-muted)]">Sin coincidencias</li>
                   ) : filtered.map((c) => (
                     <li key={c.id} onMouseDown={() => linkClient(String(c.id))} className="cursor-pointer px-3 py-2 text-sm text-[var(--panel-text)] hover:bg-[var(--hover-bg)]">
-                      {c.nombre}{c.cif ? <span className="text-[var(--panel-muted)]"> · {c.cif}</span> : ''}
+                      {/* Nombre COMERCIAL primero (razón social); la persona de contacto
+                          y el CIF quedan como referencia secundaria. */}
+                      {nombreComercial(c)}
+                      {(c.contacto || c.cif) && (
+                        <span className="text-[var(--panel-muted)]">
+                          {c.contacto && c.razonSocial ? ` · ${c.contacto}` : ''}{c.cif ? ` · ${c.cif}` : ''}
+                        </span>
+                      )}
                     </li>
                   ))}
                 </ul>
