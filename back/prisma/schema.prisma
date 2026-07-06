@@ -1015,6 +1015,12 @@ model Contacto {
   codigoPostal String?   @map("codigo_postal")
   localidad    String?   @map("localidad")
   peticion     String?   @map("peticion")
+  // Geolocalización (crm-operaos 9.12): aditivo/nullable, reusa el enum GeoStatus del
+  // cliente. Permite pintar los contactos (leads/prospectos) en el mapa comercial junto
+  // a la cartera de clientes. geoEstado por defecto PENDING (sin coords hasta geocodificar).
+  latitud      Float?    @map("latitud")
+  longitud     Float?    @map("longitud")
+  geoEstado    GeoStatus @default(PENDING) @map("geo_estado")
   contactado   String    @default("no") @map("contactado")
   contactadoEn DateTime? @map("contactado_en")
   clienteId    String?   @map("cliente_id")

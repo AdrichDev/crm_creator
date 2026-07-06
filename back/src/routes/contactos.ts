@@ -2,9 +2,11 @@ import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../prisma.js';
 import type { AuthedRequest } from '../middleware/types.js';
+import { requireRole } from '../middleware/rbac.js';
 import { splitNombre } from '../lib/nombre.js';
 import { parsePagination } from '../lib/pagination.js';
 import { dayRange } from '../lib/dateRange.js';
+import { resolveGeocoder } from '../lib/geo/index.js';
 
 // Agenda de contactos comerciales (leads / prospectos) — paridad con Agents Agency
 // (crm-operaos WU4). Multi-tenant: todo se filtra/crea con el businessId del token.
@@ -77,6 +79,58 @@ export function contactadoEnPatch(
 
 // Re-exportado para no romper imports existentes de `dayRange` desde este módulo.
 export { dayRange };
+
+// ---------- Geolocalización de contactos (crm-operaos 9.12) ----------
+// Contacto NO tiene provincia (fuera del alcance de su dirección estructurada), así que la
+// query de geocodificación usa direccion/numero/localidad/codigoPostal. Mismo puerto y
+// throttle que la cartera de clientes (resolveGeocoder()), para consistencia y para que
+// el botón "Re-geolocalizar" del mapa comercial cubra clientes y contactos por igual.
+
+export type ContactoGeoStatus = 'PENDING' | 'OK' | 'FAILED';
+
+interface ContactoAddress {
+  direccion?: string | null;
+  numero?: string | null;
+  localidad?: string | null;
+  codigoPostal?: string | null;
+}
+
+/** True si el contacto tiene dirección geocodificable (calle o localidad o código postal). Pura. */
+export function contactoTieneDireccion(c: ContactoAddress): boolean {
+  return (['direccion', 'localidad', 'codigoPostal'] as const)
+    .some((k) => typeof c[k] === 'string' && String(c[k]).trim());
+}
+
+/** Mapea el resultado del geocoder a los campos geo a persistir. Pura y testeable. */
+export function contactoGeoFields(
+  hasAddress: boolean,
+  geo: { lat: number; lng: number } | null,
+): { latitud?: number; longitud?: number; geoEstado?: ContactoGeoStatus } {
+  if (!hasAddress) return {}; // sin dirección → no se toca (queda PENDING/estado previo)
+  if (geo) return { latitud: geo.lat, longitud: geo.lng, geoEstado: 'OK' };
+  return { geoEstado: 'FAILED' };
+}
+
+/**
+ * Geocodifica un contacto (best-effort, nunca lanza). Devuelve los campos geo a persistir:
+ *  - `{}` si no hay dirección (no se altera el estado geo actual),
+ *  - `{ geoEstado: 'FAILED' }` si la dirección no resuelve,
+ *  - `{ latitud, longitud, geoEstado: 'OK' }` si resuelve.
+ */
+export async function geocodeContacto(
+  c: ContactoAddress,
+): Promise<{ latitud?: number; longitud?: number; geoEstado?: ContactoGeoStatus }> {
+  const hasAddress = contactoTieneDireccion(c);
+  if (!hasAddress) return {};
+  const geo = await resolveGeocoder().geocode({
+    direccion: c.direccion ?? null,
+    numero: c.numero ?? null,
+    localidad: c.localidad ?? null,
+    provincia: null,
+    codigoPostal: c.codigoPostal ?? null,
+  });
+  return contactoGeoFields(true, geo);
+}
 
 /**
  * Construye el where de listado (tenant + soft delete + búsqueda de texto). Función pura,
@@ -158,6 +212,39 @@ contactosRouter.get('/pending-count', async (req: AuthedRequest, res: Response) 
   res.json({ count });
 });
 
+// Lote acotado por invocación (mismo criterio que /customers/geocode/rerun): evita bloquear
+// el proceso con negocios grandes; el resto queda para una invocación posterior.
+const CONTACTO_GEOCODE_BATCH = 60;
+
+// POST /contactos/geocode/rerun (gestor): geocodifica contactos PENDING/FAILED con dirección
+// del negocio. `force=true` incluye también los OK (corrige coords sembradas a mano).
+// Secuencial — reutiliza resolveGeocoder() (throttle Nominatim ≥1s). Nunca lanza: un fallo
+// deja al contacto en FAILED, visible en "pendientes de geolocalizar". Antes de /:id.
+contactosRouter.post('/geocode/rerun', requireRole('ADMIN', 'MANAGER'), async (req: AuthedRequest, res: Response) => {
+  const force = req.body?.force === true;
+  const candidates = await prisma.contacto.findMany({
+    where: {
+      businessId: req.businessId,
+      eliminadoEn: null,
+      ...(force ? {} : { geoEstado: { in: ['PENDING', 'FAILED'] } }),
+    },
+    select: { id: true, direccion: true, numero: true, localidad: true, codigoPostal: true },
+    orderBy: { createdAt: 'asc' },
+    take: CONTACTO_GEOCODE_BATCH,
+  });
+
+  let ok = 0;
+  let failed = 0;
+  let skipped = 0;
+  for (const c of candidates) {
+    const geo = await geocodeContacto(c);
+    if (geo.geoEstado === undefined) { skipped += 1; continue; } // sin dirección
+    await prisma.contacto.update({ where: { id: c.id }, data: geo });
+    if (geo.geoEstado === 'OK') ok += 1; else failed += 1;
+  }
+  res.json({ ok, failed, skipped });
+});
+
 contactosRouter.get('/:id', async (req: AuthedRequest, res: Response) => {
   const row = await prisma.contacto.findFirst({
     where: { id: req.params.id, businessId: req.businessId, eliminadoEn: null },
@@ -171,6 +258,9 @@ contactosRouter.post('/', async (req: AuthedRequest, res: Response) => {
   if (!parsed.success) return res.status(422).json({ error: { code: 'invalid', message: 'Datos no válidos', details: parsed.error.flatten() } });
   const d = parsed.data;
   const contactado = defaultContactado(d.contactado);
+  // Geocodifica una sola vez (fuera del retry de código): el contacto entra al mapa
+  // si tiene dirección; si no resuelve queda FAILED (visible en "pendientes de geolocalizar").
+  const geo = await geocodeContacto(d);
   // Reintenta ante colisión de código (@@unique negocio+codigo) en alta concurrente.
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -191,6 +281,7 @@ contactosRouter.post('/', async (req: AuthedRequest, res: Response) => {
           peticion: d.peticion ?? null,
           contactado,
           contactadoEn: contactado === 'si' ? new Date() : null,
+          ...geo,
         },
       });
       return res.status(201).json(row);
@@ -206,11 +297,23 @@ contactosRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
   if (!parsed.success) return res.status(422).json({ error: { code: 'invalid', message: 'Datos no válidos', details: parsed.error.flatten() } });
   const current = await prisma.contacto.findFirst({
     where: { id: req.params.id, businessId: req.businessId, eliminadoEn: null },
-    select: { contactadoEn: true },
+    select: { contactadoEn: true, direccion: true, numero: true, localidad: true, codigoPostal: true },
   });
   if (!current) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
 
   const d = parsed.data;
+  // Re-geocodifica sólo si cambió algún campo de dirección; usa el valor entrante o el actual
+  // para cada campo (misma política que el alta/actualización de clientes).
+  const addressKeys = ['direccion', 'numero', 'localidad', 'codigoPostal'] as const;
+  const addressChanged = addressKeys.some((k) => k in d);
+  const geo = addressChanged
+    ? await geocodeContacto({
+        direccion: d.direccion !== undefined ? d.direccion : current.direccion,
+        numero: d.numero !== undefined ? d.numero : current.numero,
+        localidad: d.localidad !== undefined ? d.localidad : current.localidad,
+        codigoPostal: d.codigoPostal !== undefined ? d.codigoPostal : current.codigoPostal,
+      })
+    : {};
   const row = await prisma.contacto.update({
     where: { id: req.params.id },
     data: {
@@ -227,6 +330,7 @@ contactosRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
       ...(d.peticion !== undefined && { peticion: d.peticion }),
       ...(d.contactado !== undefined && { contactado: d.contactado }),
       ...contactadoEnPatch(d.contactado, current),
+      ...geo,
     },
   });
   res.json(row);

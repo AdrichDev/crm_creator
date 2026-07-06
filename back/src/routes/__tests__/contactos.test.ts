@@ -11,6 +11,8 @@ import {
   createContactoSchema,
   updateContactoSchema,
   convertContactosSchema,
+  contactoTieneDireccion,
+  contactoGeoFields,
 } from '../contactos.js';
 
 // Contract/unit tests de las funciones puras de la agenda de contactos (crm-operaos WU4).
@@ -162,5 +164,30 @@ describe('contactos · schemas zod', () => {
   it('convert exige al menos un id', () => {
     assert.equal(convertContactosSchema.safeParse({ ids: [] }).success, false);
     assert.equal(convertContactosSchema.safeParse({ ids: ['x'] }).success, true);
+  });
+});
+
+// crm-operaos 9.12: geolocalización de contactos para el mapa comercial.
+describe('contactos · contactoTieneDireccion', () => {
+  it('true si hay calle, localidad o código postal con contenido', () => {
+    assert.equal(contactoTieneDireccion({ direccion: 'Calle Mayor 1' }), true);
+    assert.equal(contactoTieneDireccion({ localidad: 'Madrid' }), true);
+    assert.equal(contactoTieneDireccion({ codigoPostal: '28013' }), true);
+  });
+  it('false sin dirección o con campos vacíos/nulos', () => {
+    assert.equal(contactoTieneDireccion({}), false);
+    assert.equal(contactoTieneDireccion({ direccion: '   ', localidad: null, codigoPostal: '' }), false);
+  });
+});
+
+describe('contactos · contactoGeoFields', () => {
+  it('sin dirección → no toca el estado geo (objeto vacío)', () => {
+    assert.deepEqual(contactoGeoFields(false, { lat: 1, lng: 2 }), {});
+  });
+  it('con dirección resuelta → OK + coordenadas', () => {
+    assert.deepEqual(contactoGeoFields(true, { lat: 40.4, lng: -3.7 }), { latitud: 40.4, longitud: -3.7, geoEstado: 'OK' });
+  });
+  it('con dirección no resuelta → FAILED sin coordenadas', () => {
+    assert.deepEqual(contactoGeoFields(true, null), { geoEstado: 'FAILED' });
   });
 });

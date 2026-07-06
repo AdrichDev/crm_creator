@@ -8,13 +8,16 @@ import Page from '@/app/(crm)/comercial/page';
 // el módulo (gestor), que invoca el endpoint batch y refresca los datos.
 const fetchCustomersMock = vi.fn();
 const geocodeRerunMock = vi.fn();
+const contactosGeocodeRerunMock = vi.fn();
 vi.mock('@/lib/comercial/api', () => ({
   fetchCustomers: (...a: unknown[]) => fetchCustomersMock(...a),
+  fetchContactos: () => Promise.resolve([]),
   fetchVisitStates: () => Promise.resolve([]),
   createCustomer: vi.fn(),
   fetchReminders: () => Promise.resolve([]),
   patchReminder: vi.fn(),
   geocodeRerun: (...a: unknown[]) => geocodeRerunMock(...a),
+  contactosGeocodeRerun: (...a: unknown[]) => contactosGeocodeRerunMock(...a),
 }));
 
 vi.mock('@/lib/api/client', () => ({ isApiEnabled: () => true }));
@@ -49,13 +52,14 @@ const PENDIENTE = {
   tipoRegistro: 'CLIENTE', estadoVisitaId: null, estadoVisita: null, proximaAccionEn: null,
 };
 
-afterEach(() => { cleanup(); fetchCustomersMock.mockReset(); geocodeRerunMock.mockReset(); alertMock.mockClear(); });
+afterEach(() => { cleanup(); fetchCustomersMock.mockReset(); geocodeRerunMock.mockReset(); contactosGeocodeRerunMock.mockReset(); alertMock.mockClear(); });
 async function flush() { await act(async () => { await Promise.resolve(); await Promise.resolve(); }); }
 
 describe('comercial/page — acción "Re-geolocalizar" (WU2)', () => {
   it('gestor ve el botón cuando hay pendientes; al pulsar invoca el endpoint y refresca', async () => {
     fetchCustomersMock.mockResolvedValue({ items: [PENDIENTE], total: 1 });
     geocodeRerunMock.mockResolvedValue({ ok: 1, failed: 0, skipped: 0 });
+    contactosGeocodeRerunMock.mockResolvedValue({ ok: 0, failed: 0, skipped: 0 });
 
     render(<Page />);
     await flush();
@@ -67,6 +71,7 @@ describe('comercial/page — acción "Re-geolocalizar" (WU2)', () => {
     await flush();
 
     expect(geocodeRerunMock).toHaveBeenCalledWith(false);
+    expect(contactosGeocodeRerunMock).toHaveBeenCalledWith(false);
     // refresca: fetchCustomers se llama al montar y otra vez tras el rerun.
     expect(fetchCustomersMock.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(alertMock).toHaveBeenCalledWith(expect.stringContaining('1 ubicados'));

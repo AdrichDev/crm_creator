@@ -49,6 +49,22 @@ export interface ComercialCustomer {
   distanciaKm?: number;
 }
 
+// Contacto (lead/prospecto) geolocalizable en el mapa comercial (crm-operaos 9.12).
+// Subconjunto de la fila de /contactos con los campos que necesita el mapa. Los contactos
+// NO tienen estadoVisita ni categoriaAbc: se pintan con un marcador neutro y distinto del
+// de la cartera de clientes.
+export interface ComercialContacto {
+  id: string;
+  nombre: string;
+  tipo: string;
+  sector: string | null;
+  direccion: string | null;
+  localidad: string | null;
+  latitud: number | null;
+  longitud: number | null;
+  geoEstado: GeoStatus;
+}
+
 export interface VisitDto {
   id: string;
   customerId: string;

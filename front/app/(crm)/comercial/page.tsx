@@ -9,8 +9,9 @@ import { isApiEnabled } from '@/lib/api/client';
 import { useDialog } from '@/components/ui/dialog-provider';
 import { PageHeader, Button, Badge, EmptyState } from '@/components/ui/primitives';
 import { MapPin, Upload, UserPlus, LocateFixed, RefreshCw } from 'lucide-react';
-import type { ComercialCustomer, VisitStateDto, ReminderDto } from '@/lib/comercial/types';
-import { fetchCustomers, fetchVisitStates, createCustomer, fetchReminders, patchReminder, geocodeRerun } from '@/lib/comercial/api';
+import type { ComercialCustomer, ComercialContacto, VisitStateDto, ReminderDto } from '@/lib/comercial/types';
+import { fetchCustomers, fetchContactos, fetchVisitStates, createCustomer, fetchReminders, patchReminder, geocodeRerun, contactosGeocodeRerun } from '@/lib/comercial/api';
+import { CONTACT_COLOR } from '@/lib/comercial/map-point';
 import { FichaClientePanel } from '@/components/comercial/ficha-cliente-panel';
 import { ConfigEstados } from '@/components/comercial/config-estados';
 import { ImportClientesModal } from '@/components/comercial/import-clientes-modal';
@@ -52,8 +53,10 @@ export default function Page() {
   const [tab, setTab] = useState<Tab>('mapa');
   const [states, setStates] = useState<VisitStateDto[]>([]);
   const [customers, setCustomers] = useState<ComercialCustomer[]>([]);
+  const [contacts, setContacts] = useState<ComercialContacto[]>([]);
   const [reminders, setReminders] = useState<ReminderDto[]>([]);
   const [selected, setSelected] = useState<ComercialCustomer | null>(null);
+  const [selectedContact, setSelectedContact] = useState<ComercialContacto | null>(null);
   const [loading, setLoading] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -70,13 +73,15 @@ export default function Page() {
     if (!apiEnabled) return;
     setLoading(true);
     try {
-      const [st, cs, rs] = await Promise.all([
+      const [st, cs, ct, rs] = await Promise.all([
         fetchVisitStates(),
         fetchCustomers({ ...filters, near: near ?? undefined, limit: 500 }),
+        fetchContactos(),
         fetchReminders(),
       ]);
       setStates(st);
       setCustomers(cs.items);
+      setContacts(ct);
       setReminders(rs);
     } finally { setLoading(false); }
   }, [apiEnabled, filters, near]);
@@ -93,7 +98,9 @@ export default function Page() {
   }, [searchParams, customers]);
 
   const geolocated = useMemo(() => customers.filter((c) => c.geoEstado === 'OK'), [customers]);
+  const geolocatedContacts = useMemo(() => contacts.filter((c) => c.geoEstado === 'OK' && c.latitud != null && c.longitud != null), [contacts]);
   const sinGeo = useMemo(() => customers.filter((c) => c.geoEstado !== 'OK'), [customers]);
+  const sinGeoContactos = useMemo(() => contacts.filter((c) => c.geoEstado !== 'OK').length, [contacts]);
   const pendientes = useMemo(() => customers.filter((c) => c.estadoVisita?.esPendiente), [customers]);
 
   const followUpItems = useMemo(() => buildFollowUpList(
@@ -126,8 +133,10 @@ export default function Page() {
   async function reGeolocalizar() {
     setGeocoding(true);
     try {
-      const r = await geocodeRerun(false);
-      await dialog.alert(`Geolocalización: ${r.ok} ubicados, ${r.failed} no encontrados, ${r.skipped} sin dirección.`);
+      // Cubre AMBAS capas del mapa: cartera de clientes y agenda de contactos (crm-operaos 9.12).
+      const [rc, rk] = await Promise.all([geocodeRerun(false), contactosGeocodeRerun(false)]);
+      const ok = rc.ok + rk.ok, failed = rc.failed + rk.failed, skipped = rc.skipped + rk.skipped;
+      await dialog.alert(`Geolocalización: ${ok} ubicados, ${failed} no encontrados, ${skipped} sin dirección.`);
       await load();
     } catch (err) {
       await dialog.alert(err instanceof Error ? err.message : 'No se pudo re-geolocalizar.');
@@ -205,7 +214,33 @@ export default function Page() {
             onFiltroEstadoChange={(id) => setFilters({ ...filters, estadoVisitaId: id })}
             onFiltroCategoriaChange={(cat) => setFilters({ ...filters, categoriaAbc: cat })} />
 
-          <MapaClientes customers={geolocated} selectedId={selected?.id} onSelect={setSelected} center={near ?? undefined} modo={colorMode} />
+          <MapaClientes customers={geolocated} contacts={geolocatedContacts}
+            selectedId={selected?.id} onSelect={(c) => { setSelectedContact(null); setSelected(c); }}
+            onSelectContact={(c) => { setSelected(null); setSelectedContact(c); }}
+            center={near ?? undefined} modo={colorMode} />
+
+          {/* Ficha ligera del contacto seleccionado en el mapa (crm-operaos 9.12): los contactos
+              son leads/prospectos, no clientes de cartera → no abren el FichaClientePanel; se
+              muestra un resumen con enlace a la agenda de Contactos. */}
+          {selectedContact && (
+            <div className="flex items-start justify-between gap-3 rounded-xl border border-purple-500/30 bg-purple-500/10 px-4 py-3">
+              <div className="space-y-0.5 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rotate-45" style={{ backgroundColor: CONTACT_COLOR }} />
+                  <span className="font-medium text-white">{selectedContact.nombre}</span>
+                  <span className="rounded-full border border-purple-400/40 bg-purple-500/20 px-2 py-0.5 text-xs text-purple-200">Contacto · {selectedContact.tipo}</span>
+                </div>
+                {selectedContact.sector && <p className="text-[var(--panel-muted)]">Sector: {selectedContact.sector}</p>}
+                {(selectedContact.direccion || selectedContact.localidad) && (
+                  <p className="text-[var(--panel-muted)]">{[selectedContact.direccion, selectedContact.localidad].filter(Boolean).join(', ')}</p>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" onClick={() => router.push('/contactos')}>Ver en Contactos</Button>
+                <button onClick={() => setSelectedContact(null)} className="text-[var(--panel-muted)] hover:text-[var(--hover-text)]" aria-label="Cerrar">✕</button>
+              </div>
+            </div>
+          )}
 
           {/* Lista lateral / pendientes de geolocalizar */}
           <div className="grid gap-4 lg:grid-cols-2">
@@ -226,7 +261,7 @@ export default function Page() {
             <div>
               <div className="mb-2 flex items-center justify-between gap-2">
                 <h3 className="flex items-center gap-1.5 text-sm font-medium text-white"><MapPin className="h-4 w-4 text-red-400" /> Pendientes de geolocalizar ({sinGeo.length})</h3>
-                {puedeEditar && sinGeo.length > 0 && (
+                {puedeEditar && (sinGeo.length > 0 || sinGeoContactos > 0) && (
                   <Button variant="outline" onClick={() => void reGeolocalizar()} disabled={geocoding}>
                     <RefreshCw className={`h-4 w-4 ${geocoding ? 'animate-spin' : ''}`} /> {geocoding ? 'Geolocalizando…' : 'Re-geolocalizar'}
                   </Button>

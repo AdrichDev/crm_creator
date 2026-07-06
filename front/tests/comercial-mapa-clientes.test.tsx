@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, waitFor, fireEvent } from '@testing-library/react';
-import type { ComercialCustomer } from '@/lib/comercial/types';
+import type { ComercialCustomer, ComercialContacto } from '@/lib/comercial/types';
+import { CONTACT_COLOR } from '@/lib/comercial/map-point';
 
 // Controla el loader sin cargar la API real (imposible en jsdom).
 const { mockKey, mockLoad } = vi.hoisted(() => ({
@@ -80,6 +81,14 @@ function customer(over: Partial<ComercialCustomer>): ComercialCustomer {
   } as ComercialCustomer;
 }
 
+function contacto(over: Partial<ComercialContacto>): ComercialContacto {
+  return {
+    id: 'k1', nombre: 'Lead', tipo: 'prospecto', sector: null, direccion: null, localidad: null,
+    geoEstado: 'OK', latitud: 40.5, longitud: -3.6,
+    ...over,
+  } as ComercialContacto;
+}
+
 beforeEach(() => {
   createdMarkers.length = 0;
   mockKey.mockClear();
@@ -123,6 +132,41 @@ describe('MapaClientes — Google Maps JS API', () => {
     await waitFor(() => expect(createdMarkers.length).toBe(1));
     createdMarkers[0].listeners.click();
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }));
+  });
+
+  it('pinta los contactos como capa distinta: rombo violeta (no círculo) y título "· Contacto"', async () => {
+    const customers = [customer({ id: 'a', nombre: 'Ana' })];
+    const contacts = [contacto({ id: 'k1', nombre: 'Lead Uno', sector: 'Hostelería' })];
+    render(<MapaClientes customers={customers} contacts={contacts} modo="estado" />);
+    await waitFor(() => expect(createdMarkers.length).toBe(2));
+    const contactMarker = createdMarkers.find((m) => String(m.opts.title).includes('Contacto'));
+    expect(contactMarker).toBeTruthy();
+    expect(contactMarker!.opts.title).toContain('Lead Uno');
+    expect(contactMarker!.opts.icon.fillColor).toBe(CONTACT_COLOR);
+    // Distinto del círculo de cliente: usa un path SVG (rombo), no SymbolPath.CIRCLE (0).
+    expect(typeof contactMarker!.opts.icon.path).toBe('string');
+    const clientMarker = createdMarkers.find((m) => m.opts.title === 'Ana');
+    expect(clientMarker!.opts.icon.path).toBe(0);
+  });
+
+  it('el click en un contacto dispara onSelectContact, no onSelect', async () => {
+    const onSelect = vi.fn();
+    const onSelectContact = vi.fn();
+    render(<MapaClientes customers={[]} contacts={[contacto({ id: 'k9', nombre: 'Beta' })]}
+      onSelect={onSelect} onSelectContact={onSelectContact} modo="estado" />);
+    await waitFor(() => expect(createdMarkers.length).toBe(1));
+    createdMarkers[0].listeners.click();
+    expect(onSelectContact).toHaveBeenCalledWith(expect.objectContaining({ id: 'k9' }));
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('descarta contactos sin coordenadas o no OK', async () => {
+    const contacts = [
+      contacto({ id: 'k1', geoEstado: 'OK', latitud: 40.5, longitud: -3.6 }),
+      contacto({ id: 'k2', geoEstado: 'PENDING', latitud: null, longitud: null }),
+    ];
+    render(<MapaClientes customers={[]} contacts={contacts} modo="estado" />);
+    await waitFor(() => expect(createdMarkers.length).toBe(1));
   });
 
   it('sin API key muestra el aviso y no intenta cargar el mapa', async () => {

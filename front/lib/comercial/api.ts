@@ -1,7 +1,7 @@
 'use client';
 import { apiFetch } from '@/lib/api/client';
 import type {
-  ComercialCustomer, VisitStateDto, VisitDto, CustomerNoteDto, ReminderDto, ReminderSummaryDto,
+  ComercialCustomer, ComercialContacto, VisitStateDto, VisitDto, CustomerNoteDto, ReminderDto, ReminderSummaryDto,
 } from './types';
 
 interface Listed<T> { items: T[]; total?: number; }
@@ -65,6 +65,20 @@ export async function importCustomers(rows: Record<string, unknown>[], force = f
 export interface GeocodeRerunResult { ok: number; failed: number; skipped: number; }
 export async function geocodeRerun(force = false): Promise<GeocodeRerunResult> {
   return apiFetch<GeocodeRerunResult>('/customers/geocode/rerun', { method: 'POST', body: JSON.stringify({ force }) });
+}
+
+// ---- Contactos geolocalizados en el mapa (crm-operaos 9.12) ----
+// Trae los contactos del negocio para pintarlos como una segunda capa de marcadores.
+// La ficha del contacto vive en /contactos; aquí sólo se necesitan sus coordenadas.
+export async function fetchContactos(limit = 500): Promise<ComercialContacto[]> {
+  const res = await apiFetch<{ items: ComercialContacto[] }>(`/contactos?limit=${limit}`);
+  return res.items ?? [];
+}
+
+// Re-geolocalización batch de contactos (mismo contrato que /customers/geocode/rerun):
+// re-intenta PENDING/FAILED con dirección; force=true incluye también los OK.
+export async function contactosGeocodeRerun(force = false): Promise<GeocodeRerunResult> {
+  return apiFetch<GeocodeRerunResult>('/contactos/geocode/rerun', { method: 'POST', body: JSON.stringify({ force }) });
 }
 
 // ---- Estados de visita ----

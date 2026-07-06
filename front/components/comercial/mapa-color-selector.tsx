@@ -1,6 +1,7 @@
 'use client';
 import type { ColorMode } from '@/lib/comercial/marker-color';
 import { ABC_COLORS } from '@/lib/comercial/marker-color';
+import { CONTACT_COLOR } from '@/lib/comercial/map-point';
 import type { VisitStateDto } from '@/lib/comercial/types';
 
 // Selector EXCLUSIVO del modo de color del mapa + leyenda dinámica (regla de negocio 9 /
@@ -85,6 +86,13 @@ export function MapaColorSelector({
                 </button>
               );
             })}
+        {/* Entrada fija de leyenda para la capa de contactos (leads/prospectos): rombo violeta,
+            neutro, no filtrable (los contactos no tienen estado de visita ni categoría ABC). */}
+        <span className="inline-flex items-center gap-1.5 rounded-md border border-transparent px-2 py-1"
+          title="Leads y prospectos de la agenda de Contactos">
+          <span className="h-3 w-3 rotate-45" style={{ backgroundColor: CONTACT_COLOR }} />
+          Contacto (lead/prospecto)
+        </span>
       </div>
     </div>
   );
