@@ -4,6 +4,7 @@ import { prisma } from '../prisma.js';
 import type { AuthedRequest } from '../middleware/types.js';
 import { splitNombre, joinNombre, pickFields } from '../lib/nombre.js';
 import { parsePagination } from '../lib/pagination.js';
+import { ensureAdminEmployee } from '../lib/comercial/admin-employee.js';
 
 // Empleados (crm.empleado) en castellano. La página usa nombre COMBINADO
 // (nombre+apellido); aquí se combina al leer y se parte al escribir.
@@ -23,6 +24,21 @@ function buildData(body: Record<string, unknown>): Record<string, unknown> {
 // GET / → devuelve { items, total, page, limit } paginado con búsqueda ILIKE.
 employeesRouter.get('/', async (req: AuthedRequest, res: Response) => {
   const { page, limit, search } = parsePagination(req.query as Record<string, unknown>);
+
+  // Vertical `comerciales`: el admin actúa como comercial de campo y debe aparecer como
+  // empleado asignable. Se materializa aquí (ruta de LECTURA de la lista) y no en cada
+  // escritura ajena: es el punto natural donde el front pide la lista para el selector de
+  // citas, es idempotente y queda acotado al vertical comerciales (coste extra solo en él).
+  // La materialización es best-effort: si falla (o dos GET concurrentes chocan), NO debe
+  // tumbar la lectura de la lista — se registra y se sigue sirviendo la lista existente.
+  const business = await prisma.business.findUnique({ where: { id: req.businessId }, select: { vertical: true } });
+  if (business?.vertical === 'comerciales') {
+    try {
+      await ensureAdminEmployee(req.businessId as string);
+    } catch (err) {
+      console.error('ensureAdminEmployee failed (list read continues):', err);
+    }
+  }
 
   const searchWhere = search ? {
     OR: [

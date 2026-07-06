@@ -22,7 +22,11 @@ describe('WU1: Agenda visual - helpers', () => {
 
   it('extractCanal extrae valor desde "Canal: valor" en notes', () => {
     expect(extractCanal('Canal: Videollamada')).toBe('Videollamada');
-    expect(extractCanal('Algo Canal: Zoom más texto')).toBe('Zoom más texto');
+    // Formato canónico multi-campo: Canal vive en su propio segmento (` | `).
+    expect(extractCanal('Acción: Reunión | Canal: Zoom más texto')).toBe('Zoom más texto');
+    // "Canal:" a mitad de un segmento que NO empieza por esa etiqueta ya NO se extrae:
+    // el parser está anclado al inicio de segmento para no mal-leer texto libre de Acción.
+    expect(extractCanal('Algo Canal: Zoom más texto')).toBe('—');
     expect(extractCanal('Sin canal')).toBe('—');
     expect(extractCanal(null)).toBe('—');
   });

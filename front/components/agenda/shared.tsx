@@ -19,10 +19,29 @@ export function diaSemanaLabel(fecha: string): string {
   return DOW_FULL[(dt.getDay() + 6) % 7];
 }
 
-/** Extrae canal desde "Canal: Videollamada" en notes. */
+// Notas de citas comerciales con formato canónico `Acción: <accion> | Canal: <canal>`
+// (cualquiera de los dos campos puede faltar). Se parte por ` | ` y se lee cada
+// campo por su etiqueta, tolerando notas legacy que sólo llevan `Canal: X`.
+function extractField(notes: string | null | undefined, label: string): string | undefined {
+  if (!notes) return undefined;
+  for (const seg of notes.split(' | ')) {
+    // Anclado al INICIO del segmento: un texto libre de Acción que contenga "Canal:" (p.ej.
+    // "Confirmar Canal: web") no debe leerse como el campo Canal. Cada campo solo se reconoce
+    // cuando el segmento empieza por su etiqueta.
+    const m = seg.match(new RegExp(`^${label}:\\s*(.+)`));
+    if (m) return m[1].trim();
+  }
+  return undefined;
+}
+
+/** Extrae canal desde "Canal: Videollamada" en notes (soporta el formato Acción+Canal). */
 export function extractCanal(notes?: string | null): string {
-  const m = notes?.match(/Canal:\s*(.+)/);
-  return m?.[1]?.trim() ?? '—';
+  return extractField(notes, 'Canal') ?? '—';
+}
+
+/** Extrae acción desde "Acción: Visita comercial" en notes (vertical comerciales). */
+export function extractAccion(notes?: string | null): string {
+  return extractField(notes, 'Acción') ?? '—';
 }
 
 /** Metadatos secundarios de tarjeta según vertical sectorial (entrenamiento/clase/reunión). */
@@ -37,7 +56,7 @@ export function metaFields(
     return [['Instructor', c.empleado || '—'], ['Sala', c.recurso ?? '—'], ['Día', diaSemanaLabel(c.fecha)], ['Aforo', String(c.aforo ?? '—')]];
   }
   if (sector?.formComponent === 'reunion') {
-    return [['Comercial', c.empleado || '—'], ['Canal', extractCanal(c.notes)]];
+    return [['Comercial', c.empleado || '—'], ['Acción', extractAccion(c.notes)], ['Canal', extractCanal(c.notes)]];
   }
   return [['Servicio', c.servicio || '—'], ['Profesional', c.empleado || '—']];
 }

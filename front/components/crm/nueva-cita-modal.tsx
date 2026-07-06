@@ -8,7 +8,37 @@ import { Loader2, CalendarPlus } from 'lucide-react';
 
 interface Opt { id: string; nombre: string }
 
-const CANALES = ['Presencial', 'Videollamada'];
+export const CANALES = ['Presencial', 'Videollamada', 'Llamada'];
+
+// Acciones comerciales predefinidas (vertical `comerciales`). El campo es un combobox
+// editable (<input list>): el usuario puede elegir una de estas o escribir texto libre.
+export const ACCIONES_COMERCIALES = [
+  'Visita comercial',
+  'Llamada de seguimiento',
+  'Reunión',
+  'Demostración de producto',
+  'Presentación de presupuesto',
+  'Firma de contrato',
+  'Prospección',
+  'Visita de cortesía',
+];
+
+// Construye el string canónico de `notes` para citas comerciales (acción + canal).
+// Formato FIJO (acordado con la seed paralela que puebla el mismo tenant):
+//   - ambos presentes → `Acción: <accion> | Canal: <canal>`
+//   - solo canal      → `Canal: <canal>`  (retrocompatible con notas antiguas)
+//   - solo acción     → `Acción: <accion>`
+//   - ninguno         → undefined
+export function buildCitaNotes(accion: string, canal: string): string | undefined {
+  // El separador de segmentos es ` | `: si el texto libre de Acción lo contiene, rompería
+  // el parseo (extractField parte por ` | `). Se colapsa cualquier `|` del texto libre a `/`.
+  const a = accion.trim().replace(/\s*\|\s*/g, ' / ');
+  const c = canal.trim().replace(/\s*\|\s*/g, ' / ');
+  if (a && c) return `Acción: ${a} | Canal: ${c}`;
+  if (c) return `Canal: ${c}`;
+  if (a) return `Acción: ${a}`;
+  return undefined;
+}
 
 // Alta REAL de cita (modo CRM/Supabase): selecciona cliente/servicio/profesional
 // por id + fecha/hora → POST /api/bookings (valida disponibilidad en el back).
@@ -20,7 +50,7 @@ export function NuevaCitaModal({ open, onClose, onCreated, mostrarCanal = false 
   const [services, setServices] = useState<Opt[]>([]);
   const [employees, setEmployees] = useState<Opt[]>([]);
   const [locationId, setLocationId] = useState('');
-  const [form, setForm] = useState({ customerId: '', serviceId: '', employeeId: '', fecha: '', hora: '', canal: CANALES[0] });
+  const [form, setForm] = useState({ customerId: '', serviceId: '', employeeId: '', fecha: '', hora: '', canal: CANALES[0], accion: '' });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   // Fallback WU3: si GET /bookings/slots falla, se degrada al <input type="time"> de siempre.
@@ -31,7 +61,7 @@ export function NuevaCitaModal({ open, onClose, onCreated, mostrarCanal = false 
   useEffect(() => {
     if (!open) return;
     setError(''); setChipsFallback(false);
-    setForm({ customerId: '', serviceId: '', employeeId: '', fecha: '', hora: '', canal: CANALES[0] });
+    setForm({ customerId: '', serviceId: '', employeeId: '', fecha: '', hora: '', canal: CANALES[0], accion: '' });
     // Los endpoints devuelven { items, total, page, limit } tras añadir paginación server-side.
     Promise.all([
       apiFetch<{ items: Opt[] }>('/customers').then(r => r.items ?? []).catch(() => [] as Opt[]),
@@ -54,7 +84,7 @@ export function NuevaCitaModal({ open, onClose, onCreated, mostrarCanal = false 
         body: JSON.stringify({
           locationId, serviceId: form.serviceId, customerId: form.customerId,
           employeeId: form.employeeId || undefined, start: `${form.fecha}T${form.hora}:00`,
-          notes: mostrarCanal ? `Canal: ${form.canal}` : undefined,
+          notes: mostrarCanal ? buildCitaNotes(form.accion, form.canal) : undefined,
         }),
       });
       onCreated(); onClose();
@@ -112,6 +142,19 @@ export function NuevaCitaModal({ open, onClose, onCreated, mostrarCanal = false 
 
         {mostrarCanal && (
           <>
+            <label className="mt-3 block text-xs font-medium text-[var(--panel-muted)]">Acción</label>
+            {/* Combobox editable: sugerencias predefinidas + texto libre. Se persiste en `notes`. */}
+            <input
+              list="acciones-comerciales"
+              className={inputCls}
+              value={form.accion}
+              onChange={(e) => setForm({ ...form, accion: e.target.value })}
+              placeholder="Selecciona o escribe una acción…"
+            />
+            <datalist id="acciones-comerciales">
+              {ACCIONES_COMERCIALES.map((a) => <option key={a} value={a} />)}
+            </datalist>
+
             <label className="mt-3 block text-xs font-medium text-[var(--panel-muted)]">Canal</label>
             <select className={inputCls} value={form.canal} onChange={(e) => setForm({ ...form, canal: e.target.value })}>
               {CANALES.map((c) => <option key={c} value={c}>{c}</option>)}
