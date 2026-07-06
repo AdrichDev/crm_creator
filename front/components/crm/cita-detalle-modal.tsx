@@ -40,6 +40,10 @@ export function CitaDetalleModal({ cita, onClose, onSave, onIrAgenda, irAgendaLa
     ['Fecha', cita.fecha],
     ['Hora', cita.hora],
     ['Estado', cita.estado],
+    // Registro "Dirección" solo si hay dirección (cliente visitado > sucursal,
+    // ver back/src/lib/citaDireccion.ts) — sin ella se omite la fila, no se
+    // muestra un "Dirección:" vacío (pedido owner).
+    ...(cita.direccion ? ([['Dirección', cita.direccion]] as [string, string][]) : []),
   ];
 
   return (

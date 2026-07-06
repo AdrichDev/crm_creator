@@ -48,6 +48,20 @@ describe('CitaDetalleModal (crm-citas-ux-agenda WU5 / AC5)', () => {
   });
 });
 
+describe('CitaDetalleModal — registro "Dirección" en la ficha (crm-operaos, pedido owner)', () => {
+  it('con dirección: muestra el registro Dirección con el valor', () => {
+    const cita: CitaConNotas = { ...CITA, direccion: 'C/ Mayor 3, Madrid' };
+    render(<CitaDetalleModal cita={cita} onClose={vi.fn()} onSave={vi.fn()} onIrAgenda={vi.fn()} />);
+    expect(screen.getByText('Dirección')).toBeInTheDocument();
+    expect(screen.getByText('C/ Mayor 3, Madrid')).toBeInTheDocument();
+  });
+
+  it('sin dirección: no muestra el registro Dirección', () => {
+    render(<CitaDetalleModal cita={CITA} onClose={vi.fn()} onSave={vi.fn()} onIrAgenda={vi.fn()} />);
+    expect(screen.queryByText('Dirección')).not.toBeInTheDocument();
+  });
+});
+
 describe('CitaDetalleModal — mapa Google Maps (crm-operaos WU3 / AC3)', () => {
   it('con dirección: embebe un iframe de Google Maps y el enlace "Abrir en Google Maps"', () => {
     const cita: CitaConNotas = { ...CITA, direccion: 'C/ Mayor 3, Madrid' };

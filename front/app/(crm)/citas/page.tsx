@@ -41,6 +41,9 @@ type CitaApiRow = {
   recurso?: string | null;
   aforo?: number | null;
   notes?: string | null;
+  // Dirección para el pin del detalle (back/src/lib/citaDireccion.ts): cliente
+  // visitado si tiene dirección, si no la sucursal (Location.direccion).
+  direccion?: string | null;
 };
 
 const BASE_FIELDS: Omit<Field, 'render'>[] = [

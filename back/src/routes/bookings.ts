@@ -15,6 +15,7 @@ import {
 import { emit } from '../lib/automation/index.js';
 import { buildReviewRequest } from '../lib/eventPayloads.js';
 import { parsePagination } from '../lib/pagination.js';
+import { resolveCitaDireccion } from '../lib/citaDireccion.js';
 
 export const bookingsRouter = Router();
 
@@ -51,7 +52,7 @@ bookingsRouter.get('/', async (req: AuthedRequest, res: Response) => {
   const [rows, total] = await Promise.all([
     prisma.booking.findMany({
       where,
-      include: { customer: true, service: true, employee: true, team: true, resources: true },
+      include: { customer: true, service: true, employee: true, team: true, resources: true, location: true },
       orderBy: { startAt: 'asc' },
       skip: (page - 1) * limit,
       take: limit,
@@ -77,6 +78,8 @@ bookingsRouter.get('/', async (req: AuthedRequest, res: Response) => {
       recurso: b.resources[0]?.nombre ?? null,
       aforo: b.resources[0]?.capacidad ?? null,
       notes: b.notes ?? null,
+      // Dirección del pin en el detalle: cliente visitado > sucursal (fallback).
+      direccion: resolveCitaDireccion(b.customer, b.location),
     })),
     total,
     page,
