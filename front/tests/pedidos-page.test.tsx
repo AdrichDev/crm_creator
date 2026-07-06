@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, cleanup, screen, fireEvent, within } from '@testing-library/react';
+import { render, cleanup, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import type { Pedido } from '@/lib/mock/data';
 import Page from '@/app/(crm)/pedidos/page';
@@ -26,6 +26,10 @@ const PEDIDOS: Pedido[] = [
 
 const updateMock = vi.fn();
 const createMock = vi.fn();
+const alertMock = vi.fn().mockResolvedValue(undefined);
+vi.mock('@/components/ui/dialog-provider', () => ({
+  useDialog: () => ({ alert: alertMock, confirm: vi.fn().mockResolvedValue(true) }),
+}));
 vi.mock('@/lib/data/use-collection', () => ({
   useCollection: (key: string) => {
     if (key === 'pedidos') return { items: PEDIDOS, create: createMock, update: updateMock, remove: vi.fn(), reset: vi.fn(), refresh: vi.fn() };
@@ -102,10 +106,36 @@ describe('pedidos/page — documental (Fase 3)', () => {
     expect(screen.getByText('Imprimir')).toBeInTheDocument();
   });
 
-  it('clic en el badge de estado cicla al siguiente estado (generada → aceptada)', () => {
+  it('el estado es un <select> con las opciones en MAYÚSCULAS', () => {
     render(<Page />);
-    fireEvent.click(screen.getByText('generada'));
+    // Un control (crm 5a) por fila; el literal real es minúsculas, se MUESTRA en mayúsculas.
+    expect(screen.getByDisplayValue('GENERADA')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('ACEPTADA')).toBeInTheDocument();
+  });
+
+  it('cambiar el <select> de estado llama a update con el nuevo estado (local)', () => {
+    render(<Page />);
+    fireEvent.change(screen.getByDisplayValue('GENERADA'), { target: { value: 'aceptada' } });
     expect(updateMock).toHaveBeenCalledWith(3101, { estado: 'aceptada' });
+  });
+
+  it('modo API: cambiar el <select> llama a PUT /pedidos/:id/status', async () => {
+    apiState.enabled = true;
+    apiFetchMock.mockResolvedValue({
+      items: PEDIDOS, total: 2, page: 1, limit: 20,
+      metrics: { totalPedidos: 2, aceptados: 1, importeTotal: 0 },
+    });
+    render(<Page />);
+    fireEvent.change(await screen.findByDisplayValue('GENERADA'), { target: { value: 'rechazada' } });
+    expect(apiFetchMock).toHaveBeenCalledWith('/pedidos/3101/status', { method: 'PUT', body: JSON.stringify({ estado: 'rechazada' }) });
+  });
+
+  it('el filtro oculta las filas que no casan por cliente', async () => {
+    render(<Page />);
+    expect(screen.getByText('P-2026-001')).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText(/Buscar por nº/i), { target: { value: 'Lucía' } });
+    await waitFor(() => expect(screen.queryByText('P-2026-001')).toBeNull()); // debounce 300ms
+    expect(screen.getByText('P-2026-002')).toBeInTheDocument();
   });
 
   it('"+ Nuevo pedido" abre el formulario de alta (flujo separado del TPV)', () => {
@@ -114,9 +144,9 @@ describe('pedidos/page — documental (Fase 3)', () => {
     expect(screen.getByRole('heading', { name: 'Nuevo presupuesto' })).toBeInTheDocument();
   });
 
-  it('las cabeceras Nº/Cliente/Fecha/Estado son ordenables; Total no', () => {
+  it('las cabeceras Nº Presupuesto/Cliente/Fecha/Estado son ordenables; Total no', () => {
     render(<Page />);
-    expect(screen.getByRole('button', { name: 'Ordenar por Nº' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ordenar por Nº Presupuesto' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Ordenar por Cliente' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Ordenar por Fecha' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Ordenar por Estado' })).toBeInTheDocument();
@@ -134,11 +164,11 @@ describe('pedidos/page — documental (Fase 3)', () => {
     expect(numeroDeFila(0)).toBe('P-2026-002');
   });
 
-  it('Editar abre el formulario precargado y guarda con PATCH (update) el presupuesto', () => {
+  it('Editar (icono AA) abre el formulario precargado y guarda con PATCH (update) el presupuesto', () => {
     render(<Page />);
-    // La fila aceptada (P-2026-002) NO ofrece Editar; solo la generada.
-    expect(screen.getAllByText('Editar')).toHaveLength(1);
-    fireEvent.click(screen.getByText('Editar'));
+    // La fila aceptada (P-2026-002) NO ofrece Editar; solo la generada. Botón-icono (crm 5c).
+    expect(screen.getAllByTitle('Editar')).toHaveLength(1);
+    fireEvent.click(screen.getByTitle('Editar'));
     expect(screen.getByRole('heading', { name: 'Editar presupuesto' })).toBeInTheDocument();
     expect(screen.getByDisplayValue('P-2026-001')).toBeInTheDocument(); // nº precargado (sin sufijo)
 

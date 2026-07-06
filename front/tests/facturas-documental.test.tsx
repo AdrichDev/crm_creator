@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, cleanup, screen, fireEvent } from '@testing-library/react';
+import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import type { Factura } from '@/lib/mock/data';
 import Page from '@/app/(crm)/facturas/page';
@@ -47,16 +47,23 @@ describe('facturas/page — documental (Fase 2 + detalle 10.3)', () => {
     expect(screen.getByText('€165.00')).toBeInTheDocument();
   });
 
-  it('NO tiene columna "Docs" y SÍ columna "Fecha" (10.3)', () => {
+  it('NO tiene columna "Docs" y SÍ columna "Fecha" (10.3), y rotula "Nº Factura"', () => {
     render(<Page />);
     expect(screen.queryByText('Docs')).toBeNull();
     expect(screen.getByText('Fecha')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ordenar por Nº Factura' })).toBeInTheDocument();
   });
 
-  it('clic en el badge de estado cicla Pendiente → Pagada y fija pagadaEn (local emula PUT /status)', () => {
+  it('el estado es un <select> con las opciones en MAYÚSCULAS', () => {
     render(<Page />);
-    // F-2026-002 está Pendiente → clic → Pagada con pagadaEn.
-    fireEvent.click(screen.getByText('Pendiente'));
+    expect(screen.getByDisplayValue('PENDIENTE')).toBeInTheDocument(); // F-2026-002
+    expect(screen.getAllByDisplayValue('PAGADA').length).toBeGreaterThan(0);
+  });
+
+  it('cambiar el <select> de estado a Pagada llama a update y fija pagadaEn (local emula PUT /status)', () => {
+    render(<Page />);
+    // F-2026-002 está Pendiente → cambio a Pagada con pagadaEn.
+    fireEvent.change(screen.getByDisplayValue('PENDIENTE'), { target: { value: 'Pagada' } });
     expect(updateMock).toHaveBeenCalledTimes(1);
     const [id, patch] = updateMock.mock.calls[0];
     expect(id).toBe(2002);
@@ -64,13 +71,21 @@ describe('facturas/page — documental (Fase 2 + detalle 10.3)', () => {
     expect(typeof patch.pagadaEn).toBe('string'); // a Pagada → pagadaEn = now()
   });
 
-  it('clic en un badge Pagada cicla a Anulada y LIMPIA pagadaEn', () => {
+  it('cambiar un <select> Pagada a Anulada LIMPIA pagadaEn', () => {
     render(<Page />);
-    fireEvent.click(screen.getAllByText('Pagada')[0]); // F-2026-001
+    fireEvent.change(screen.getAllByDisplayValue('PAGADA')[0], { target: { value: 'Anulada' } }); // F-2026-001
     const [id, patch] = updateMock.mock.calls[0];
     expect(id).toBe(2001);
     expect(patch.estado).toBe('Anulada');
     expect(patch.pagadaEn).toBeNull(); // salir de Pagada → limpia
+  });
+
+  it('el filtro oculta las facturas que no casan por cliente/nº', async () => {
+    render(<Page />);
+    expect(screen.getByText('F-2026-001')).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText(/Buscar por nº/i), { target: { value: 'Ana' } });
+    await waitFor(() => expect(screen.queryByText('F-2026-001')).toBeNull()); // debounce 300ms
+    expect(screen.getByText('F-2026-002')).toBeInTheDocument(); // Ana Gómez
   });
 
   it('NO ofrece alta manual (sin botón "Nueva factura")', () => {

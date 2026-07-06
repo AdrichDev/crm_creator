@@ -3,7 +3,9 @@ import { useMemo, useState } from 'react';
 import { ModuleGuard } from '@/components/layout/module-guard';
 import { useTerm, useRole } from '@/lib/tenant-config-context';
 import { canWrite } from '@/lib/config/roles';
-import { PageHeader, Stat, Table, Td, Badge, EmptyState } from '@/components/ui/primitives';
+import { PageHeader, Stat, Table, Td, EmptyState, EstadoSelect } from '@/components/ui/primitives';
+import { SearchInput } from '@/components/ui/search-input';
+import { facturaMatches } from '@/lib/facturacion/list-filter';
 import { useCollection } from '@/lib/data/use-collection';
 import { usePaginatedApi } from '@/lib/data/use-paginated-api';
 import { useDocumentos } from '@/lib/data/use-documents';
@@ -12,13 +14,11 @@ import { isApiEnabled, apiFetch } from '@/lib/api/client';
 import { useInvoiceMetrics } from '@/lib/data/use-invoice-metrics';
 import { FacturaPreview } from '@/components/facturacion/factura-preview';
 
-const tone = (s: string) => (s === 'Pagada' ? 'green' : s === 'Anulada' ? 'red' : 'amber');
 const eur = (n: number) => '€' + n.toFixed(2);
 
-// Ciclo de estados al hacer clic en el badge (set CERRADO del back: PUT /invoices/:id/status).
-// Mismo patrón que Presupuestos/AA: clic → siguiente estado.
-const CYCLE = ['Pendiente', 'Pagada', 'Anulada'] as const;
-const nextEstado = (e: string) => CYCLE[(CYCLE.indexOf(e as typeof CYCLE[number]) + 1) % CYCLE.length];
+// Set CERRADO de estados de una factura (PUT /invoices/:id/status), expuesto como opciones del
+// <select> de estado (crm 5a). El literal se muestra en MAYÚSCULAS y conserva su forma real.
+const INVOICE_ESTADOS = ['Pendiente', 'Pagada', 'Anulada'] as const;
 
 // Ordenación por cabecera (crm-operaos 10.3). Las 4 columnas tienen respaldo escalar en BD
 // (cliente_nombre y fecha son columnas reales, a diferencia de pedidos) → TODAS se ordenan
@@ -77,6 +77,14 @@ export default function Page() {
     const rows = apiEnabled ? [] : mockItems; // cliente en API: lista vacía (403 staffOnly)
     return sortKey ? sortFacturas(rows, sortKey, sortDir) : rows;
   }, [serverList, apiEnabled, paged.items, mockItems, sortKey, sortDir]);
+
+  // Filtro de lista (crm 5d): nº de factura, cliente o persona de contacto. Client-side sobre
+  // la página ya cargada (el endpoint de facturas no expone `search`).
+  const [filter, setFilter] = useState('');
+  const filteredItems = useMemo(
+    () => (filter.trim() ? displayItems.filter((f) => facturaMatches(f, filter)) : displayItems),
+    [displayItems, filter],
+  );
 
   // Modo API: documentos respaldados por /api/documents (scoped por negocio).
   const apiDocs = useDocumentos(apiEnabled);
@@ -151,44 +159,46 @@ export default function Page() {
           hint="Las facturas se crean automáticamente cuando un pedido pasa a «aceptada»."
         />
       ) : (
-        <Table
-          sort={{ key: sortKey, dir: sortDir, onSort }}
-          head={[
-            { label: 'Nº', sortKey: 'numero' },
-            vistaCliente ? 'Tratamiento' : { label: 'Cliente', sortKey: 'cliente' },
-            { label: 'Fecha', sortKey: 'fecha' },
-            'Total',
-            { label: 'Estado', sortKey: 'estado' },
-            '',
-          ]}
-        >
-          {displayItems.map((f) => (
-            <tr key={f.id}>
-              <Td className="font-medium text-[var(--panel-text)]">{f.numero}</Td>
-              <Td>{vistaCliente ? (f.servicio || f.lines?.[0]?.nombre || '—') : f.cliente}</Td>
-              <Td>{f.fecha}</Td>
-              <Td className="font-medium">{eur(Number(f.total))}</Td>
-              <Td>
-                {puedeEditar ? (
-                  <button
-                    title="Clic para cambiar el estado (Pendiente → Pagada → Anulada)"
-                    onClick={() => updateEstado(f.id, nextEstado(f.estado))}
-                    className="cursor-pointer transition hover:opacity-80"
-                  >
-                    <Badge tone={tone(f.estado)}>{f.estado}</Badge>
-                  </button>
-                ) : (
-                  <Badge tone={tone(f.estado)}>{f.estado}</Badge>
-                )}
-              </Td>
-              <Td>
-                <div className="flex justify-end">
-                  <button className="row-action edit" onClick={() => setPreview(f)}>Ver / Imprimir</button>
-                </div>
-              </Td>
-            </tr>
-          ))}
-        </Table>
+        <>
+          <div className="mb-4">
+            <SearchInput value={filter} onChange={setFilter} placeholder="Buscar por nº, cliente o contacto..." />
+          </div>
+          <Table
+            sort={{ key: sortKey, dir: sortDir, onSort }}
+            head={[
+              { label: 'Nº Factura', sortKey: 'numero' },
+              vistaCliente ? 'Tratamiento' : { label: 'Cliente', sortKey: 'cliente' },
+              { label: 'Fecha', sortKey: 'fecha' },
+              'Total',
+              { label: 'Estado', sortKey: 'estado' },
+              '',
+            ]}
+          >
+            {filteredItems.map((f) => (
+              <tr key={f.id}>
+                <Td className="font-medium text-[var(--panel-text)]">{f.numero}</Td>
+                <Td>{vistaCliente ? (f.servicio || f.lines?.[0]?.nombre || '—') : f.cliente}</Td>
+                <Td>{f.fecha}</Td>
+                <Td className="font-medium">{eur(Number(f.total))}</Td>
+                <Td>
+                  {/* Estado como <select> compartido (crm 5a): set cerrado Pendiente|Pagada|Anulada. */}
+                  <EstadoSelect
+                    value={f.estado}
+                    options={INVOICE_ESTADOS}
+                    disabled={!puedeEditar}
+                    title="Cambiar el estado de la factura"
+                    onChange={(estado) => updateEstado(f.id, estado)}
+                  />
+                </Td>
+                <Td>
+                  <div className="flex justify-end">
+                    <button className="row-action edit" onClick={() => setPreview(f)}>Ver / Imprimir</button>
+                  </div>
+                </Td>
+              </tr>
+            ))}
+          </Table>
+        </>
       )}
     </ModuleGuard>
   );

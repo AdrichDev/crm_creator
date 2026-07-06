@@ -135,14 +135,40 @@ const ICON_BTN_TONE: Record<IconButtonTone, string> = {
  * `tone` aplica los colores persistentes de agents-agency (view/edit/delete). Sin `tone`,
  * mantiene el estilo gris neutro de siempre; `danger` sigue disponible para ese caso legacy.
  */
-export function IconButton({ title, onClick, danger, tone, className, children }:
-  { title: string; onClick?: () => void; danger?: boolean; tone?: IconButtonTone; className?: string; children: ReactNode }) {
+export function IconButton({ title, ariaLabel, onClick, danger, tone, className, children }:
+  { title: string; ariaLabel?: string; onClick?: () => void; danger?: boolean; tone?: IconButtonTone; className?: string; children: ReactNode }) {
   const base = tone ? 'inline-grid place-items-center w-8 h-8 rounded-lg border transition' : ICON_BTN_BASE;
   return (
-    <button type="button" title={title} onClick={onClick}
+    <button type="button" title={title} aria-label={ariaLabel} onClick={onClick}
       className={cn(base, tone ? ICON_BTN_TONE[tone] : danger && 'hover:!border-red-500/60 hover:!text-red-400', className)}>
       {children}
     </button>
+  );
+}
+
+/**
+ * Selector de estado compartido por Presupuestos y Facturas (crm 5a). Un `<select>` nativo con
+ * el mismo estilo que el resto de controles (`opera-control`) cuyas opciones se muestran en
+ * MAYÚSCULAS. `value` conserva el literal REAL almacenado (p. ej. `'generada'` | `'Pendiente'`)
+ * y `onChange` emite ese literal para llamar a los endpoints de estado existentes
+ * (PUT /pedidos/:id/status | PUT /invoices/:id/status). `disabled` deja el estado visible pero
+ * no editable (rol sin escritura). Reutilizado en ambas pantallas: una sola pieza de UI.
+ */
+export function EstadoSelect({ value, options, onChange, disabled, title, ariaLabel = 'Estado' }:
+  { value: string; options: readonly string[]; onChange: (v: string) => void; disabled?: boolean; title?: string; ariaLabel?: string }) {
+  return (
+    <select
+      className="opera-control uppercase w-auto min-w-[9rem] cursor-pointer disabled:cursor-default disabled:opacity-70"
+      value={value}
+      title={title}
+      aria-label={ariaLabel}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      {options.map((o) => (
+        <option key={o} value={o}>{o.toUpperCase()}</option>
+      ))}
+    </select>
   );
 }
 

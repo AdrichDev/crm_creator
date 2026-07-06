@@ -1,9 +1,13 @@
 'use client';
 import { useMemo, useState } from 'react';
 import { ModuleGuard } from '@/components/layout/module-guard';
+import { useDialog } from '@/components/ui/dialog-provider';
 import { useTerm, useRole } from '@/lib/tenant-config-context';
 import { canWrite } from '@/lib/config/roles';
-import { PageHeader, Stat, Table, Td, Badge, EmptyState, Button } from '@/components/ui/primitives';
+import { PageHeader, Stat, Table, Td, EmptyState, Button, EstadoSelect, IconButton } from '@/components/ui/primitives';
+import { Pencil } from 'lucide-react';
+import { SearchInput } from '@/components/ui/search-input';
+import { pedidoMatches } from '@/lib/facturacion/list-filter';
 import { useCollection } from '@/lib/data/use-collection';
 import { usePaginatedApi } from '@/lib/data/use-paginated-api';
 import {
@@ -12,15 +16,16 @@ import {
 } from '@/lib/mock/data';
 import { isApiEnabled, apiFetch } from '@/lib/api/client';
 import { usePedidoMetrics } from '@/lib/data/use-pedido-metrics';
-import { PedidoPreview, pedidoTone } from '@/components/facturacion/pedido-preview';
+import { PedidoPreview } from '@/components/facturacion/pedido-preview';
 import { PedidoForm, type PedidoDraft, type Emisor, type ConceptoRow } from '@/components/facturacion/pedido-form';
 
 const eur = (n: unknown) => '€' + Number(n ?? 0).toFixed(2);
 const clienteNombre = (p: Pedido) => p.clienteSnapshot?.nombre || '—';
 
-// Ciclo de estados idéntico al de AA (clic en el badge → siguiente estado).
-const CYCLE = ['generada', 'aceptada', 'rechazada', 'caducada'] as const;
-const nextEstado = (e: string) => CYCLE[(CYCLE.indexOf(e as typeof CYCLE[number]) + 1) % CYCLE.length];
+// Set CERRADO de estados de un presupuesto (mismo ciclo que AA), ahora expuesto como opciones
+// del <select> de estado (crm 5a). El literal almacenado es en minúsculas; el <select> las
+// muestra en MAYÚSCULAS.
+const PEDIDO_ESTADOS = ['generada', 'aceptada', 'rechazada', 'caducada'] as const;
 
 // Ordenación por cabecera. `numero`/`estado`/`createdAt` tienen respaldo escalar en BD → se
 // ordenan server-side en modo API (buildPedidosOrderBy). `cliente` vive en clienteSnapshot
@@ -61,6 +66,7 @@ export default function Page() {
   const { role } = useRole();
   const puedeEditar = canWrite(role, 'pedidos');
   const apiEnabled = isApiEnabled();
+  const dialog = useDialog();
 
   // Ordenación por cabecera (asc/desc toggle). Vacío = orden por defecto del back (createdAt desc).
   const [sortKey, setSortKey] = useState<'' | SortKey>('');
@@ -92,6 +98,14 @@ export default function Page() {
     return sortKey === 'cliente' ? sortPedidos(paged.items, 'cliente', sortDir) : paged.items;
   }, [apiEnabled, mockRows, paged.items, sortKey, sortDir]);
 
+  // Filtro de lista (crm 5d): nº de presupuesto, cliente (nombre/razón social) o persona de
+  // contacto. Client-side sobre la página ya cargada (el endpoint solo busca por `numero`).
+  const [filter, setFilter] = useState('');
+  const filteredItems = useMemo(
+    () => (filter.trim() ? displayItems.filter((p) => pedidoMatches(p, filter)) : displayItems),
+    [displayItems, filter],
+  );
+
   const [view, setView] = useState<'list' | 'create' | 'preview'>('list');
   const [selected, setSelected] = useState<Pedido | null>(null);
   const [editingId, setEditingId] = useState<Pedido['id'] | null>(null);
@@ -109,8 +123,13 @@ export default function Page() {
 
   async function updateEstado(id: Pedido['id'], estado: string) {
     if (apiEnabled) {
-      try { await apiFetch(`/pedidos/${id}/status`, { method: 'PUT', body: JSON.stringify({ estado }) }); }
-      catch { /* p. ej. guard de des-aceptación (400): se ignora y se re-sincroniza */ }
+      try {
+        await apiFetch(`/pedidos/${id}/status`, { method: 'PUT', body: JSON.stringify({ estado }) });
+      } catch (err) {
+        // Guard de des-aceptación (400/409): un presupuesto aceptado que ya generó factura
+        // no puede volver atrás. Se avisa al usuario y el select se re-sincroniza al valor real.
+        await dialog.alert(err instanceof Error ? err.message : 'No se pudo cambiar el estado.');
+      }
       paged.refresh();
       await refreshMetrics(); // el cambio de estado altera "Aceptados"
     } else {
@@ -248,44 +267,49 @@ export default function Page() {
           hint='Pulsa en "Nuevo presupuesto" para crear un presupuesto comercial.'
         />
       ) : (
-        <Table
-          sort={{ key: sortKey, dir: sortDir, onSort }}
-          head={[
-            { label: 'Nº', sortKey: 'numero' }, { label: 'Cliente', sortKey: 'cliente' },
-            { label: 'Fecha', sortKey: 'createdAt' }, 'Total', { label: 'Estado', sortKey: 'estado' }, '',
-          ]}
-        >
-          {displayItems.map((p) => (
-            <tr key={p.id}>
-              <Td className="font-medium text-[var(--panel-text)]">{p.numero}</Td>
-              <Td>{clienteNombre(p)}</Td>
-              <Td>{(p.createdAt || '').slice(0, 10)}</Td>
-              <Td className="font-medium">{eur(p.totalImpl)}</Td>
-              <Td>
-                {puedeEditar ? (
-                  <button
-                    title="Clic para cambiar el estado (generada → aceptada → rechazada → caducada)"
-                    onClick={() => updateEstado(p.id, nextEstado(p.estado))}
-                    className="cursor-pointer transition hover:opacity-80"
-                  >
-                    <Badge tone={pedidoTone(p.estado)}>{p.estado}</Badge>
-                  </button>
-                ) : (
-                  <Badge tone={pedidoTone(p.estado)}>{p.estado}</Badge>
-                )}
-              </Td>
-              <Td>
-                <div className="flex justify-end gap-2">
-                  {/* Un presupuesto aceptado ya generó su factura → edición bloqueada (back 409). */}
-                  {puedeEditar && p.estado !== 'aceptada' && (
-                    <button className="row-action edit" onClick={() => openEdit(p)}>Editar</button>
-                  )}
-                  <button className="row-action edit" onClick={() => { setSelected(p); setView('preview'); }}>Ver / Imprimir</button>
-                </div>
-              </Td>
-            </tr>
-          ))}
-        </Table>
+        <>
+          <div className="mb-4">
+            <SearchInput value={filter} onChange={setFilter} placeholder="Buscar por nº, cliente o contacto..." />
+          </div>
+          <Table
+            sort={{ key: sortKey, dir: sortDir, onSort }}
+            head={[
+              { label: 'Nº Presupuesto', sortKey: 'numero' }, { label: 'Cliente', sortKey: 'cliente' },
+              { label: 'Fecha', sortKey: 'createdAt' }, 'Total', { label: 'Estado', sortKey: 'estado' }, '',
+            ]}
+          >
+            {filteredItems.map((p) => (
+              <tr key={p.id}>
+                <Td className="font-medium text-[var(--panel-text)]">{p.numero}</Td>
+                <Td>{clienteNombre(p)}</Td>
+                <Td>{(p.createdAt || '').slice(0, 10)}</Td>
+                <Td className="font-medium">{eur(p.totalImpl)}</Td>
+                <Td>
+                  {/* Estado como <select> (crm 5a): un presupuesto aceptado con factura no puede
+                      des-aceptarse → el back responde 400 y updateEstado re-sincroniza. */}
+                  <EstadoSelect
+                    value={p.estado}
+                    options={PEDIDO_ESTADOS}
+                    disabled={!puedeEditar}
+                    title="Cambiar el estado del presupuesto"
+                    onChange={(estado) => updateEstado(p.id, estado)}
+                  />
+                </Td>
+                <Td>
+                  <div className="flex items-center justify-end gap-2">
+                    {/* Un presupuesto aceptado ya generó su factura → edición bloqueada (back 409). */}
+                    {puedeEditar && p.estado !== 'aceptada' && (
+                      <IconButton tone="edit" title="Editar" ariaLabel="Editar" onClick={() => openEdit(p)}>
+                        <Pencil className="h-4 w-4" />
+                      </IconButton>
+                    )}
+                    <button className="row-action edit" onClick={() => { setSelected(p); setView('preview'); }}>Ver / Imprimir</button>
+                  </div>
+                </Td>
+              </tr>
+            ))}
+          </Table>
+        </>
       )}
     </ModuleGuard>
   );
