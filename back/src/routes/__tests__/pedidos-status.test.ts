@@ -38,13 +38,16 @@ const ACTIVE = 'biz-1';
 
 type PedidoRow = {
   id: string; businessId: string; numero: string; clienteSnapshot: unknown;
-  totalImpl: number; totalMant: number; estado: string; invoice: { id: string } | null;
+  subtotalImpl: number; subtotalMant: number; totalImpl: number; totalMant: number;
+  tasaIva: number; estado: string; invoice: { id: string } | null;
 };
 
 function pedidoRow(overrides: Partial<PedidoRow> = {}): PedidoRow {
   return {
     id: 'ped-1', businessId: ACTIVE, numero: 'AD-2026-001', clienteSnapshot: { nombre: 'Ana' },
-    totalImpl: 100, totalMant: 10, estado: 'generada', invoice: null, ...overrides,
+    // Coherente con computePedidoTotals a IVA 21%: bases 100/10 → totales 121/12.1 (10.3).
+    subtotalImpl: 100, subtotalMant: 10, totalImpl: 121, totalMant: 12.1,
+    tasaIva: 0.21, estado: 'generada', invoice: null, ...overrides,
   };
 }
 
@@ -107,6 +110,10 @@ describe('PUT /pedidos/:id/status', () => {
     assert.ok(calls.invoiceData, 'debe crear la factura al aceptar');
     assert.equal(calls.invoiceData!.pedidoId, 'ped-1');
     assert.equal(calls.invoiceData!.numero, 'FAC - 2026-001');
+    // Snapshot autocontenido 10.3: desglose copiado del pedido, total exacto al céntimo.
+    assert.equal(calls.invoiceData!.subtotal, 110); // 100 + 10 (bases sin IVA)
+    assert.equal(calls.invoiceData!.tasaIva, 0.21);
+    assert.equal(calls.invoiceData!.total, 133.1); // 121 + 12.1 (con IVA)
   });
 
   test('transiciones que NO entran en aceptada no crean factura', async () => {

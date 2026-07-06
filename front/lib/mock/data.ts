@@ -8,7 +8,18 @@ export interface Cliente { id: number; nombre: string; email: string; telefono: 
 // `pedidoId`: vínculo al pedido origen (crm-paridad-facturas-pedidos-aa, PR-2b). Lo puebla
 // la API en modo remoto (columna crm.factura.pedido_id); null/undefined en facturas manuales,
 // del operador (bot Telegram) o del mock local. La vista previa lo muestra solo si existe.
-export interface Factura { id: number; numero: string; cliente: string; servicio?: string; fecha: string; total: number; estado: string; documentos?: Documento[]; pedidoId?: string | null; }
+// crm-operaos 10.3: la factura es un documento AUTOCONTENIDO con desglose propio —
+// `lines` (líneas snapshotadas), `subtotal` (base sin IVA) y `tasaIva`. Las facturas legacy
+// migran con 1 línea (servicio, importe = total) y tasaIva 0 (subtotal = total, IVA 0: no se
+// inventa desglose retroactivo). Decimales del back llegan como string → Number() al mostrar.
+export interface FacturaLinea { id?: number | string; nombre: string; descripcion?: string | null; cantidad: number; precioUnit: number; importe: number; }
+export interface Factura {
+  id: number; numero: string; cliente: string; servicio?: string; fecha: string;
+  subtotal?: number; tasaIva?: number; total: number;
+  estado: string; pagadaEn?: string | null;
+  lines?: FacturaLinea[];
+  documentos?: Documento[]; pedidoId?: string | null;
+}
 // Pedido/Presupuesto documental (crm-paridad-facturas-pedidos-aa, Fase 3 / PR-4). Espejo del
 // modelo `Budget`/`BudgetLine` de AA adaptado al CRM: totales pago único (impl) + mensualidad
 // (mant) con IVA, snapshots de cliente/emisor, ciclo `generada|aceptada|rechazada|caducada`.
@@ -142,8 +153,10 @@ export const pedidos: Pedido[] = [
   },
 ];
 
+// Semillas con la MISMA forma que deja la migración 10.3 en facturas legacy: 1 línea
+// (nombre = servicio, importe = total), subtotal = total y tasaIva 0 (sin IVA inventado).
 export const facturas: Factura[] = [
-  { id: 2001, numero: 'F-2026-001', cliente: 'Lucía Fernández', servicio: 'Corte + peinado', fecha: '2026-06-10', total: 120.0, estado: 'Pagada', documentos: [{ id: 1, nombre: 'factura-F-2026-001.pdf', tipo: 'application/pdf', tam: 84210, fecha: '2026-06-10' }] },
-  { id: 2002, numero: 'F-2026-002', cliente: 'Ana Gómez', servicio: 'Color + corte', fecha: '2026-06-12', total: 72.5, estado: 'Pendiente', documentos: [] },
-  { id: 2003, numero: 'F-2026-003', cliente: 'David Soler', servicio: 'Corte', fecha: '2026-06-14', total: 45.0, estado: 'Pagada', documentos: [] },
+  { id: 2001, numero: 'F-2026-001', cliente: 'Lucía Fernández', servicio: 'Corte + peinado', fecha: '2026-06-10', subtotal: 120.0, tasaIva: 0, total: 120.0, estado: 'Pagada', lines: [{ id: 1, nombre: 'Corte + peinado', cantidad: 1, precioUnit: 120.0, importe: 120.0 }], documentos: [{ id: 1, nombre: 'factura-F-2026-001.pdf', tipo: 'application/pdf', tam: 84210, fecha: '2026-06-10' }] },
+  { id: 2002, numero: 'F-2026-002', cliente: 'Ana Gómez', servicio: 'Color + corte', fecha: '2026-06-12', subtotal: 72.5, tasaIva: 0, total: 72.5, estado: 'Pendiente', lines: [{ id: 1, nombre: 'Color + corte', cantidad: 1, precioUnit: 72.5, importe: 72.5 }], documentos: [] },
+  { id: 2003, numero: 'F-2026-003', cliente: 'David Soler', servicio: 'Corte', fecha: '2026-06-14', subtotal: 45.0, tasaIva: 0, total: 45.0, estado: 'Pagada', lines: [{ id: 1, nombre: 'Corte', cantidad: 1, precioUnit: 45.0, importe: 45.0 }], documentos: [] },
 ];

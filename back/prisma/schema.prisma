@@ -681,8 +681,23 @@ model Invoice {
   cliente    String   @map("cliente_nombre")
   servicio   String?  @map("servicio_nombre")
   fecha      String   @map("fecha")
+  // crm-operaos 10.3 (facturación detallada): la factura pasa a ser un documento
+  // AUTOCONTENIDO con desglose propio (líneas + base imponible + IVA), snapshotado en el
+  // momento de crearla — NUNCA derivado del pedido al renderizar. Así se conserva el
+  // contrato de durabilidad: la factura sobrevive al hard-delete del pedido (SetNull).
+  //   - subtotal: base imponible (sin IVA) = suma de importes de las líneas.
+  //   - tasaIva: fracción aplicada (0.21). Las facturas LEGACY (planas, pre-10.3) migran
+  //     con tasaIva=0 y subtotal=total: NO se les inventa un desglose de IVA retroactivo.
+  //   - total: se mantiene EXACTO (invariante de la migración y de ensureInvoiceForPedido).
+  subtotal   Decimal  @default(0) @map("subtotal")
+  tasaIva    Decimal  @default(0.21) @map("tasa_iva")
   total      Decimal  @default(0) @map("total")
-  estado     String   @default("Pendiente") @map("estado")
+  estado     String   @default("Pendiente") @map("estado") // Pendiente | Pagada | Anulada (set cerrado, PUT /invoices/:id/status)
+  // Momento del cobro (espejo de Invoice.paidAt en agents-agency): lo pone/limpia la
+  // transición de estado (Pagada → now(); salir de Pagada → null). NULL en facturas
+  // legacy ya Pagadas (no se inventa una fecha de cobro retroactiva).
+  pagadaEn   DateTime? @map("pagada_en")
+  lines      InvoiceLine[]
   documentos Json?    @map("documentos")
   // crm-paridad-facturas-pedidos-aa (PR-2b): vínculo idempotente factura↔pedido.
   // NULLABLE + @unique = clave de idempotencia de la auto-factura al aceptar un pedido
@@ -699,6 +714,31 @@ model Invoice {
   @@index([businessId])
   eliminadoEn DateTime? @map("eliminado_en")
   @@map("factura")
+}
+
+// Línea documental de factura (crm-operaos 10.3). Espejo de las convenciones de PedidoLine
+// (castellano snake_case, @@index por padre, Cascade con el padre), pero con forma UNITARIA
+// más simple: cantidad + precioUnit + importe.
+//
+// DECISIÓN DE FORMA: PedidoLine lleva DOS precios por línea (precioImpl pago único +
+// precioMant mensual); replicar ese doble precio en la factura complicaría el desglose y el
+// invariante de exactitud (subtotal = Σ importes). En su lugar, al snapshotear un pedido cuya
+// línea tiene precioImpl>0 Y precioMant>0 se parte en DOS líneas de factura — "(pago único)"
+// y "(mensual)" — de modo que la suma de `importe` reproduce el subtotal del pedido AL CÉNTIMO.
+// `importe` se PERSISTE (no se deriva de cantidad*precioUnit al leer): es un snapshot contable.
+model InvoiceLine {
+  id          String  @id @default(cuid())
+  invoiceId   String  @map("factura_id")
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  nombre      String  @map("nombre")
+  descripcion String? @map("descripcion")
+  cantidad    Int     @default(1) @map("cantidad")
+  precioUnit  Decimal @default(0) @map("precio_unit") // Precio unitario sin IVA
+  importe     Decimal @default(0) @map("importe")     // Total de línea sin IVA (snapshot, no derivado)
+  posicion    Int     @default(0) @map("posicion")
+
+  @@index([invoiceId])
+  @@map("linea_factura")
 }
 
 // Presupuesto/Pedido documental (crm-paridad-facturas-pedidos-aa, Fase 1.2).

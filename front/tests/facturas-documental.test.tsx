@@ -22,7 +22,7 @@ vi.mock('@/lib/data/use-documents', () => ({
   useDocumentos: () => ({ docs: [], add: vi.fn(), remove: vi.fn(), refresh: vi.fn() }),
 }));
 
-vi.mock('@/lib/api/client', () => ({ isApiEnabled: () => false }));
+vi.mock('@/lib/api/client', () => ({ isApiEnabled: () => false, apiFetch: vi.fn() }));
 
 vi.mock('@/lib/tenant-config-context', () => ({
   useTerm: (_key: string, fallback: string) => fallback,
@@ -35,12 +35,41 @@ vi.mock('@/components/layout/module-guard', () => ({
 
 afterEach(() => { cleanup(); updateMock.mockReset(); });
 
-describe('facturas/page — documental (Fase 2)', () => {
-  it('muestra métricas derivadas de las facturas', () => {
+describe('facturas/page — documental (Fase 2 + detalle 10.3)', () => {
+  it('muestra métricas derivadas de las facturas, incluido "Importe cobrado" (10.3)', () => {
     render(<Page />);
     expect(screen.getByText('€237.50')).toBeInTheDocument();  // importe total (incluye todas), único
     // €72.50 aparece 2 veces: total de la fila F-2026-002 + métrica "Importe pendiente".
     expect(screen.getAllByText('€72.50')).toHaveLength(2);
+    // KPI "Importe cobrado" = Σ total de facturas Pagadas (120 + 45).
+    expect(screen.getByText('Importe cobrado')).toBeInTheDocument();
+    expect(screen.getByText('€165.00')).toBeInTheDocument();
+  });
+
+  it('NO tiene columna "Docs" y SÍ columna "Fecha" (10.3)', () => {
+    render(<Page />);
+    expect(screen.queryByText('Docs')).toBeNull();
+    expect(screen.getByText('Fecha')).toBeInTheDocument();
+  });
+
+  it('clic en el badge de estado cicla Pendiente → Pagada y fija pagadaEn (local emula PUT /status)', () => {
+    render(<Page />);
+    // F-2026-002 está Pendiente → clic → Pagada con pagadaEn.
+    fireEvent.click(screen.getByText('Pendiente'));
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    const [id, patch] = updateMock.mock.calls[0];
+    expect(id).toBe(2002);
+    expect(patch.estado).toBe('Pagada');
+    expect(typeof patch.pagadaEn).toBe('string'); // a Pagada → pagadaEn = now()
+  });
+
+  it('clic en un badge Pagada cicla a Anulada y LIMPIA pagadaEn', () => {
+    render(<Page />);
+    fireEvent.click(screen.getAllByText('Pagada')[0]); // F-2026-001
+    const [id, patch] = updateMock.mock.calls[0];
+    expect(id).toBe(2001);
+    expect(patch.estado).toBe('Anulada');
+    expect(patch.pagadaEn).toBeNull(); // salir de Pagada → limpia
   });
 
   it('NO ofrece alta manual (sin botón "Nueva factura")', () => {

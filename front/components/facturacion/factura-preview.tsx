@@ -1,4 +1,5 @@
 'use client';
+import type { CSSProperties } from 'react';
 import { ArrowLeft, Printer } from 'lucide-react';
 import { Badge, Button } from '@/components/ui/primitives';
 import { DocumentosPanel } from '@/components/ui/documentos-panel';
@@ -19,14 +20,17 @@ interface FacturaPreviewProps {
 }
 
 /**
- * Documento imprimible de factura para CRM (crm-paridad-facturas-pedidos-aa, Fase 2, task 2.3).
+ * Documento imprimible de factura para CRM (crm-paridad-facturas-pedidos-aa Fase 2, task 2.3;
+ * detalle documental crm-operaos 10.3).
  *
- * Paridad DELIBERADAMENTE LIGERA con `agents-agency/front/components/facturacion/InvoicePreview.tsx`:
- * misma idea visual (cabecera FACTURA, emisor/cliente, total destacado, barra Volver/Imprimir,
- * aislamiento de impresión con @media print), pero SIN tabla de líneas ni desglose de IVA —
- * el modelo `crm.factura` es plano (numero, cliente, servicio, fecha, total, estado) por decisión
- * del dueño (design.md § Decisiones adicionales resueltas, punto 1). El logo por tenant queda
- * fuera de alcance (mismo doc). Los documentos adjuntos se conservan en un panel fuera de impresión.
+ * Desde 10.3 la factura es AUTOCONTENIDA y el preview espeja el de AA
+ * (`agents-agency/front/components/presupuestos/InvoicePreview.tsx`): tabla de líneas
+ * snapshotadas + desglose Base imponible / IVA / Total. El detalle se lee SIEMPRE de la
+ * propia factura (lines/subtotal/tasaIva), nunca del pedido origen — la factura sobrevive
+ * al borrado del pedido. Facturas sin líneas (mock antiguo / fila legacy sin backfill)
+ * degradan al bloque simple de total, sin romper. El IVA mostrado se deriva como
+ * total - subtotal (no subtotal*tasa) para que el desglose CUADRE al céntimo con los
+ * importes persistidos. Los documentos adjuntos se conservan en un panel fuera de impresión.
  */
 export function FacturaPreview({
   factura: f,
@@ -37,6 +41,16 @@ export function FacturaPreview({
   onAddDoc,
   onRemoveDoc,
 }: FacturaPreviewProps) {
+  // Desglose autocontenido (10.3). Decimales del back llegan como string → Number().
+  const lines = f.lines ?? [];
+  const total = Number(f.total);
+  const subtotal = f.subtotal != null ? Number(f.subtotal) : total;
+  const tasaIva = f.tasaIva != null ? Number(f.tasaIva) : 0;
+  // IVA por diferencia (no subtotal*tasa): garantiza subtotal + IVA = total al céntimo.
+  const iva = Math.round((total - subtotal + Number.EPSILON) * 100) / 100;
+
+  const th: CSSProperties = { padding: '10px 12px', fontWeight: 700, color: '#475569', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, borderBottom: '2px solid #e2e8f0' };
+
   return (
     <div className="w-full">
       {/* Barra de controles (no se imprime). */}
@@ -92,20 +106,64 @@ export function FacturaPreview({
                 <p style={{ fontWeight: 700, color: '#0f172a', margin: 0 }}>{f.cliente || '—'}</p>
               </div>
             )}
-            <div>
-              <h3 style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 2, borderBottom: '1px solid #e2e8f0', paddingBottom: 6, marginBottom: 10 }}>
-                Servicio / Concepto
-              </h3>
-              <p style={{ fontWeight: 700, color: '#0f172a', margin: 0 }}>{f.servicio || '—'}</p>
-            </div>
+            {/* El bloque Servicio solo tiene sentido sin detalle de líneas (legacy/mock sin backfill). */}
+            {lines.length === 0 && (
+              <div>
+                <h3 style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 2, borderBottom: '1px solid #e2e8f0', paddingBottom: 6, marginBottom: 10 }}>
+                  Servicio / Concepto
+                </h3>
+                <p style={{ fontWeight: 700, color: '#0f172a', margin: 0 }}>{f.servicio || '—'}</p>
+              </div>
+            )}
           </div>
 
-          {/* TOTAL */}
+          {/* TABLA DE CONCEPTOS (10.3) — líneas snapshotadas EN la factura, espejo visual de AA. */}
+          {lines.length > 0 && (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 32 }}>
+              <thead>
+                <tr style={{ background: '#f8fafc' }}>
+                  <th style={{ ...th, textAlign: 'left' }}>Servicio / Concepto</th>
+                  <th style={{ ...th, textAlign: 'center' }}>Cant.</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Precio unit.</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Importe</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((l, i) => (
+                  <tr key={l.id ?? i} style={{ background: i % 2 === 0 ? '#ffffff' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '10px 12px', fontWeight: 600, color: '#0f172a' }}>
+                      {l.nombre}
+                      {l.descripcion && (
+                        <span style={{ display: 'block', fontSize: 11, color: '#94a3b8', fontWeight: 400, marginTop: 2 }}>{l.descripcion}</span>
+                      )}
+                    </td>
+                    <td style={{ padding: '10px 12px', textAlign: 'center', color: '#475569' }}>{Number(l.cantidad)}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', color: '#475569', fontVariantNumeric: 'tabular-nums' }}>{eur(Number(l.precioUnit))}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}>{eur(Number(l.importe))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {/* TOTALES — desglose Base imponible / IVA / Total (autocontenido; IVA por diferencia). */}
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 40 }}>
-            <div style={{ width: 320, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '20px 24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontWeight: 800, fontSize: 18, color: '#0f172a' }}>
+            <div style={{ width: 320, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '20px 24px', fontSize: 13 }}>
+              {lines.length > 0 && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', marginBottom: 8 }}>
+                    <span>Base imponible:</span>
+                    <span style={{ fontWeight: 600, color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}>{eur(subtotal)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8', fontSize: 12, paddingTop: 8, borderTop: '1px solid #e2e8f0', marginBottom: 8 }}>
+                    <span>IVA ({Math.round(tasaIva * 100)}%):</span>
+                    <span style={{ fontVariantNumeric: 'tabular-nums' }}>{eur(iva)}</span>
+                  </div>
+                </>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontWeight: 800, fontSize: 18, color: '#0f172a', borderTop: lines.length > 0 ? '2px solid #e2e8f0' : undefined, paddingTop: lines.length > 0 ? 12 : 0 }}>
                 <span>Total:</span>
-                <span style={{ fontVariantNumeric: 'tabular-nums' }}>{eur(Number(f.total))}</span>
+                <span style={{ fontVariantNumeric: 'tabular-nums' }}>{eur(total)}</span>
               </div>
             </div>
           </div>

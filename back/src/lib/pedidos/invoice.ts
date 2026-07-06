@@ -1,9 +1,12 @@
-// Auto-factura al aceptar un pedido (crm-paridad-facturas-pedidos-aa, Fase 1.2b / PR-2b).
+// Auto-factura al aceptar un pedido (crm-paridad-facturas-pedidos-aa, Fase 1.2b / PR-2b;
+// detalle documental crm-operaos 10.3).
 //
 // Espejo de agents-agency/back/src/routes/budgets.ts (ensureInvoiceForBudget) +
-// agents-agency/back/src/lib/invoices.ts (deriveInvoiceNumber), adaptado al modelo PLANO
-// de crm.factura (numero, cliente, servicio, fecha, total, estado) — el CRM NO replica la
-// estructura presupuesto/líneas/IVA de AA (decisión de paridad ligera, design.md §1).
+// agents-agency/back/src/lib/invoices.ts (deriveInvoiceNumber). Desde 10.3 la factura es
+// un documento AUTOCONTENIDO: además de numero/cliente/total se SNAPSHOTEAN las líneas y
+// el desglose (subtotal sin IVA + tasaIva) del pedido en el momento de aceptar. El detalle
+// vive EN la factura, nunca se deriva del pedido al renderizar — así la factura sobrevive
+// al hard-delete del pedido (pedido_id SetNull, registro financiero durable).
 //
 // La idempotencia NO se apoya en un check a nivel de app, sino en la columna
 // factura.pedido_id @unique (constraint REAL de BD): un reproceso de la aceptación
@@ -98,14 +101,85 @@ export function isPedidoUniqueConflict(err: unknown): boolean {
   return columns.some((c) => PEDIDO_UNIQUE_TARGETS.includes(c));
 }
 
+/** Línea de pedido tal como la persiste Prisma (Decimal llega como unknown/number). */
+export interface PedidoLineForInvoice {
+  nombre: string;
+  descripcion?: string | null;
+  cantidad: number;
+  precioImpl: unknown;
+  precioMant: unknown;
+  posicion: number;
+}
+
 /** Forma mínima del pedido que necesita la factura (todo persistido, nada del cliente). */
 export interface PedidoForInvoice {
   id: string;
   businessId: string;
   numero: string;
   clienteSnapshot: unknown;
+  subtotalImpl: unknown;
+  subtotalMant: unknown;
   totalImpl: unknown;
   totalMant: unknown;
+  tasaIva: unknown;
+  lines?: PedidoLineForInvoice[];
+}
+
+/** Forma de una línea de factura lista para el `create` anidado. */
+export interface InvoiceLineSnapshot {
+  nombre: string;
+  descripcion: string | null;
+  cantidad: number;
+  precioUnit: number;
+  importe: number;
+  posicion: number;
+}
+
+/**
+ * Snapshotea las líneas del pedido como líneas de factura (crm-operaos 10.3).
+ *
+ * DECISIÓN DE FORMA (documentada también en schema.prisma › InvoiceLine): la línea de
+ * factura es UNITARIA (cantidad + precioUnit + importe, sin IVA), más simple que la doble
+ * columna impl/mant de PedidoLine. Una línea de pedido con precioImpl>0 Y precioMant>0 se
+ * PARTE en dos líneas de factura — "(pago único)" y "(mensual)" — para que la suma de
+ * `importe` reproduzca subtotalImpl+subtotalMant AL CÉNTIMO (mismo round2 por línea que
+ * computePedidoTotals aplica al agregar). Una línea solo-mensual conserva el sufijo
+ * "(mensual)" para no perder esa semántica en la lista plana. Una línea sin precios (0/0)
+ * se conserva como línea de importe 0 (el documento no pierde conceptos).
+ */
+export function buildInvoiceLinesFromPedido(lines: PedidoLineForInvoice[] | undefined): InvoiceLineSnapshot[] {
+  const out: InvoiceLineSnapshot[] = [];
+  const sorted = [...(lines ?? [])].sort((a, b) => (a.posicion ?? 0) - (b.posicion ?? 0));
+  for (const l of sorted) {
+    const qty = Number.isFinite(l.cantidad) ? Number(l.cantidad) : 1;
+    const impl = Number(l.precioImpl ?? 0);
+    const mant = Number(l.precioMant ?? 0);
+    const desc = l.descripcion ?? null;
+    if (impl > 0) {
+      out.push({
+        nombre: mant > 0 ? `${l.nombre} (pago único)` : l.nombre,
+        descripcion: desc,
+        cantidad: qty,
+        precioUnit: impl,
+        importe: round2(qty * impl),
+        posicion: out.length,
+      });
+    }
+    if (mant > 0) {
+      out.push({
+        nombre: `${l.nombre} (mensual)`,
+        descripcion: desc,
+        cantidad: qty,
+        precioUnit: mant,
+        importe: round2(qty * mant),
+        posicion: out.length,
+      });
+    }
+    if (impl <= 0 && mant <= 0) {
+      out.push({ nombre: l.nombre, descripcion: desc, cantidad: qty, precioUnit: 0, importe: 0, posicion: out.length });
+    }
+  }
+  return out;
 }
 
 /** Cliente de transacción mínimo: sólo `invoice.create` (lo que usa ensureInvoiceForPedido). */
@@ -129,13 +203,21 @@ export async function ensureInvoiceForPedido(tx: InvoiceCreateTx, pedido: Pedido
         businessId: pedido.businessId,
         numero: deriveInvoiceNumberFromPedido(pedido.numero),
         cliente: deriveClienteNombre(pedido.clienteSnapshot),
-        // El detalle documental (servicio/líneas) vive en el pedido enlazado; la factura
-        // plana no lo duplica (columna nullable → null).
+        // `servicio` queda null: desde 10.3 el detalle vive en las líneas snapshotadas
+        // (la columna se conserva para facturas legacy/operador).
         servicio: null,
         fecha: new Date().toISOString().slice(0, 10), // YYYY-MM-DD (misma convención String que el CRUD)
+        // Desglose autocontenido (10.3): subtotal (base sin IVA) y total (con IVA) se COPIAN
+        // de los agregados persistidos del pedido — no se re-derivan de las líneas — para que
+        // el invariante de exactitud se mantenga AL CÉNTIMO (mismo criterio round2 de siempre).
+        subtotal: round2(Number(pedido.subtotalImpl ?? 0) + Number(pedido.subtotalMant ?? 0)),
+        tasaIva: Number(pedido.tasaIva ?? 0.21),
         total: deriveTotal(pedido),
-        estado: 'Pendiente', // estado inicial del modelo de 3 estados del CRM (Pendiente/Pagada/Anulada)
+        estado: 'Pendiente', // estado inicial del set cerrado del CRM (Pendiente/Pagada/Anulada)
         pedidoId: pedido.id,
+        // Snapshot de líneas EN la factura (create anidado): el documento es autónomo y
+        // sobrevive al borrado en duro del pedido origen.
+        lines: { create: buildInvoiceLinesFromPedido(pedido.lines) },
       },
     });
   } catch (err) {

@@ -178,12 +178,25 @@ test('PUT /pedidos/:id/status aceptar auto-crea UNA factura vinculada; reaceptar
   // Aceptar crea exactamente UNA factura, vinculada al pedido, con numero derivado.
   const invoicesAfter = await prisma.invoice.count({ where: { businessId } });
   assert.equal(invoicesAfter, invoicesBefore + 1, 'aceptar un pedido crea su factura (PR-2b)');
-  const factura = await prisma.invoice.findFirst({ where: { pedidoId: id } });
+  const factura = await prisma.invoice.findFirst({ where: { pedidoId: id }, include: { lines: { orderBy: { posicion: 'asc' } } } });
   assert.ok(factura, 'la factura debe quedar vinculada al pedido por pedidoId');
   assert.equal(factura!.numero, 'FAC - 2026-004', 'numero derivado del pedido (prefijo AD- → FAC - )');
   assert.equal(factura!.estado, 'Pendiente');
   // total = totalImpl + totalMant = (100*1.21) + (10*1.21) = 121 + 12.1 = 133.1
   assert.equal(Number(factura!.total), 133.1, 'total factura = totalImpl + totalMant del pedido (ambos con IVA)');
+
+  // crm-operaos 10.3: la factura es AUTOCONTENIDA — el desglose (subtotal/tasaIva/líneas)
+  // queda snapshotado EN la factura, exacto al céntimo respecto al pedido.
+  assert.equal(Number(factura!.subtotal), 110, 'subtotal = subtotalImpl + subtotalMant (100 + 10, sin IVA)');
+  assert.equal(Number(factura!.tasaIva), 0.21);
+  assert.equal(factura!.lines.length, 2, 'línea impl+mant del pedido se parte en (pago único)/(mensual)');
+  assert.deepEqual(factura!.lines.map((l) => l.nombre), ['Puesta en marcha (pago único)', 'Puesta en marcha (mensual)']);
+  assert.deepEqual(factura!.lines.map((l) => Number(l.importe)), [100, 10]);
+  assert.equal(
+    factura!.lines.reduce((s, l) => s + Number(l.importe), 0),
+    Number(factura!.subtotal),
+    'Σ importes de línea = subtotal (coherencia contable del documento)',
+  );
 
   // Reaceptar (aceptada → aceptada) NO crea una segunda factura (idempotente vía pedido_id @unique).
   const reaccept = await api(`/pedidos/${id}/status`, { method: 'PUT', body: JSON.stringify({ estado: 'aceptada' }) }, token, businessId);

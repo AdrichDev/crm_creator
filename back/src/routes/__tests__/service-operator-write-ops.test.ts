@@ -213,6 +213,30 @@ describe('POST /invoices', () => {
     assert.equal(created.data?.servicio, 'Corte');
     assert.equal(created.data?.total, 30);
     assert.equal(created.data?.estado, 'Pendiente');
+    // crm-operaos 10.3: factura autocontenida también por el camino del bot — misma regla
+    // que la migración legacy: 1 línea (servicio, importe = total), tasaIva 0, subtotal = total.
+    assert.equal(created.data?.subtotal, 30);
+    assert.equal(created.data?.tasaIva, 0);
+    assert.deepEqual((created.data?.lines as { create: unknown[] }).create, [
+      { nombre: 'Corte', cantidad: 1, precioUnit: 30, importe: 30, posicion: 0 },
+    ]);
+  });
+
+  test('sin servicio → la línea snapshot usa el nombre genérico "Servicio"', async () => {
+    const created: { data?: Record<string, unknown> } = {};
+    const db = fakeDb({
+      invoice: {
+        findMany: async () => [],
+        count: async () => 0,
+        create: async (args) => { created.data = args.data as Record<string, unknown>; return { id: 'inv-x', numero: 'F00001' }; },
+      },
+    });
+    const res = mockRes();
+    await invoicesCreateHandler(db, mockReq({ body: { businessId: ACTIVE_BUSINESS, cliente: 'Ana', total: 45 } }), res);
+    assert.equal(res.statusCode, 201);
+    assert.deepEqual((created.data?.lines as { create: unknown[] }).create, [
+      { nombre: 'Servicio', cantidad: 1, precioUnit: 45, importe: 45, posicion: 0 },
+    ]);
   });
 
   // crm-paridad-facturas-pedidos-aa (Fase 1.1): fija explícitamente el caso base

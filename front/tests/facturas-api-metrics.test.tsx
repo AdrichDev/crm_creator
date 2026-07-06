@@ -70,6 +70,9 @@ describe('facturas/page — métricas server-side en modo API (PR-3)', () => {
     expect(await screen.findByText('€7350.00')).toBeInTheDocument();
     // Importe pendiente server-side.
     expect(await screen.findByText('€3000.00')).toBeInTheDocument();
+    // KPI "Importe cobrado" (crm-operaos 10.3): Σ total de facturas Pagadas, server-side.
+    expect(await screen.findByText('Importe cobrado')).toBeInTheDocument();
+    expect(await screen.findByText('€4000.00')).toBeInTheDocument();
 
     // El bug (cálculo sobre la página de 20) daría estos valores: NO deben aparecer.
     expect(screen.queryByText('20')).toBeNull();       // "Facturas" no es 20

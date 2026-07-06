@@ -12,8 +12,10 @@ import {
   deriveInvoiceNumberFromPedido,
   isPedidoUniqueConflict,
   ensureInvoiceForPedido,
+  buildInvoiceLinesFromPedido,
   type InvoiceCreateTx,
   type PedidoForInvoice,
+  type PedidoLineForInvoice,
 } from '../invoice.js';
 
 // Error P2002 con la forma "clásica" del query-engine (code + meta.target con columna(s)).
@@ -50,13 +52,21 @@ function fakeTx(opts: { throwOnCreate?: unknown } = {}): InvoiceCreateTx & { cre
   return tx;
 }
 
+// Pedido base coherente con computePedidoTotals: 1 línea 250 impl + 25 mant, IVA 21%
+// → subtotales 250/25, totales 302.5/30.25.
 const basePedido: PedidoForInvoice = {
   id: 'ped-1',
   businessId: 'biz-1',
   numero: 'AD-2026-001',
   clienteSnapshot: { nombre: 'Ana Pérez' },
+  subtotalImpl: 250,
+  subtotalMant: 25,
   totalImpl: 302.5,
   totalMant: 30.25,
+  tasaIva: 0.21,
+  lines: [
+    { nombre: 'Implantación CRM', descripcion: 'Setup inicial', cantidad: 1, precioImpl: 250, precioMant: 25, posicion: 0 },
+  ],
 };
 
 // ── deriveInvoiceNumberFromPedido ─────────────────────────────────────────────
@@ -104,6 +114,72 @@ describe('isPedidoUniqueConflict', () => {
   });
 });
 
+// ── buildInvoiceLinesFromPedido (snapshot documental, crm-operaos 10.3) ───────
+describe('buildInvoiceLinesFromPedido', () => {
+  test('línea con SOLO pago único → una línea de factura sin sufijo', () => {
+    const out = buildInvoiceLinesFromPedido([
+      { nombre: 'Setup', descripcion: null, cantidad: 2, precioImpl: 100, precioMant: 0, posicion: 0 },
+    ]);
+    assert.deepEqual(out, [
+      { nombre: 'Setup', descripcion: null, cantidad: 2, precioUnit: 100, importe: 200, posicion: 0 },
+    ]);
+  });
+
+  test('línea con impl Y mant → se PARTE en "(pago único)" + "(mensual)" y la suma es exacta', () => {
+    const out = buildInvoiceLinesFromPedido([
+      { nombre: 'CRM', descripcion: 'desc', cantidad: 1, precioImpl: 250, precioMant: 25, posicion: 0 },
+    ]);
+    assert.equal(out.length, 2);
+    assert.equal(out[0].nombre, 'CRM (pago único)');
+    assert.equal(out[0].importe, 250);
+    assert.equal(out[1].nombre, 'CRM (mensual)');
+    assert.equal(out[1].importe, 25);
+    assert.deepEqual(out.map((l) => l.posicion), [0, 1]);
+    // Suma de importes = subtotalImpl + subtotalMant del pedido, al céntimo.
+    assert.equal(out.reduce((s, l) => s + l.importe, 0), 275);
+  });
+
+  test('línea solo-mensual conserva el sufijo "(mensual)"', () => {
+    const out = buildInvoiceLinesFromPedido([
+      { nombre: 'Mantenimiento', descripcion: null, cantidad: 1, precioImpl: 0, precioMant: 30, posicion: 0 },
+    ]);
+    assert.equal(out.length, 1);
+    assert.equal(out[0].nombre, 'Mantenimiento (mensual)');
+    assert.equal(out[0].precioUnit, 30);
+  });
+
+  test('línea sin precios (0/0) se conserva como línea de importe 0', () => {
+    const out = buildInvoiceLinesFromPedido([
+      { nombre: 'Bonus', descripcion: null, cantidad: 1, precioImpl: 0, precioMant: 0, posicion: 0 },
+    ]);
+    assert.deepEqual(out, [
+      { nombre: 'Bonus', descripcion: null, cantidad: 1, precioUnit: 0, importe: 0, posicion: 0 },
+    ]);
+  });
+
+  test('respeta la posicion del pedido y renumera secuencialmente', () => {
+    const lines: PedidoLineForInvoice[] = [
+      { nombre: 'B', descripcion: null, cantidad: 1, precioImpl: 10, precioMant: 0, posicion: 1 },
+      { nombre: 'A', descripcion: null, cantidad: 1, precioImpl: 20, precioMant: 5, posicion: 0 },
+    ];
+    const out = buildInvoiceLinesFromPedido(lines);
+    assert.deepEqual(out.map((l) => l.nombre), ['A (pago único)', 'A (mensual)', 'B']);
+    assert.deepEqual(out.map((l) => l.posicion), [0, 1, 2]);
+  });
+
+  test('sin líneas (undefined o vacío) → snapshot vacío, sin lanzar', () => {
+    assert.deepEqual(buildInvoiceLinesFromPedido(undefined), []);
+    assert.deepEqual(buildInvoiceLinesFromPedido([]), []);
+  });
+
+  test('redondeo por línea: cantidad*precio con arrastre IEEE-754 queda a 2 decimales', () => {
+    const out = buildInvoiceLinesFromPedido([
+      { nombre: 'X', descripcion: null, cantidad: 3, precioImpl: 0.1, precioMant: 0, posicion: 0 },
+    ]);
+    assert.equal(out[0].importe, 0.3); // no 0.30000000000000004
+  });
+});
+
 // ── ensureInvoiceForPedido ────────────────────────────────────────────────────
 describe('ensureInvoiceForPedido', () => {
   test('crea la factura con datos derivados del pedido (numero/cliente/total/estado/pedidoId)', async () => {
@@ -112,11 +188,31 @@ describe('ensureInvoiceForPedido', () => {
     assert.ok(tx.created);
     assert.equal(tx.created!.numero, 'FAC - 2026-001');
     assert.equal(tx.created!.cliente, 'Ana Pérez');
-    assert.equal(tx.created!.total, 332.75); // 302.5 + 30.25
+    assert.equal(tx.created!.total, 332.75); // 302.5 + 30.25 — EXACTO, invariante 10.3
     assert.equal(tx.created!.estado, 'Pendiente');
     assert.equal(tx.created!.pedidoId, 'ped-1');
     assert.equal(tx.created!.businessId, 'biz-1');
     assert.equal(tx.created!.servicio, null);
+  });
+
+  test('SNAPSHOT autocontenido (10.3): subtotal/tasaIva copiados del pedido + líneas anidadas', async () => {
+    const tx = fakeTx();
+    await ensureInvoiceForPedido(tx, basePedido);
+    assert.equal(tx.created!.subtotal, 275); // 250 + 25 (base sin IVA, copiada del pedido)
+    assert.equal(tx.created!.tasaIva, 0.21);
+    const lines = (tx.created!.lines as { create: Array<{ nombre: string; importe: number }> }).create;
+    assert.equal(lines.length, 2); // la línea impl+mant se parte en dos
+    assert.deepEqual(lines.map((l) => l.nombre), ['Implantación CRM (pago único)', 'Implantación CRM (mensual)']);
+    // Coherencia contable del documento: Σ importes = subtotal; subtotal*(1+IVA) = total.
+    assert.equal(lines.reduce((s, l) => s + l.importe, 0), 275);
+    assert.equal(Math.round(275 * 1.21 * 100) / 100, 332.75);
+  });
+
+  test('pedido sin líneas → factura con snapshot vacío y totales intactos', async () => {
+    const tx = fakeTx();
+    await ensureInvoiceForPedido(tx, { ...basePedido, lines: [] });
+    assert.deepEqual((tx.created!.lines as { create: unknown[] }).create, []);
+    assert.equal(tx.created!.total, 332.75);
   });
 
   test('cliente vacío si el snapshot no trae nombre (columna NOT NULL admite "")', async () => {

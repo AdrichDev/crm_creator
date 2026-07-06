@@ -492,11 +492,21 @@ export async function invoicesCreateHandler(db: OperatorWriteDb, req: Request, r
     const row = await db.$transaction(async (tx) => {
       await lockBusinessForInvoicing(tx, businessId);
       const numero = await nextInvoiceNumero(tx, businessId);
+      const servicio = typeof body.servicio === 'string' ? body.servicio : null;
       return tx.invoice.create({
         data: {
           businessId, numero, cliente: body.cliente,
-          servicio: typeof body.servicio === 'string' ? body.servicio : null,
+          servicio,
           total, fecha, estado: 'Pendiente',
+          // crm-operaos 10.3: la factura es un documento AUTOCONTENIDO. El bot factura un
+          // importe cerrado sin desglose de IVA → misma regla que la migración legacy:
+          // UNA línea (nombre = servicio o 'Servicio', importe = total) con tasaIva 0 y
+          // subtotal = total (no se fabrica un desglose 21% que el operador no indicó).
+          subtotal: total,
+          tasaIva: 0,
+          lines: {
+            create: [{ nombre: servicio?.trim() || 'Servicio', cantidad: 1, precioUnit: total, importe: total, posicion: 0 }],
+          },
         },
       });
     });

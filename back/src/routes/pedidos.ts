@@ -170,7 +170,6 @@ pedidosRouter.post('/', async (req: AuthedRequest, res: Response) => {
 interface PedidoWithInvoice extends PedidoForInvoice {
   estado: string;
   invoice: { id: string } | null;
-  lines?: unknown;
 }
 
 /** Cliente de transacción del handler: cambia el estado del pedido y (si acepta) crea factura. */

@@ -17,8 +17,8 @@ type Delegate = {
 interface CrudOptions {
   /** Campos permitidos al crear/editar (lista blanca). */
   fields: string[];
-  /** Include de relaciones para las lecturas. */
-  include?: Record<string, boolean>;
+  /** Include de relaciones para las lecturas (admite forma anidada de Prisma, p. ej. orderBy). */
+  include?: Record<string, unknown>;
   /** Orden por defecto. */
   orderBy?: Record<string, 'asc' | 'desc'>;
   /** FKs del body a validar contra el negocio activo (campo → modelo destino). */

@@ -215,9 +215,12 @@ test('GET /invoices/:id → 404 si no existe o pertenece a otro negocio', async 
 });
 
 // ---------------------------------------------------------------------------
-// PATCH /invoices/:id — actualiza campos de la whitelist
+// PATCH /invoices/:id — actualiza campos de la whitelist; `estado` y `total` YA NO
+// son parcheables por aquí (crm-operaos 10.3): transiciones SOLO por PUT /:id/status
+// (gestiona pagadaEn) y `total` es campo SNAPSHOT/derivado de las líneas — parchearlo
+// suelto desincronizaba la cabecera del detalle. pickFields los ignora sin romper el resto.
 // ---------------------------------------------------------------------------
-test('PATCH /invoices/:id actualiza estado y total', async (t) => {
+test('PATCH /invoices/:id actualiza cliente pero IGNORA estado y total (snapshot/derivados)', async (t) => {
   if (!backUp) return t.skip('back down');
   if (!SUPABASE_LIVE) return t.skip('SUPABASE_SERVICE_ROLE_KEY is placeholder');
 
@@ -232,11 +235,101 @@ test('PATCH /invoices/:id actualiza estado y total', async (t) => {
 
   const patched = await api(`/invoices/${id}`, {
     method: 'PATCH',
-    body: JSON.stringify({ estado: 'Pagada', total: 25 }),
+    body: JSON.stringify({ cliente: 'Ana Actualizada', estado: 'Pagada', total: 25 }),
   }, token, businessId);
   assert.equal(patched.status, 200, `patch failed: ${JSON.stringify(patched.body)}`);
-  assert.equal((patched.body as { estado: string }).estado, 'Pagada');
-  assert.equal(Number((patched.body as { total: unknown }).total), 25);
+  assert.equal((patched.body as { cliente: string }).cliente, 'Ana Actualizada', 'cliente sí está en la whitelist');
+  assert.equal((patched.body as { estado: string }).estado, 'Pendiente', 'estado fuera de la whitelist: el PATCH lo ignora');
+  assert.equal(Number((patched.body as { total: unknown }).total), 20, 'total fuera de la whitelist: el PATCH lo ignora');
+
+  await prisma.invoice.deleteMany({ where: { businessId } }).catch(() => {});
+});
+
+// ---------------------------------------------------------------------------
+// PUT /invoices/:id/status — set cerrado + pagadaEn (crm-operaos 10.3)
+// ---------------------------------------------------------------------------
+test('PUT /invoices/:id/status: Pagada fija pagadaEn, volver a Pendiente lo limpia, estado inválido → 422', async (t) => {
+  if (!backUp) return t.skip('back down');
+  if (!SUPABASE_LIVE) return t.skip('SUPABASE_SERVICE_ROLE_KEY is placeholder');
+
+  const auth = await registerAndToken(`inv_status_${uniq()}@test.local`, 'Inv-pass-1234', t);
+  if (!auth) return;
+  const { token, businessId } = auth;
+
+  const created = await prisma.invoice.create({
+    data: { businessId, numero: 'F00007', cliente: 'Ana', fecha: '2026-07-01', total: 50, estado: 'Pendiente' },
+  });
+  const id = created.id;
+
+  // Pendiente → Pagada: fija pagadaEn.
+  const paid = await api(`/invoices/${id}/status`, { method: 'PUT', body: JSON.stringify({ estado: 'Pagada' }) }, token, businessId);
+  assert.equal(paid.status, 200, `status change failed: ${JSON.stringify(paid.body)}`);
+  assert.equal((paid.body as { estado: string }).estado, 'Pagada');
+  assert.ok((paid.body as { pagadaEn: string | null }).pagadaEn, 'pasar a Pagada debe fijar pagadaEn');
+
+  // KPI "importe cobrado" (metrics.importePagado) refleja el cobro sobre TODO el negocio.
+  const list = await api('/invoices', {}, token, businessId);
+  const metrics = (list.body as { metrics: { pagadas: number; importePagado: number } }).metrics;
+  assert.equal(metrics.pagadas, 1);
+  assert.equal(metrics.importePagado, 50, 'importe cobrado = Σ total de facturas Pagadas');
+
+  // Pagada → Pendiente: LIMPIA pagadaEn.
+  const unpaid = await api(`/invoices/${id}/status`, { method: 'PUT', body: JSON.stringify({ estado: 'Pendiente' }) }, token, businessId);
+  assert.equal(unpaid.status, 200);
+  assert.equal((unpaid.body as { pagadaEn: string | null }).pagadaEn, null, 'salir de Pagada debe limpiar pagadaEn');
+
+  // Set CERRADO: literal fuera de Pendiente|Pagada|Anulada → 422 sin tocar la fila.
+  const bad = await api(`/invoices/${id}/status`, { method: 'PUT', body: JSON.stringify({ estado: 'cobrada' }) }, token, businessId);
+  assert.equal(bad.status, 422);
+  const raw = await prisma.invoice.findUnique({ where: { id } });
+  assert.equal(raw!.estado, 'Pendiente', 'un estado inválido no debe alterar la factura');
+
+  await prisma.invoice.deleteMany({ where: { businessId } }).catch(() => {});
+});
+
+test('PUT /invoices/:id/status → 404 para factura de otro negocio (scoping)', async (t) => {
+  if (!backUp) return t.skip('back down');
+  if (!SUPABASE_LIVE) return t.skip('SUPABASE_SERVICE_ROLE_KEY is placeholder');
+
+  const a = await registerAndToken(`inv_sta_${uniq()}@test.local`, 'Inv-pass-1234', t);
+  const b = await registerAndToken(`inv_stb_${uniq()}@test.local`, 'Inv-pass-1234', t);
+  if (!a || !b) return;
+
+  const invoiceB = await prisma.invoice.create({
+    data: { businessId: b.businessId, numero: 'F00001', cliente: 'Bea', fecha: '2026-07-01', total: 10 },
+  });
+
+  const crossTenant = await api(`/invoices/${invoiceB.id}/status`, { method: 'PUT', body: JSON.stringify({ estado: 'Pagada' }) }, a.token, a.businessId);
+  assert.equal(crossTenant.status, 404, 'una factura de OTRO negocio debe ser invisible también para /status');
+
+  await prisma.invoice.delete({ where: { id: invoiceB.id } }).catch(() => {});
+});
+
+// ---------------------------------------------------------------------------
+// Factura LEGACY (plana, pre-10.3) — se conserva y renderiza: total EXACTO,
+// lines [] (el backfill de la migración les crea 1 línea en BD real; una fila
+// sembrada sin líneas también debe listarse sin romper el contrato).
+// ---------------------------------------------------------------------------
+test('factura legacy (sin líneas) se lista con total exacto, lines [] y tasaIva/subtotal presentes', async (t) => {
+  if (!backUp) return t.skip('back down');
+  if (!SUPABASE_LIVE) return t.skip('SUPABASE_SERVICE_ROLE_KEY is placeholder');
+
+  const auth = await registerAndToken(`inv_legacy_${uniq()}@test.local`, 'Inv-pass-1234', t);
+  if (!auth) return;
+  const { token, businessId } = auth;
+
+  // Forma EXACTA de una fila legacy migrada: subtotal = total, tasaIva 0, sin desglose inventado.
+  await prisma.invoice.create({
+    data: { businessId, numero: 'FAC-2026-0001', cliente: 'Ana', servicio: 'Servicio comercial mensual', fecha: '2026-01-15', total: 620.5, estado: 'Pendiente', subtotal: 620.5, tasaIva: 0 },
+  });
+
+  const list = await api('/invoices', {}, token, businessId);
+  assert.equal(list.status, 200);
+  const item = (list.body as { items: Array<{ total: unknown; subtotal: unknown; tasaIva: unknown; lines: unknown[] }> }).items[0];
+  assert.equal(Number(item.total), 620.5, 'el total legacy se conserva EXACTO');
+  assert.equal(Number(item.subtotal), 620.5, 'legacy: subtotal = total (tasaIva 0, sin IVA inventado)');
+  assert.equal(Number(item.tasaIva), 0);
+  assert.ok(Array.isArray(item.lines), 'el listado incluye las líneas del documento');
 
   await prisma.invoice.deleteMany({ where: { businessId } }).catch(() => {});
 });
