@@ -1,9 +1,12 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useDialog } from '@/components/ui/dialog-provider';
 import { useTenantConfig, useRole } from '@/lib/tenant-config-context';
 import { ModuleGuard } from '@/components/layout/module-guard';
 import { VERTICAL_MAP } from '@/lib/config/verticals';
+import { HorarioNegocioForm } from '@/components/config/horario-negocio-form';
+import { type BusinessSchedule, type TramoDia, scheduleFromTramos, scheduleToTramos } from '@/lib/config/schedule';
+import { apiFetch } from '@/lib/api/client';
 import { BrandingForm } from '@/components/config/branding-form';
 import { ModuleGridPanel } from '@/components/config/module-grid-panel';
 import { WorkerChipsGrid } from '@/components/config/worker-chips-grid';
@@ -44,6 +47,42 @@ export default function ConfiguracionPage() {
     // Los cambios ya persisten en vivo; el botón da feedback explícito de guardado.
     setSaving(true); setSaved(false);
     setTimeout(() => { setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 1800); }, 700);
+  }
+
+  // Horario de apertura del negocio (reutiliza HorarioNegocioForm del onboarding).
+  // Prefill desde las horas REALES (OpeningHour) vía GET /config/horario en modo API;
+  // en modo demo cae a config.horario. El guardado es EXPLÍCITO (PUT /config/horario):
+  // el `update` genérico del panel es efímero en BD, así que las horas se persisten aquí.
+  const [horario, setHorario] = useState<BusinessSchedule | undefined>(config.horario);
+  const [savingHorario, setSavingHorario] = useState(false);
+
+  useEffect(() => {
+    if (tab !== 'negocio' || !apiEnabled || !isAdmin) return;
+    let cancel = false;
+    apiFetch<{ tramos: TramoDia[] }>('/config/horario')
+      .then((data) => { if (!cancel) setHorario(scheduleFromTramos(data.tramos ?? [])); })
+      .catch(() => { /* sin sucursal o sin horario: se mantiene el estado local */ });
+    return () => { cancel = true; };
+  }, [tab, apiEnabled, isAdmin]);
+
+  async function guardarHorario() {
+    setSavingHorario(true);
+    try {
+      if (apiEnabled) {
+        await apiFetch('/config/horario', {
+          method: 'PUT',
+          body: JSON.stringify({ tramos: scheduleToTramos(horario) }),
+        });
+      }
+      // Mantiene la config local en sincronía con lo persistido en OpeningHour.
+      update({ horario });
+      await dialog.alert('Horario guardado correctamente.');
+    } catch (e) {
+      const msg = (e as { message?: string })?.message ?? '';
+      await dialog.alert(`No se pudo guardar el horario${msg ? ` (${msg})` : ''}.`);
+    } finally {
+      setSavingHorario(false);
+    }
   }
 
   const enabled = config.tenantEnabled !== false;
@@ -177,6 +216,16 @@ export default function ConfiguracionPage() {
             </div>
           ))}
           <p className="text-xs text-[var(--panel-muted)]">Tipo: {VERTICAL_MAP[config.business.vertical].label}</p>
+          {/* Horario de apertura (mismo editor que el onboarding). Alimenta los chips
+              de horas disponibles del calendario (OpeningHour). Guardado explícito. */}
+          {isAdmin && (
+            <div className="border-t border-white/10 pt-4 space-y-3">
+              <HorarioNegocioForm value={horario} onChange={setHorario} />
+              <Button onClick={guardarHorario} disabled={savingHorario}>
+                {savingHorario ? 'Guardando…' : 'Guardar horario'}
+              </Button>
+            </div>
+          )}
           {isAdmin && (
             <div className="border-t border-white/10 pt-4">
               <Button variant="outline" onClick={() => { void dialog.confirm({ message: '¿Reiniciar toda la configuración?', danger: true }).then((ok) => { if (ok) reset(); }); }}>Reiniciar configuración</Button>

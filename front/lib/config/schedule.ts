@@ -27,16 +27,29 @@ export interface ScheduleTramo {
   fin: string;
 }
 
-/** Grupo de días con horario común. `dias` en convención 0=dom..6=sáb. */
+/**
+ * Grupo de días con horario común. `dias` en convención 0=dom..6=sáb.
+ * `mode` es POR GRUPO (intensiva=continuo vs partida=partido): cada grupo elige su
+ * tipo de forma independiente; cambiar el tipo de un grupo no afecta a los demás.
+ * `aceptado` = el usuario confirmó el grupo con "Aceptar" → la UI lo colapsa a un
+ * resumen; es solo estado de UI (no bloquea el aplanado a OpeningHour).
+ */
 export interface ScheduleGroup {
+  /** continuo = 1 tramo/día; partido = 2+ tramos/día. Independiente por grupo. */
+  mode: ScheduleMode;
   dias: number[];
   tramos: ScheduleTramo[];
+  /** Confirmado por el usuario (colapsa a resumen en la UI). Persistido. */
+  aceptado?: boolean;
 }
 
 /** Horario semanal del negocio tal como se guarda en TenantConfig.horario. */
 export interface BusinessSchedule {
-  /** continuo = 1 tramo por día; partido = 2+ tramos por día. */
-  mode: ScheduleMode;
+  /**
+   * Modo por defecto para NUEVOS grupos. Retrocompat: en el modelo antiguo era el
+   * modo GLOBAL; el normalizador lo baja a cada grupo (ver normalizeSchedule).
+   */
+  mode?: ScheduleMode;
   groups: ScheduleGroup[];
 }
 
@@ -66,7 +79,7 @@ const TRAMOS_PARTIDO: ScheduleTramo[] = [
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-/** Horario vacío (todos los días cerrados) en el modo indicado. */
+/** Horario vacío (todos los días cerrados); `mode` = modo por defecto de nuevos grupos. */
 export function emptySchedule(mode: ScheduleMode = 'continuo'): BusinessSchedule {
   return { mode, groups: [] };
 }
@@ -76,20 +89,21 @@ export function defaultTramos(mode: ScheduleMode): ScheduleTramo[] {
   return mode === 'partido' ? TRAMOS_PARTIDO.map((t) => ({ ...t })) : [{ ...TRAMO_CONTINUO }];
 }
 
-/** Grupo nuevo: por defecto L-V para el primer grupo, vacío para los siguientes. */
+/** Grupo nuevo con su modo propio: por defecto L-V para el primer grupo, vacío el resto. */
 export function createGroup(mode: ScheduleMode, dias: number[] = []): ScheduleGroup {
-  return { dias: [...dias], tramos: defaultTramos(mode) };
+  return { mode, dias: [...dias], tramos: defaultTramos(mode) };
 }
 
 /**
  * Añade un grupo al horario. El PRIMER grupo se pre-rellena con L-V (el caso
  * común); los siguientes empiezan sin días para que el usuario los elija
- * (los días ya usados no pueden duplicarse — ver setGroupDay).
+ * (los días ya usados no pueden duplicarse — ver setGroupDay). El grupo hereda
+ * el modo por defecto del horario (schedule.mode) y luego se ajusta por grupo.
  */
 export function addGroup(schedule: BusinessSchedule): BusinessSchedule {
   const usados = new Set(schedule.groups.flatMap((g) => g.dias));
   const dias = schedule.groups.length === 0 ? [1, 2, 3, 4, 5].filter((d) => !usados.has(d)) : [];
-  return { ...schedule, groups: [...schedule.groups, createGroup(schedule.mode, dias)] };
+  return { ...schedule, groups: [...schedule.groups, createGroup(schedule.mode ?? 'continuo', dias)] };
 }
 
 /** Quita un grupo; sus días quedan cerrados (sin filas OpeningHour). */
@@ -131,10 +145,10 @@ export function addGroupTramo(schedule: BusinessSchedule, groupIndex: number): B
   return { ...schedule, groups };
 }
 
-/** Quita un tramo de un grupo respetando el mínimo del modo (1 continuo / 2 partido). */
+/** Quita un tramo de un grupo respetando el mínimo del modo DEL GRUPO (1 continuo / 2 partido). */
 export function removeGroupTramo(schedule: BusinessSchedule, groupIndex: number, tramoIndex: number): BusinessSchedule {
-  const min = schedule.mode === 'partido' ? 2 : 1;
   const groups = schedule.groups.map((g, i) => {
+    const min = g.mode === 'partido' ? 2 : 1;
     if (i !== groupIndex || g.tramos.length <= min) return g;
     return { ...g, tramos: g.tramos.filter((_, j) => j !== tramoIndex) };
   });
@@ -142,17 +156,50 @@ export function removeGroupTramo(schedule: BusinessSchedule, groupIndex: number,
 }
 
 /**
- * Cambia el modo ajustando los tramos de TODOS los grupos:
- *  - continuo → cada grupo se queda con su primer tramo.
- *  - partido  → los grupos con 1 tramo reciben un segundo por defecto (16-20).
+ * Cambia el modo de UN SOLO grupo ajustando sus tramos (los demás grupos NO se
+ * tocan — garantía núcleo del requisito "intensiva/partida por grupo"):
+ *  - continuo → el grupo se queda con su primer tramo.
+ *  - partido  → si el grupo tiene 1 tramo recibe un segundo por defecto (16-20).
  */
-export function setMode(schedule: BusinessSchedule, mode: ScheduleMode): BusinessSchedule {
-  if (mode === schedule.mode) return schedule;
-  const groups = schedule.groups.map((g) => {
-    if (mode === 'continuo') return { ...g, tramos: g.tramos.slice(0, 1) };
-    return g.tramos.length >= 2 ? g : { ...g, tramos: [...g.tramos, { inicio: '16:00', fin: '20:00' }] };
+export function setGroupMode(schedule: BusinessSchedule, groupIndex: number, mode: ScheduleMode): BusinessSchedule {
+  const groups = schedule.groups.map((g, i) => {
+    if (i !== groupIndex || g.mode === mode) return g;
+    if (mode === 'continuo') return { ...g, mode, tramos: g.tramos.slice(0, 1) };
+    const tramos = g.tramos.length >= 2 ? g.tramos : [...g.tramos, { inicio: '16:00', fin: '20:00' }];
+    return { ...g, mode, tramos };
   });
-  return { mode, groups };
+  return { ...schedule, groups };
+}
+
+/**
+ * Marca/desmarca un grupo como aceptado (confirmado por el usuario). Solo estado
+ * de UI: un grupo aceptado se colapsa a resumen; NO altera el aplanado a OpeningHour.
+ */
+export function setGroupAccepted(schedule: BusinessSchedule, groupIndex: number, aceptado: boolean): BusinessSchedule {
+  const groups = schedule.groups.map((g, i) => (i === groupIndex ? { ...g, aceptado } : g));
+  return { ...schedule, groups };
+}
+
+/**
+ * Normaliza un horario a la forma NUEVA (modo por grupo). Migra el modelo antiguo
+ * (mode GLOBAL + grupos sin `mode`): cada grupo hereda su modo infiriéndolo del
+ * número de tramos (>=2 → partido, si no → continuo), que en el modelo viejo
+ * coincidía con el modo global aplicado a todos. El `mode` de nivel superior se
+ * conserva solo como modo por defecto para NUEVOS grupos. Tolerante a datos
+ * parciales/corruptos (grupos sin dias/tramos). Idempotente sobre la forma nueva.
+ */
+export function normalizeSchedule(schedule: BusinessSchedule | null | undefined): BusinessSchedule {
+  const fallback: ScheduleMode = schedule?.mode ?? 'continuo';
+  const rawGroups = Array.isArray(schedule?.groups) ? schedule!.groups : [];
+  const groups: ScheduleGroup[] = rawGroups.map((g) => {
+    const tramos = Array.isArray(g?.tramos) ? g.tramos.map((t) => ({ inicio: t?.inicio ?? '', fin: t?.fin ?? '' })) : [];
+    const mode: ScheduleMode = g?.mode ?? (tramos.length >= 2 ? 'partido' : 'continuo');
+    const dias = Array.isArray(g?.dias) ? [...g.dias] : [];
+    const group: ScheduleGroup = { mode, dias, tramos };
+    if (g?.aceptado) group.aceptado = true;
+    return group;
+  });
+  return { mode: fallback, groups };
 }
 
 function tramoValido(t: ScheduleTramo): boolean {
@@ -180,4 +227,50 @@ export function scheduleToTramos(schedule: BusinessSchedule | undefined | null):
   }
   out.sort((a, b) => a.diaSemana - b.diaSemana || a.inicio.localeCompare(b.inicio));
   return out;
+}
+
+/**
+ * Inverso de scheduleToTramos: reconstruye un BusinessSchedule desde los tramos
+ * planos de OpeningHour (lo que devuelve GET /config/horario). Días que comparten
+ * un MISMO conjunto de tramos se agrupan en un solo grupo; el modo de cada grupo
+ * se infiere del número de tramos (>=2 → partido, si no → continuo). Tramos
+ * inválidos o días fuera de 0-6 se descartan (defensivo). Round-trip garantizado:
+ * scheduleToTramos(scheduleFromTramos(x)) === x para cualquier x válido, ordenado
+ * y sin duplicados (misma forma que produce scheduleToTramos).
+ */
+export function scheduleFromTramos(tramos: TramoDia[] | undefined | null): BusinessSchedule {
+  if (!tramos || tramos.length === 0) return emptySchedule();
+
+  // 1) Agrupa tramos por día (descartando inválidos/fuera de rango).
+  const byDia = new Map<number, ScheduleTramo[]>();
+  for (const t of tramos) {
+    if (!Number.isInteger(t.diaSemana) || t.diaSemana < 0 || t.diaSemana > 6) continue;
+    const tramo: ScheduleTramo = { inicio: t.inicio, fin: t.fin };
+    if (!tramoValido(tramo)) continue;
+    const list = byDia.get(t.diaSemana) ?? [];
+    list.push(tramo);
+    byDia.set(t.diaSemana, list);
+  }
+
+  // 2) Ordena/deduplica los tramos de cada día y agrupa días por firma idéntica.
+  const bySig = new Map<string, { dias: number[]; tramos: ScheduleTramo[] }>();
+  for (const [dia, list] of byDia) {
+    const sorted = [...list].sort((a, b) => a.inicio.localeCompare(b.inicio) || a.fin.localeCompare(b.fin));
+    const uniq = sorted.filter((t, i) => i === 0 || t.inicio !== sorted[i - 1].inicio || t.fin !== sorted[i - 1].fin);
+    const sig = uniq.map((t) => `${t.inicio}-${t.fin}`).join('|');
+    const existing = bySig.get(sig);
+    if (existing) existing.dias.push(dia);
+    else bySig.set(sig, { dias: [dia], tramos: uniq });
+  }
+
+  // 3) Construye grupos con modo inferido; orden determinista (por día menor).
+  const groups: ScheduleGroup[] = [...bySig.values()]
+    .map((g) => ({
+      mode: (g.tramos.length >= 2 ? 'partido' : 'continuo') as ScheduleMode,
+      dias: [...g.dias].sort((a, b) => a - b),
+      tramos: g.tramos,
+    }))
+    .sort((a, b) => Math.min(...a.dias) - Math.min(...b.dias));
+
+  return { mode: 'continuo', groups };
 }

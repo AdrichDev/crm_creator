@@ -3,7 +3,7 @@ import { emptyWorkerChips, type WorkerChipId } from './worker-chips';
 import { VERTICAL_MAP, type VerticalId } from './verticals';
 import { defaultDashboardWidgets, MAX_DASHBOARD_WIDGETS, type WidgetId } from './dashboard-widgets';
 import type { Terminology } from './terminology';
-import type { BusinessSchedule } from './schedule';
+import { normalizeSchedule, type BusinessSchedule } from './schedule';
 
 /** Tarjeta favorita del dashboard (máx. 6). */
 export interface Favorite {
@@ -175,7 +175,10 @@ export function deserialize(raw: string | null): TenantConfig | null {
     const mergedViews = { ...DEFAULT_VIEWS, ...parsed.views };
     const mergedWidgets = (parsed.dashboardWidgets ?? defaultDashboardWidgets(parsed.business.vertical))
       .slice(0, MAX_DASHBOARD_WIDGETS);
-    return { ...parsed, modules: merged, workerChips: mergedChips, views: mergedViews, dashboardWidgets: mergedWidgets };
+    // Horario retrocompatible: migra la forma antigua (mode GLOBAL, grupos sin mode)
+    // a la nueva (mode por grupo) sin romper. Ausente → se deja undefined.
+    const horario = parsed.horario ? normalizeSchedule(parsed.horario) : undefined;
+    return { ...parsed, modules: merged, workerChips: mergedChips, views: mergedViews, dashboardWidgets: mergedWidgets, horario };
   } catch {
     return null;
   }

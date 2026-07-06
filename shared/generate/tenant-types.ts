@@ -154,10 +154,11 @@ export interface TenantConfig {
     uploadedAt: string;
     sha256?: string;
   };
-  /** Horario de apertura (mirrors front/lib/config/schedule.ts BusinessSchedule). */
+  /** Horario de apertura (mirrors front/lib/config/schedule.ts BusinessSchedule).
+   *  `mode` es POR GRUPO (opcional a nivel raíz = modo por defecto de nuevos grupos). */
   horario?: {
-    mode: 'continuo' | 'partido';
-    groups: { dias: number[]; tramos: { inicio: string; fin: string }[] }[];
+    mode?: 'continuo' | 'partido';
+    groups: { mode: 'continuo' | 'partido'; dias: number[]; tramos: { inicio: string; fin: string }[]; aceptado?: boolean }[];
   };
   favorites?: Favorite[];
   tenantEnabled?: boolean;
