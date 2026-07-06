@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { MapPin } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/primitives';
 import type { Cita } from '@/lib/mock/data';
@@ -79,7 +80,16 @@ export function CitaDetalleModal({ cita, onClose, onSave, onIrAgenda, irAgendaLa
         <label className="opera-label">Anotaciones</label>
         <textarea className="opera-control" rows={4} value={notes} onChange={(e) => setNotes(e.target.value)}
           placeholder="Añade una anotación sobre esta cita…" />
-        <div className="mt-2 flex justify-end">
+        {/* Fila de acciones: pin de ubicación a la izquierda (solo con dirección,
+            abre Google Maps en pestaña nueva) y "Guardar anotación" a la derecha. */}
+        <div className={`mt-2 flex items-center ${mapaEnlaceUrl ? 'justify-between' : 'justify-end'}`}>
+          {mapaEnlaceUrl && (
+            <a href={mapaEnlaceUrl} target="_blank" rel="noopener noreferrer"
+              className="row-action edit inline-flex items-center"
+              title="Abrir dirección en Google Maps" aria-label="Abrir dirección en Google Maps">
+              <MapPin className="h-4 w-4" />
+            </a>
+          )}
           <Button variant="outline" onClick={() => onSave(notes)}>Guardar anotación</Button>
         </div>
       </div>

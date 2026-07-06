@@ -15,6 +15,9 @@ import { MODULE_MAP, MODULES } from '@/lib/config/modules';
 import type { DesignTokens, BusinessViews } from '@/lib/config/tenant-config';
 import { DEFAULT_VIEWS } from '@/lib/config/tenant-config';
 import { VerticalPicker } from '@/components/config/vertical-picker';
+import { HorarioNegocioForm } from '@/components/config/horario-negocio-form';
+import { scheduleToTramos } from '@/lib/config/schedule';
+import type { TenantConfig } from '@/lib/config/tenant-config';
 import { ModuleToggleGrid } from '@/components/config/module-toggle-grid';
 import { BrandingForm } from '@/components/config/branding-form';
 import { AiBrandingSuggest } from '@/components/config/ai-branding-suggest';
@@ -115,6 +118,35 @@ function OnboardingInner() {
   function db(patch: Partial<NonNullable<typeof draft.database>>) {
     setDraft({ ...draft, database: { ...draft.database, ...patch } });
   }
+  // Persiste el horario de apertura en OpeningHour (PUT /config/horario) para que
+  // la disponibilidad del calendario (chips de hora) refleje lo definido aquí.
+  // Solo en modo API y solo si el usuario definió horario (cfg.horario): si nunca
+  // se tocó, NO se hace PUT (evita borrar horas configuradas por otra vía). Debe
+  // llamarse DESPUÉS de openProject(id): fija el x-business-id del negocio correcto.
+  // En modo generador/mock no hay negocio real → el horario queda solo en la config.
+  async function syncHorarioApertura(cfg: TenantConfig): Promise<void> {
+    if (!isApiEnabled() || !cfg.horario) return;
+    await apiFetch('/config/horario', {
+      method: 'PUT',
+      body: JSON.stringify({ tramos: scheduleToTramos(cfg.horario) }),
+    });
+  }
+
+  // Best-effort con error visible: el proyecto YA quedó guardado; si el horario
+  // falla se avisa (dialog) y se navega igual — reintentar el guardado del
+  // onboarding volvería a intentar el PUT (idempotente, reemplazo completo).
+  async function syncHorarioConAviso(cfg: TenantConfig): Promise<void> {
+    try {
+      await syncHorarioApertura(cfg);
+    } catch (e) {
+      const msg = (e as { message?: string })?.message ?? '';
+      await dialog.alert(
+        `El proyecto se guardó, pero el horario de apertura no se pudo aplicar${msg ? ` (${msg})` : ''}. ` +
+        'Edita el proyecto y vuelve a guardar para reintentarlo.',
+      );
+    }
+  }
+
   async function finish() {
     const name = draft.business.name.trim() || VERTICAL_MAP[draft.business.vertical].label;
     const cfg = { ...draft, business: { ...draft.business, name },
@@ -130,6 +162,8 @@ function OnboardingInner() {
         // Deja el proyecto editado como activo (como antes de este fix): evita que
         // /dashboard u otras vistas queden apuntando al proyecto activo anterior.
         openProject(editing.id);
+        // Aplica el horario a OpeningHour (requiere el x-business-id ya fijado).
+        await syncHorarioConAviso(cfg);
         router.push('/dashboard');
       } catch (e) {
         const msg = (e as { message?: string })?.message ?? '';
@@ -147,6 +181,10 @@ function OnboardingInner() {
     try {
       const id = await createProject(cfg);
       openProject(id);
+      // Aplica el horario a OpeningHour del negocio recién creado (createProject
+      // ya creó su sucursal). NO se reintenta creando otro proyecto: el aviso
+      // del helper cubre el fallo sin bloquear la navegación.
+      await syncHorarioConAviso(cfg);
       router.replace('/panel');
     } catch (e) {
       const msg = (e as { message?: string })?.message ?? '';
@@ -265,6 +303,10 @@ function OnboardingInner() {
                   className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" />
               </div>
             ))}
+            {/* Horario de apertura del negocio, debajo de la dirección: alimenta
+                los chips de "horas disponibles" del calendario (OpeningHour). */}
+            <HorarioNegocioForm value={draft.horario}
+              onChange={(h) => setDraft((d) => ({ ...d, horario: h }))} />
             <div className="rounded-xl bg-gray-50 p-4 text-sm text-gray-600">
               <p className="font-medium text-gray-800">Resumen</p>
               <p className="mt-1">Negocio: {draft.business.name || '—'} · {VERTICAL_MAP[draft.business.vertical].label}</p>

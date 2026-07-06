@@ -3,6 +3,7 @@ import { emptyWorkerChips, type WorkerChipId } from './worker-chips';
 import { VERTICAL_MAP, type VerticalId } from './verticals';
 import { defaultDashboardWidgets, MAX_DASHBOARD_WIDGETS, type WidgetId } from './dashboard-widgets';
 import type { Terminology } from './terminology';
+import type { BusinessSchedule } from './schedule';
 
 /** Tarjeta favorita del dashboard (máx. 6). */
 export interface Favorite {
@@ -95,6 +96,13 @@ export interface TenantConfig {
     uploadedAt: string;
     sha256?: string;
   };
+  /**
+   * Horario de apertura del negocio (grupos de días + tramos, ver lib/config/schedule.ts).
+   * OPCIONAL y retrocompatible: configs antiguas sin este campo siguen funcionando
+   * (deserialize lo tolera ausente). Al guardar el onboarding se aplana y se
+   * persiste además en OpeningHour vía PUT /config/horario.
+   */
+  horario?: BusinessSchedule;
   /** Tarjetas favoritas del dashboard (máx. 6). */
   favorites?: Favorite[];
   /** Interruptor maestro del tenant. undefined/true = activo; false = en mantenimiento. */

@@ -179,6 +179,7 @@ export const swaggerSpec = {
     { name: 'Contactos', description: 'Agenda de contactos comerciales (leads / prospectos)' },
     { name: 'Pedidos', description: 'Presupuestos / pedidos documentales' },
     { name: 'Invoices', description: 'Facturas' },
+    { name: 'Config', description: 'Configuración del negocio (horario de apertura)' },
   ],
   components: {
     securitySchemes: {
@@ -375,6 +376,23 @@ export const swaggerSpec = {
           documentos: { type: 'object', nullable: true },
         },
       },
+      HorarioTramo: {
+        type: 'object',
+        description: 'Tramo de apertura de un día. Varios tramos del mismo día = horario partido.',
+        properties: {
+          diaSemana: { type: 'integer', minimum: 0, maximum: 6, description: '0=domingo … 6=sábado' },
+          inicio: { type: 'string', description: 'Hora de apertura HH:MM (< fin)' },
+          fin: { type: 'string', description: 'Hora de cierre HH:MM (> inicio)' },
+        },
+        required: ['diaSemana', 'inicio', 'fin'],
+      },
+      HorarioNegocio: {
+        type: 'object',
+        properties: {
+          locationId: { type: 'string', description: 'Sucursal del negocio activo' },
+          tramos: { type: 'array', items: { $ref: '#/components/schemas/HorarioTramo' } },
+        },
+      },
     },
   },
   paths: {
@@ -465,6 +483,37 @@ export const swaggerSpec = {
       },
     },
     '/bookings/{id}': bookingsCrud['/bookings/{id}'],
+    // Horario de apertura del negocio (OpeningHour de su sucursal). Fuente de los chips
+    // de "horas disponibles" del calendario. Reemplazo atómico, espejo de /employees/:id/horario.
+    '/config/horario': {
+      get: {
+        tags: ['Config'],
+        summary: 'Horario de apertura del negocio',
+        description: 'Devuelve los tramos de apertura (OpeningHour) de la sucursal del negocio activo. 404 si el negocio no tiene sucursal.',
+        security: bearerAuth,
+        responses: {
+          '200': { description: 'Horario del negocio', content: { 'application/json': { schema: { $ref: '#/components/schemas/HorarioNegocio' } } } },
+          '401': unauthorizedResponse,
+          '404': notFoundResponse,
+        },
+      },
+      put: {
+        tags: ['Config'],
+        summary: 'Reemplazar el horario de apertura del negocio',
+        description: 'Reemplaza atómicamente TODOS los tramos de la sucursal (deleteMany + createMany). `tramos` vacío = negocio cerrado toda la semana. Valida diaSemana 0-6, formato HH:MM, inicio < fin, y colapsa tramos duplicados.',
+        security: bearerAuth,
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', properties: { tramos: { type: 'array', items: { $ref: '#/components/schemas/HorarioTramo' } } }, required: ['tramos'] } } },
+        },
+        responses: {
+          '200': { description: 'Horario reemplazado', content: { 'application/json': { schema: { $ref: '#/components/schemas/HorarioNegocio' } } } },
+          '400': invalidResponse('diaSemana fuera de 0-6, HH:MM inválido o inicio >= fin'),
+          '401': unauthorizedResponse,
+          '404': notFoundResponse,
+        },
+      },
+    },
     ...crudPaths({ tag: 'Services', schema: 'Service', collection: 'services' }),
     ...crudPaths({ tag: 'Products', schema: 'Product', collection: 'products' }),
     '/projects': {

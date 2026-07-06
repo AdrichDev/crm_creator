@@ -28,6 +28,7 @@ import { pedidosRouter } from './pedidos.js';
 import { documentsRouter } from './documents.js';
 import { notificationsRouter } from './notifications.js';
 import { settingsRouter } from './settings.js';
+import { configHorarioRouter } from './config-horario.js';
 import { calendarRouter } from './calendar.js';
 import { integrationsRouter } from './integrations.js';
 import { contactosRouter } from './contactos.js';
@@ -88,6 +89,9 @@ api.use('/tags', crudRouter('tag', { fields: ['nombre', 'color'], searchFields: 
 api.use('/documents', documentsRouter); // documentos (DELETE hard: sin eliminadoEn)
 api.use('/notifications', notificationsRouter); // solo lectura; las escribe el sistema
 api.use('/settings', settingsRouter); // ajustes por categoría (config reservada al generador)
+// Horario de apertura del negocio (OpeningHour de su sucursal) — lo escribe el
+// onboarding y lo consume availability.ts para los chips de horas disponibles.
+api.use('/config', configHorarioRouter);
 api.use('/upload', uploadRouter);
 api.use('/categories', categoriesRouter); // equipos deportivos (crm.equipo + crm.miembro_equipo)
 // Comercial de campo (crm-comercial-campo): estados de visita, visitas, notas, recordatorios.

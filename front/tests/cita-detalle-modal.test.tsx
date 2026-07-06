@@ -64,3 +64,26 @@ describe('CitaDetalleModal — mapa Google Maps (crm-operaos WU3 / AC3)', () => 
     expect(screen.queryByText('Abrir en Google Maps')).not.toBeInTheDocument();
   });
 });
+
+describe('CitaDetalleModal — pin de ubicación junto a "Guardar anotación" (crm-operaos, sub-item pin)', () => {
+  it('con dirección: pin a la izquierda con la URL de Google Maps, fila justify-between', () => {
+    const cita: CitaConNotas = { ...CITA, direccion: 'C/ Mayor 3, Madrid' };
+    render(<CitaDetalleModal cita={cita} onClose={vi.fn()} onSave={vi.fn()} onIrAgenda={vi.fn()} />);
+    const pin = screen.getByLabelText('Abrir dirección en Google Maps') as HTMLAnchorElement;
+    expect(pin.href).toBe('https://www.google.com/maps/search/?api=1&query=C%2F%20Mayor%203%2C%20Madrid');
+    expect(pin.target).toBe('_blank');
+    // Misma fila que "Guardar anotación", pin a la izquierda y botón a la derecha.
+    const fila = pin.parentElement!;
+    expect(fila).toHaveClass('justify-between');
+    expect(fila.textContent).toContain('Guardar anotación');
+    expect(fila.firstElementChild).toBe(pin);
+  });
+
+  it('sin dirección: el pin no se muestra y "Guardar anotación" sigue funcionando', () => {
+    const onSave = vi.fn();
+    render(<CitaDetalleModal cita={CITA} onClose={vi.fn()} onSave={onSave} onIrAgenda={vi.fn()} />);
+    expect(screen.queryByLabelText('Abrir dirección en Google Maps')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('Guardar anotación'));
+    expect(onSave).toHaveBeenCalledWith('Alérgica al amoníaco');
+  });
+});
