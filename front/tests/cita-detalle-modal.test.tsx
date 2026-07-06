@@ -79,18 +79,20 @@ describe('CitaDetalleModal — mapa Google Maps (crm-operaos WU3 / AC3)', () => 
   });
 });
 
-describe('CitaDetalleModal — pin de ubicación junto a "Guardar anotación" (crm-operaos, sub-item pin)', () => {
-  it('con dirección: pin a la izquierda con la URL de Google Maps, fila justify-between', () => {
+describe('CitaDetalleModal — pin de ubicación junto a la fila "Dirección" (crm-operaos, sub-item pin)', () => {
+  it('con dirección: pin dentro de la fila Dirección con la URL de Google Maps', () => {
     const cita: CitaConNotas = { ...CITA, direccion: 'C/ Mayor 3, Madrid' };
     render(<CitaDetalleModal cita={cita} onClose={vi.fn()} onSave={vi.fn()} onIrAgenda={vi.fn()} />);
     const pin = screen.getByLabelText('Abrir dirección en Google Maps') as HTMLAnchorElement;
     expect(pin.href).toBe('https://www.google.com/maps/search/?api=1&query=C%2F%20Mayor%203%2C%20Madrid');
     expect(pin.target).toBe('_blank');
-    // Misma fila que "Guardar anotación", pin a la izquierda y botón a la derecha.
-    const fila = pin.parentElement!;
-    expect(fila).toHaveClass('justify-between');
-    expect(fila.textContent).toContain('Guardar anotación');
-    expect(fila.firstElementChild).toBe(pin);
+    // El pin vive en el <dd> de la fila "Dirección" (junto al valor), no bajo Anotaciones.
+    const dd = pin.closest('dd')!;
+    expect(dd).toBeTruthy();
+    expect(dd.textContent).toContain('C/ Mayor 3, Madrid');
+    // La fila de "Guardar anotación" ya NO contiene el pin.
+    const guardarRow = screen.getByText('Guardar anotación').closest('div')!;
+    expect(within(guardarRow).queryByLabelText('Abrir dirección en Google Maps')).not.toBeInTheDocument();
   });
 
   it('sin dirección: el pin no se muestra y "Guardar anotación" sigue funcionando', () => {

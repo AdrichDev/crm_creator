@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useDialog } from '@/components/ui/dialog-provider';
 import { ModuleGuard } from '@/components/layout/module-guard';
@@ -121,6 +121,20 @@ export default function Page() {
     from: range?.from, to: range?.to,
   });
 
+  // Resumen (Total/Confirmadas/Pendientes): totales GLOBALES del negocio, NO del
+  // rango visible. `paged.total`/`displayItems` solo cubren el mes/semana/día en
+  // pantalla, así que las citas ya sembradas en otros meses no se contaban (bug
+  // reportado). GET /bookings/stats agrega por estado sobre toda la base. Se refresca
+  // junto al listado tras crear/editar/borrar.
+  const [stats, setStats] = useState<{ total: number; confirmadas: number; pendientes: number } | null>(null);
+  const refreshStats = useCallback(() => {
+    if (!apiEnabled) return;
+    apiFetch<{ total: number; confirmadas: number; pendientes: number }>('/bookings/stats')
+      .then((r) => setStats(r))
+      .catch(() => setStats(null));
+  }, [apiEnabled]);
+  useEffect(() => { refreshStats(); }, [refreshStats]);
+
   const dialog = useDialog();
   const [open, setOpen] = useState(false);
   const [openNueva, setOpenNueva] = useState(false);
@@ -194,6 +208,7 @@ export default function Page() {
       }
       setOpen(false);
       paged.refresh();
+      refreshStats();
       return;
     }
     if (editing) update(editing.id, v as Partial<Cita>); else create(v as unknown as Omit<Cita, 'id'>);
@@ -204,7 +219,22 @@ export default function Page() {
 
   function onEditar(c: CitaRow) { setEditing(c); setChipsFallback(false); setOpen(true); }
   function onEliminar(c: CitaRow) {
-    void dialog.confirm({ message: '¿Eliminar?', danger: true }).then((ok) => { if (ok) remove(c.id); });
+    void dialog.confirm({ message: '¿Eliminar?', danger: true }).then(async (ok) => {
+      if (!ok) return;
+      // En modo API el borrado es REAL (soft delete en DB) + refresco de lista y stats;
+      // antes solo tocaba la colección local (localStorage) y en modo API era un no-op.
+      if (apiEnabled) {
+        try {
+          await apiFetch(`/bookings/${c.id}`, { method: 'DELETE' });
+          paged.refresh();
+          refreshStats();
+        } catch (err) {
+          await dialog.alert(err instanceof Error ? err.message : 'No se pudo eliminar la cita.');
+        }
+      } else {
+        remove(c.id);
+      }
+    });
   }
 
   // Detalle de cita (paridad AgendaWidget): click en tarjeta abre CitaDetalleModal.
@@ -215,6 +245,7 @@ export default function Page() {
       try {
         await apiFetch(`/bookings/${detalleCita.id}`, { method: 'PATCH', body: JSON.stringify({ notes }) });
         paged.refresh();
+        refreshStats();
       } catch (err) {
         await dialog.alert(err instanceof Error ? err.message : 'No se pudo guardar la anotación.');
       }
@@ -235,9 +266,9 @@ export default function Page() {
         <PageHeader title={term} subtitle="Agenda y reservas con estados."
           action={<Button onClick={onNueva}><CalendarPlus className="h-4 w-4" /> Añadir</Button>} />
         <div className="grid gap-4 sm:grid-cols-3">
-          <Stat label="Total" value={apiEnabled ? paged.total : displayItems.length} />
-          <Stat label="Confirmadas" value={displayItems.filter(c => c.estado === 'Confirmada').length} />
-          <Stat label="Pendientes" value={displayItems.filter(c => c.estado === 'Pendiente').length} />
+          <Stat label="Total" value={apiEnabled ? (stats?.total ?? paged.total) : displayItems.length} />
+          <Stat label="Confirmadas" value={apiEnabled ? (stats?.confirmadas ?? 0) : displayItems.filter(c => c.estado === 'Confirmada').length} />
+          <Stat label="Pendientes" value={apiEnabled ? (stats?.pendientes ?? 0) : displayItems.filter(c => c.estado === 'Pendiente').length} />
         </div>
 
         {apiEnabled && (
@@ -287,17 +318,17 @@ export default function Page() {
       />
 
       {sector?.formComponent === 'entrenamiento' && (
-        <NuevaEntrenamientoModal open={openNueva} onClose={() => setOpenNueva(false)} onCreated={() => paged.refresh()} />
+        <NuevaEntrenamientoModal open={openNueva} onClose={() => setOpenNueva(false)} onCreated={() => { paged.refresh(); refreshStats(); }} />
       )}
       {sector?.formComponent === 'clase' && (
-        <NuevaClaseModal open={openNueva} onClose={() => setOpenNueva(false)} onCreated={() => paged.refresh()} />
+        <NuevaClaseModal open={openNueva} onClose={() => setOpenNueva(false)} onCreated={() => { paged.refresh(); refreshStats(); }} />
       )}
       {(!sector || sector.formComponent === 'reunion') && (
         <NuevaCitaModal
           open={openNueva}
           mostrarCanal={sector?.formComponent === 'reunion'}
           onClose={() => setOpenNueva(false)}
-          onCreated={() => { void collectionRefresh(); paged.refresh(); }}
+          onCreated={() => { void collectionRefresh(); paged.refresh(); refreshStats(); }}
         />
       )}
     </ModuleGuard>

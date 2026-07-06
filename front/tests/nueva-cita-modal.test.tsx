@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, cleanup, act } from '@testing-library/react';
+import { render, cleanup, act, screen, within } from '@testing-library/react';
 import { NuevaCitaModal, buildCitaNotes, CANALES, ACCIONES_COMERCIALES } from '@/components/crm/nueva-cita-modal';
 
 vi.mock('@/lib/api/client', () => ({
@@ -64,5 +64,30 @@ describe('buildCitaNotes — formato canónico de notes comerciales', () => {
     expect(ACCIONES_COMERCIALES).toContain('Visita comercial');
     expect(ACCIONES_COMERCIALES).toContain('Firma de contrato');
     expect(ACCIONES_COMERCIALES.length).toBe(8);
+  });
+});
+
+// crm-operaos (fix 3): el campo "Acción" pasa de <input list> (combobox editable) a un
+// <select> real con las opciones predefinidas — mismo chasis que Cliente/Servicio/Canal.
+describe('NuevaCitaModal — Acción es un <select> con opciones predefinidas', () => {
+  it('con mostrarCanal, "Acción" es un <select> (no un input list) con las 8 acciones + placeholder', async () => {
+    const { container } = render(<NuevaCitaModal open mostrarCanal onClose={vi.fn()} onCreated={vi.fn()} />);
+    await flush();
+
+    // Ya no hay combobox editable con datalist.
+    expect(container.querySelector('input[list]')).toBeNull();
+    expect(container.querySelector('datalist')).toBeNull();
+
+    // El <select> de Acción se identifica por su opción placeholder.
+    const placeholder = screen.getByText('Selecciona una acción…');
+    const accionSelect = placeholder.closest('select') as HTMLSelectElement;
+    expect(accionSelect).toBeTruthy();
+    expect(accionSelect.tagName).toBe('SELECT');
+    // Contiene todas las acciones predefinidas como <option>.
+    for (const a of ACCIONES_COMERCIALES) {
+      expect(within(accionSelect).getByRole('option', { name: a })).toBeInTheDocument();
+    }
+    // placeholder + 8 acciones = 9 opciones.
+    expect(accionSelect.querySelectorAll('option').length).toBe(ACCIONES_COMERCIALES.length + 1);
   });
 });

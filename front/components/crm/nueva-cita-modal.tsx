@@ -10,8 +10,8 @@ interface Opt { id: string; nombre: string }
 
 export const CANALES = ['Presencial', 'Videollamada', 'Llamada'];
 
-// Acciones comerciales predefinidas (vertical `comerciales`). El campo es un combobox
-// editable (<input list>): el usuario puede elegir una de estas o escribir texto libre.
+// Acciones comerciales predefinidas (vertical `comerciales`). El campo es un <select>
+// con estas opciones (mismo chasis que el resto de selectores del modal); vacío = sin acción.
 export const ACCIONES_COMERCIALES = [
   'Visita comercial',
   'Llamada de seguimiento',
@@ -143,17 +143,12 @@ export function NuevaCitaModal({ open, onClose, onCreated, mostrarCanal = false 
         {mostrarCanal && (
           <>
             <label className="mt-3 block text-xs font-medium text-[var(--panel-muted)]">Acción</label>
-            {/* Combobox editable: sugerencias predefinidas + texto libre. Se persiste en `notes`. */}
-            <input
-              list="acciones-comerciales"
-              className={inputCls}
-              value={form.accion}
-              onChange={(e) => setForm({ ...form, accion: e.target.value })}
-              placeholder="Selecciona o escribe una acción…"
-            />
-            <datalist id="acciones-comerciales">
-              {ACCIONES_COMERCIALES.map((a) => <option key={a} value={a} />)}
-            </datalist>
+            {/* Select de acciones predefinidas (mismo chasis que Cliente/Servicio/Canal).
+                El valor fluye a `buildCitaNotes` igual que antes; vacío → solo Canal. */}
+            <select className={inputCls} value={form.accion} onChange={(e) => setForm({ ...form, accion: e.target.value })}>
+              <option value="">Selecciona una acción…</option>
+              {ACCIONES_COMERCIALES.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
 
             <label className="mt-3 block text-xs font-medium text-[var(--panel-muted)]">Canal</label>
             <select className={inputCls} value={form.canal} onChange={(e) => setForm({ ...form, canal: e.target.value })}>

@@ -106,6 +106,31 @@ bookingsRouter.get('/slots', async (req: AuthedRequest, res: Response) => {
   res.json({ slots });
 });
 
+// GET /stats → totales GLOBALES por estado para las tarjetas de resumen de /citas.
+// Independiente del rango visible del calendario: cuenta TODAS las citas del negocio
+// (no eliminadas). El listado `GET /` está escopado al mes/semana/día en pantalla por
+// rendimiento, así que su `total` solo refleja lo visible; el resumen usaba ese total
+// y no contaba las citas fuera del rango (bug: las citas ya sembradas en otros meses
+// no aparecían en "Total/Confirmadas/Pendientes"). Registrado antes de "/:id" para que
+// Express no interprete "stats" como un id.
+bookingsRouter.get('/stats', async (req: AuthedRequest, res: Response) => {
+  const grouped = await prisma.booking.groupBy({
+    by: ['status'],
+    where: { businessId: req.businessId, eliminadoEn: null },
+    _count: { _all: true },
+  });
+  let total = 0;
+  let confirmadas = 0;
+  let pendientes = 0;
+  for (const g of grouped) {
+    const n = g._count._all;
+    total += n;
+    if (g.status === 'CONFIRMED') confirmadas = n;
+    else if (g.status === 'PENDING') pendientes = n;
+  }
+  res.json({ total, confirmadas, pendientes });
+});
+
 bookingsRouter.get('/:id', async (req: AuthedRequest, res: Response) => {
   const row = await prisma.booking.findFirst({ where: { id: req.params.id, businessId: req.businessId }, include: { customer: true, service: true, employee: true, resources: true, history: true, team: true } });
   if (!row) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });

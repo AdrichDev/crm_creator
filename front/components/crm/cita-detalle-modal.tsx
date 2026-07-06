@@ -56,7 +56,18 @@ export function CitaDetalleModal({ cita, onClose, onSave, onIrAgenda, irAgendaLa
         {campos.map(([label, value]) => (
           <div key={label} className="grid grid-cols-[110px_1fr] gap-3 py-2">
             <dt className="text-[11px] font-bold uppercase tracking-wider text-[var(--acc)]">{label}</dt>
-            <dd className="break-words whitespace-pre-wrap text-[var(--panel-text)]">{value}</dd>
+            <dd className="break-words whitespace-pre-wrap text-[var(--panel-text)]">
+              {value}
+              {/* Pin junto a la Dirección (paridad con la ficha de cliente): abre
+                  Google Maps en pestaña nueva. Solo si hay dirección. */}
+              {label === 'Dirección' && mapaEnlaceUrl && (
+                <a href={mapaEnlaceUrl} target="_blank" rel="noopener noreferrer"
+                  className="row-action edit ml-2 inline-flex items-center align-middle"
+                  title="Abrir dirección en Google Maps" aria-label="Abrir dirección en Google Maps">
+                  <MapPin className="h-4 w-4" />
+                </a>
+              )}
+            </dd>
           </div>
         ))}
       </dl>
@@ -84,16 +95,9 @@ export function CitaDetalleModal({ cita, onClose, onSave, onIrAgenda, irAgendaLa
         <label className="opera-label">Anotaciones</label>
         <textarea className="opera-control" rows={4} value={notes} onChange={(e) => setNotes(e.target.value)}
           placeholder="Añade una anotación sobre esta cita…" />
-        {/* Fila de acciones: pin de ubicación a la izquierda (solo con dirección,
-            abre Google Maps en pestaña nueva) y "Guardar anotación" a la derecha. */}
-        <div className={`mt-2 flex items-center ${mapaEnlaceUrl ? 'justify-between' : 'justify-end'}`}>
-          {mapaEnlaceUrl && (
-            <a href={mapaEnlaceUrl} target="_blank" rel="noopener noreferrer"
-              className="row-action edit inline-flex items-center"
-              title="Abrir dirección en Google Maps" aria-label="Abrir dirección en Google Maps">
-              <MapPin className="h-4 w-4" />
-            </a>
-          )}
+        {/* El pin de ubicación ahora vive junto a la fila "Dirección" de la ficha;
+            aquí solo queda el botón de guardar. */}
+        <div className="mt-2 flex items-center justify-end">
           <Button variant="outline" onClick={() => onSave(notes)}>Guardar anotación</Button>
         </div>
       </div>

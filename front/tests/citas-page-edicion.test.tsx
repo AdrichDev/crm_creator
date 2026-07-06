@@ -131,6 +131,36 @@ describe('citas/page — persistencia de edición en modo API (WU4)', () => {
   });
 });
 
+// crm-operaos (fix 2): el resumen Total/Confirmadas/Pendientes debe reflejar los
+// totales GLOBALES del negocio (GET /bookings/stats), NO el rango visible del
+// calendario ni la página actual. Bug: las citas sembradas en otros meses no se
+// contaban porque el resumen usaba paged.total / displayItems (escopados al rango).
+describe('citas/page — resumen refleja totales globales, no el rango visible (fix 2)', () => {
+  function statValue(label: string): string {
+    const cards = Array.from(document.querySelectorAll('.kpi-card'));
+    const card = cards.find((c) => c.querySelector('.label')?.textContent === label);
+    return card?.querySelector('.value')?.textContent ?? '';
+  }
+
+  it('Total/Confirmadas/Pendientes salen de /bookings/stats aunque la página visible traiga menos', async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/bookings/stats') return Promise.resolve({ total: 22, confirmadas: 5, pendientes: 7 });
+      // La página escopada al rango solo trae 1 cita (pendiente) del día visible.
+      if (path.startsWith('/bookings?')) return Promise.resolve({ items: [ROW], total: 1, page: 1, limit: 100 });
+      return Promise.resolve({ items: [] });
+    });
+    render(<Page />);
+    await flush();
+    await flush();
+
+    // Si el resumen se calculara del rango: Total=1, Confirmadas=0, Pendientes=1.
+    // Con los totales globales debe mostrar 22 / 5 / 7.
+    expect(statValue('Total')).toBe('22');
+    expect(statValue('Confirmadas')).toBe('5');
+    expect(statValue('Pendientes')).toBe('7');
+  });
+});
+
 // crm-modales-hover-unificados WU6 (AC4 proposal / paridad crear-editar): el editor
 // de citas carga las horas igual que NuevaCitaModal — chips de slots en modo API,
 // con fallback a <input type="time"> si el fetch falla o la API no está habilitada.
