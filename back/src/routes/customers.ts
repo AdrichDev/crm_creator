@@ -5,7 +5,6 @@ import type { AuthedRequest } from '../middleware/types.js';
 import { requireRole } from '../middleware/rbac.js';
 import { splitNombre, joinNombre, pickFields } from '../lib/nombre.js';
 import { parsePagination } from '../lib/pagination.js';
-import { dayRange } from '../lib/dateRange.js';
 import { resolveGeocoder, setGeocoder, haversineKm, isValidCoord } from '../lib/geo/index.js';
 import { planImport, type ImportRow, type ExistingCustomer } from '../lib/comercial/import.js';
 
@@ -78,6 +77,17 @@ export function buildListFilters(q: Record<string, unknown>): Record<string, unk
   return filters;
 }
 
+// Ordenación por cabecera de la Cartera de Clientes. Whitelist de campos ordenables
+// (columnas Id Cliente/Empresa/Contacto/Email de la tabla). Sin `sort` válido → orden
+// por defecto (createdAt desc, sin cambiar el comportamiento previo). Exportada para tests.
+const CUSTOMER_SORTABLE = new Set(['id', 'razonSocial', 'nombre', 'email']);
+export function buildCustomersOrderBy(q: Record<string, unknown>): Record<string, 'asc' | 'desc'> {
+  const sort = typeof q.sort === 'string' && CUSTOMER_SORTABLE.has(q.sort) ? q.sort : null;
+  if (!sort) return { createdAt: 'desc' };
+  const order = q.order === 'asc' ? 'asc' : 'desc';
+  return { [sort]: order };
+}
+
 // Resuelve lat/lng + geo_estado. Coordenadas manuales tienen prioridad. Si hay dirección y no
 // hay coords → geocodifica (OK/FAILED). Nunca lanza: un fallo externo no rompe el alta (RNF-10).
 async function resolveGeo(body: Record<string, unknown>, data: Record<string, unknown>): Promise<void> {
@@ -117,28 +127,10 @@ customersRouter.get('/', async (req: AuthedRequest, res: Response) => {
   // en localidad/provincia/codigoPostal independientes (crm-operaos 9.3).
   const filters = buildListFilters(q);
 
-  // Filtros explícitos de la Cartera de Clientes (nombre/email/fecha), independientes del
-  // `search` genérico de arriba. Se combinan vía AND.
-  const andClauses: Record<string, unknown>[] = [];
-  if (typeof q.nombre === 'string' && q.nombre.trim()) {
-    const nombre = q.nombre.trim();
-    andClauses.push({ OR: [
-      { nombre: { contains: nombre, mode: 'insensitive' as const } },
-      { apellido: { contains: nombre, mode: 'insensitive' as const } },
-    ] });
-  }
-  if (typeof q.email === 'string' && q.email.trim()) {
-    andClauses.push({ email: { contains: q.email.trim(), mode: 'insensitive' as const } });
-  }
-  if (typeof q.fecha === 'string' && q.fecha.trim()) {
-    const range = dayRange(q.fecha.trim());
-    if (range) andClauses.push({ createdAt: range });
-  }
+  const where = { businessId, eliminadoEn: null, ...searchWhere, ...filters };
 
-  const where = {
-    businessId, eliminadoEn: null, ...searchWhere, ...filters,
-    ...(andClauses.length ? { AND: andClauses } : {}),
-  };
+  // Orden server-side por cabecera (sort/order); default createdAt desc.
+  const orderBy = buildCustomersOrderBy(q);
 
   // Cercanía (RF-18): si hay ?near=lat,lng, ordena por distancia (sólo clientes con coords).
   const near = parseNear(q.near);
@@ -165,7 +157,7 @@ customersRouter.get('/', async (req: AuthedRequest, res: Response) => {
     prisma.customer.findMany({
       where,
       include: { estadoVisita: true },
-      orderBy: { createdAt: 'desc' },
+      orderBy,
       skip: (page - 1) * limit,
       take: limit,
     }),

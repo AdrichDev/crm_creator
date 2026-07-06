@@ -57,13 +57,47 @@ export function PageHeader({ title, subtitle, action }: { title: string; subtitl
   );
 }
 
-export function Table({ head, children }: { head: string[]; children: ReactNode }) {
+// Cabecera de tabla: texto plano (no ordenable) o descriptor con `sortKey` (ordenable).
+export type TableHeadCell = string | { label: string; sortKey: string };
+
+// Estado de ordenación controlado por la página que renderiza la tabla.
+export interface TableSort {
+  key: string;
+  dir: 'asc' | 'desc';
+  onSort: (key: string) => void;
+}
+
+export function Table({ head, children, sort }: { head: TableHeadCell[]; children: ReactNode; sort?: TableSort }) {
   return (
     <div className="panel">
       <div className="overflow-x-auto">
         <table className="data-table">
           <thead>
-            <tr>{head.map((h, i) => <th key={h || i}>{h}</th>)}</tr>
+            <tr>
+              {head.map((h, i) => {
+                const label = typeof h === 'string' ? h : h.label;
+                const sortKey = typeof h === 'string' ? undefined : h.sortKey;
+                // Columna ordenable: cabecera clicable con indicador de dirección.
+                if (sort && sortKey) {
+                  const active = sort.key === sortKey;
+                  const ariaSort = active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none';
+                  return (
+                    <th key={label || i} aria-sort={ariaSort}>
+                      <button type="button" onClick={() => sort.onSort(sortKey)}
+                        aria-label={`Ordenar por ${label}`}
+                        style={{ font: 'inherit', color: 'inherit', letterSpacing: 'inherit', textTransform: 'inherit' }}
+                        className="inline-flex items-center gap-1 border-0 bg-transparent p-0 cursor-pointer select-none hover:text-[var(--acc)]">
+                        <span>{label}</span>
+                        <span aria-hidden="true" className={cn('text-[10px]', active ? 'text-[var(--acc)]' : 'opacity-40')}>
+                          {active ? (sort.dir === 'asc' ? '▲' : '▼') : '↕'}
+                        </span>
+                      </button>
+                    </th>
+                  );
+                }
+                return <th key={label || i}>{label}</th>;
+              })}
+            </tr>
           </thead>
           <tbody>{children}</tbody>
         </table>

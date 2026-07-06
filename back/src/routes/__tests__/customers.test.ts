@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildData, buildListFilters } from '../customers.js';
+import { buildData, buildListFilters, buildCustomersOrderBy } from '../customers.js';
 
 // Contract tests de la whitelist de campos editables de clientes (crm-operaos 9.2:
 // dirección estructurada). No tocan la BD: validan qué acepta/ignora buildData.
@@ -61,5 +61,22 @@ describe('customers · buildListFilters (query del listado)', () => {
   it('el antiguo `zona` combinado ya no se soporta (sin OR heredado)', () => {
     const f = buildListFilters({ zona: 'Madrid' });
     assert.deepEqual(f, {});
+  });
+});
+
+// Ordenación por cabecera de la Cartera de Clientes (Id/Empresa/Contacto/Email).
+describe('customers · buildCustomersOrderBy (ordenación por cabecera)', () => {
+  it('sin sort → orden por defecto createdAt desc (comportamiento previo)', () => {
+    assert.deepEqual(buildCustomersOrderBy({}), { createdAt: 'desc' });
+  });
+  it('campo de la whitelist con order asc/desc', () => {
+    assert.deepEqual(buildCustomersOrderBy({ sort: 'razonSocial', order: 'asc' }), { razonSocial: 'asc' });
+    assert.deepEqual(buildCustomersOrderBy({ sort: 'nombre', order: 'desc' }), { nombre: 'desc' });
+    assert.deepEqual(buildCustomersOrderBy({ sort: 'email' }), { email: 'desc' });
+    assert.deepEqual(buildCustomersOrderBy({ sort: 'id', order: 'asc' }), { id: 'asc' });
+  });
+  it('campo fuera de la whitelist → default (no inyecta columnas arbitrarias)', () => {
+    assert.deepEqual(buildCustomersOrderBy({ sort: 'telefono', order: 'asc' }), { createdAt: 'desc' });
+    assert.deepEqual(buildCustomersOrderBy({ sort: 'gastoTotal' }), { createdAt: 'desc' });
   });
 });

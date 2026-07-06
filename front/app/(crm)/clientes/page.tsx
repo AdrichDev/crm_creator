@@ -6,7 +6,7 @@ import { ModuleGuard } from '@/components/layout/module-guard';
 import { useTerm, useRole, useTenantConfig } from '@/lib/tenant-config-context';
 import { canWrite } from '@/lib/config/roles';
 import { clientesMock, clienteExtraFields } from '@/lib/config/sector-data';
-import { PageHeader, Stat, Table, Td, Button, IconButton } from '@/components/ui/primitives';
+import { PageHeader, Stat, Table, Td, Button, IconButton, type TableHeadCell } from '@/components/ui/primitives';
 import { EntityModal, type Field } from '@/components/ui/entity-modal';
 import { Modal } from '@/components/ui/modal';
 import { DocumentosPanel } from '@/components/ui/documentos-panel';
@@ -72,32 +72,45 @@ export default function Page() {
   const extraFields = clienteExtraFields(vertical);
   const apiEnabled = isApiEnabled();
 
-  // Filtros explícitos (nombre/email/fecha). Código/sector/contactado no aplican:
-  // el modelo Customer no tiene esos campos (ver reporte de la tarea).
-  const [filterNombre, setFilterNombre] = useState('');
-  const [filterEmail, setFilterEmail] = useState('');
-  const [filterFecha, setFilterFecha] = useState('');
+  // Ordenación por cabecera (asc/desc toggle). Columnas ordenables: Id Cliente (id),
+  // Empresa (razonSocial), Contacto (nombre) y Email. Server-side en modo API, client-side
+  // en modo generador. `sortKey` vacío = orden por defecto del back (createdAt desc).
+  type SortKey = 'id' | 'razonSocial' | 'nombre' | 'email';
+  const [sortKey, setSortKey] = useState<'' | SortKey>('');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  function onSort(key: string) {
+    if (sortKey === key) { setSortDir((d) => (d === 'asc' ? 'desc' : 'asc')); return; }
+    setSortKey(key as SortKey);
+    setSortDir('asc');
+  }
 
   // Modo generador: localStorage / mock.
   const { items: collectionItems, create, update, remove } = useCollection<Cliente>('clientes', seed);
   const { items: facturas } = useCollection<Factura>('facturas', facturasSeed);
   const conFactura = new Set(facturas.map((f) => f.cliente));
-  // Filtrado client-side (modo generador): el mock `Cliente` no tiene `createdAt`, así que
-  // la fecha se compara contra `ultimaVisita` (única fecha real disponible en el mock;
-  // ya viene en formato 'YYYY-MM-DD', igual que el input date).
+  // Ordenación client-side (modo generador): mismo criterio que el back. Números por
+  // valor, texto con localeCompare('es') insensible a mayúsculas/acentos.
   const mockRows = useMemo(() => {
-    const nombre2 = filterNombre.trim().toLowerCase();
-    const email2 = filterEmail.trim().toLowerCase();
-    return collectionItems.filter((c) =>
-      (!nombre2 || c.nombre.toLowerCase().includes(nombre2)) &&
-      (!email2 || (c.email || '').toLowerCase().includes(email2)) &&
-      (!filterFecha || c.ultimaVisita === filterFecha),
-    );
-  }, [collectionItems, filterNombre, filterEmail, filterFecha]);
+    if (!sortKey) return collectionItems;
+    const dir = sortDir === 'asc' ? 1 : -1;
+    const valueOf = (c: Cliente): string | number => {
+      switch (sortKey) {
+        case 'id': return c.id;
+        case 'razonSocial': return (c as unknown as { razonSocial?: string }).razonSocial ?? '';
+        case 'nombre': return c.nombre ?? '';
+        case 'email': return c.email ?? '';
+      }
+    };
+    return [...collectionItems].sort((a, b) => {
+      const va = valueOf(a); const vb = valueOf(b);
+      if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+      return String(va).localeCompare(String(vb), 'es', { sensitivity: 'base' }) * dir;
+    });
+  }, [collectionItems, sortKey, sortDir]);
 
-  // Modo API: paginación server-side.
+  // Modo API: paginación server-side con orden server-side (sort/order).
   const paged = usePaginatedApi<ClienteApiRow>('/customers', 20, apiEnabled, {
-    nombre: filterNombre || undefined, email: filterEmail || undefined, fecha: filterFecha || undefined,
+    sort: sortKey || undefined, order: sortKey ? sortDir : undefined,
   });
   // Modo API: documentos respaldados por /api/documents (scoped por negocio).
   const apiDocs = useDocumentos(apiEnabled);
@@ -198,22 +211,18 @@ export default function Page() {
         <Stat label="Gasto medio" value={'€' + (displayItems.length ? Math.round(displayItems.reduce((a, c) => a + Number(c.gastoTotal), 0) / displayItems.length) : 0)} />
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        {apiEnabled && (
+      {apiEnabled && (
+        <div className="mb-4 flex flex-wrap items-center gap-3">
           <SearchInput value={paged.search} onChange={paged.setSearch} placeholder="Buscar cliente..." />
-        )}
-        <input type="text" placeholder="Nombre" aria-label="Filtrar por nombre"
-          className="w-40 rounded-xl border border-[var(--line)] bg-transparent px-3 py-2 text-sm"
-          value={filterNombre} onChange={(e) => setFilterNombre(e.target.value)} />
-        <input type="text" placeholder="Email" aria-label="Filtrar por email"
-          className="w-44 rounded-xl border border-[var(--line)] bg-transparent px-3 py-2 text-sm"
-          value={filterEmail} onChange={(e) => setFilterEmail(e.target.value)} />
-        <input type="date" aria-label="Filtrar por fecha"
-          className="rounded-xl border border-[var(--line)] bg-transparent px-3 py-2 text-sm"
-          value={filterFecha} onChange={(e) => setFilterFecha(e.target.value)} />
-      </div>
+        </div>
+      )}
 
-      <Table head={['Id Cliente', 'Empresa', 'Contacto', 'Teléfono', 'Email', 'Facturas', 'Acciones']}>
+      <Table sort={{ key: sortKey, dir: sortDir, onSort }}
+        head={([
+          { label: 'Id Cliente', sortKey: 'id' }, { label: 'Empresa', sortKey: 'razonSocial' },
+          { label: 'Contacto', sortKey: 'nombre' }, 'Teléfono', { label: 'Email', sortKey: 'email' },
+          'Facturas', 'Acciones',
+        ]) as TableHeadCell[]}>
         {displayItems.map((c) => (
           <tr key={c.id}>
             <Td className="font-mono text-xs text-[var(--acc)]">{shortClienteId(c.id)}</Td>

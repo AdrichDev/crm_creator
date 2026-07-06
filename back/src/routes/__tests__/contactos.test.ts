@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildContactosWhere,
+  buildContactosOrderBy,
   buildPendingCountWhere,
   contactadoEnPatch,
   defaultContactado,
@@ -73,23 +74,32 @@ describe('contactos · buildContactosWhere', () => {
     assert.ok(Array.isArray(w.OR));
     assert.equal((w.OR as unknown[]).length, 5);
   });
-  it('aplica filtros explícitos de código/nombre/email/sector, independientes del search', () => {
-    const w = buildContactosWhere('b1', { codigo: 'pc-0', nombre: 'ana', email: '@x.com', sector: 'retail' });
-    assert.deepEqual(w.codigo, { contains: 'pc-0', mode: 'insensitive' });
-    assert.deepEqual(w.nombre, { contains: 'ana', mode: 'insensitive' });
-    assert.deepEqual(w.email, { contains: '@x.com', mode: 'insensitive' });
-    assert.deepEqual(w.sector, { contains: 'retail', mode: 'insensitive' });
-    assert.equal(w.OR, undefined);
-  });
-  it('aplica rango de día calendario para fecha', () => {
-    const w = buildContactosWhere('b1', { fecha: '2026-07-05' });
-    const range = w.createdAt as { gte: Date; lt: Date };
-    assert.deepEqual(range.gte, new Date('2026-07-05T00:00:00.000'));
-    assert.deepEqual(range.lt, new Date('2026-07-06T00:00:00.000'));
-  });
-  it('ignora fecha inválida sin romper el where', () => {
-    const w = buildContactosWhere('b1', { fecha: 'no-es-fecha' });
+  it('ya no aplica filtros por campo (código/nombre/email/sector/fecha retirados de la tabla)', () => {
+    // Estos params fueron reemplazados por ordenación de cabecera; el where los ignora.
+    const w = buildContactosWhere('b1', { search: 'ana' } as { search?: string });
+    assert.ok(Array.isArray(w.OR));
+    assert.equal(w.codigo, undefined);
     assert.equal(w.createdAt, undefined);
+  });
+});
+
+describe('contactos · buildContactosOrderBy (ordenación por cabecera)', () => {
+  it('sin sort → orden por defecto createdAt desc (comportamiento previo)', () => {
+    assert.deepEqual(buildContactosOrderBy({}), { createdAt: 'desc' });
+  });
+  it('campo de la whitelist con order asc/desc', () => {
+    assert.deepEqual(buildContactosOrderBy({ sort: 'nombre', order: 'asc' }), { nombre: 'asc' });
+    assert.deepEqual(buildContactosOrderBy({ sort: 'codigo', order: 'desc' }), { codigo: 'desc' });
+    assert.deepEqual(buildContactosOrderBy({ sort: 'sector' }), { sector: 'desc' });
+  });
+  it('acepta todos los campos ordenables declarados', () => {
+    for (const f of ['codigo', 'tipo', 'nombre', 'email', 'sector', 'createdAt']) {
+      assert.deepEqual(buildContactosOrderBy({ sort: f, order: 'asc' }), { [f]: 'asc' });
+    }
+  });
+  it('campo fuera de la whitelist → default (no inyecta columnas arbitrarias)', () => {
+    assert.deepEqual(buildContactosOrderBy({ sort: 'telefono', order: 'asc' }), { createdAt: 'desc' });
+    assert.deepEqual(buildContactosOrderBy({ sort: 'contactado' }), { createdAt: 'desc' });
   });
 });
 

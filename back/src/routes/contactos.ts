@@ -78,13 +78,14 @@ export function contactadoEnPatch(
 // Re-exportado para no romper imports existentes de `dayRange` desde este módulo.
 export { dayRange };
 
-/** Construye el where de listado (tenant + soft delete + filtros). Función pura, testeable. */
+/**
+ * Construye el where de listado (tenant + soft delete + búsqueda de texto). Función pura,
+ * testeable. `tipo`/`contactado` se conservan como filtros del back (los consume el
+ * badge de pendientes y posibles integraciones); la tabla de contactos ya no los envía.
+ */
 export function buildContactosWhere(
   businessId: string | undefined,
-  q: {
-    tipo?: ContactoTipo; contactado?: ContactadoEstado; search?: string;
-    codigo?: string; nombre?: string; email?: string; sector?: string; fecha?: string;
-  },
+  q: { tipo?: ContactoTipo; contactado?: ContactadoEstado; search?: string },
 ): Record<string, unknown> {
   const where: Record<string, unknown> = { businessId, eliminadoEn: null };
   if (q.tipo) where.tipo = q.tipo;
@@ -98,16 +99,18 @@ export function buildContactosWhere(
       { sector: { contains: q.search, mode: 'insensitive' as const } },
     ];
   }
-  // Filtros explícitos por campo (independientes del `search` combinado de arriba).
-  if (q.codigo) where.codigo = { contains: q.codigo, mode: 'insensitive' as const };
-  if (q.nombre) where.nombre = { contains: q.nombre, mode: 'insensitive' as const };
-  if (q.email) where.email = { contains: q.email, mode: 'insensitive' as const };
-  if (q.sector) where.sector = { contains: q.sector, mode: 'insensitive' as const };
-  if (q.fecha) {
-    const range = dayRange(q.fecha);
-    if (range) where.createdAt = range;
-  }
   return where;
+}
+
+// Ordenación por cabecera de la tabla de contactos. Whitelist de campos ordenables
+// (Código/Tipo/Nombre/Email/Sector/Fecha de alta). Sin `sort` válido → orden por defecto
+// (createdAt desc, sin cambiar el comportamiento previo). Exportada para tests.
+const CONTACTO_SORTABLE = new Set(['codigo', 'tipo', 'nombre', 'email', 'sector', 'createdAt']);
+export function buildContactosOrderBy(q: Record<string, unknown>): Record<string, 'asc' | 'desc'> {
+  const sort = typeof q.sort === 'string' && CONTACTO_SORTABLE.has(q.sort) ? q.sort : null;
+  if (!sort) return { createdAt: 'desc' };
+  const order = q.order === 'asc' ? 'asc' : 'desc';
+  return { [sort]: order };
 }
 
 /** Siguiente número de código pc-NN a partir del máximo actual del negocio. Función pura. */
@@ -129,15 +132,11 @@ contactosRouter.get('/', async (req: AuthedRequest, res: Response) => {
   const contactado = CONTACTADO_VALORES.includes(q.contactado as ContactadoEstado)
     ? (q.contactado as ContactadoEstado)
     : undefined;
-  const codigo = typeof q.codigo === 'string' ? q.codigo : undefined;
-  const nombre = typeof q.nombre === 'string' ? q.nombre : undefined;
-  const email = typeof q.email === 'string' ? q.email : undefined;
-  const sector = typeof q.sector === 'string' ? q.sector : undefined;
-  const fecha = typeof q.fecha === 'string' ? q.fecha : undefined;
 
-  const where = buildContactosWhere(req.businessId, { tipo, contactado, search, codigo, nombre, email, sector, fecha });
+  const where = buildContactosWhere(req.businessId, { tipo, contactado, search });
+  const orderBy = buildContactosOrderBy(q);
   const [items, total] = await Promise.all([
-    prisma.contacto.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (page - 1) * limit, take: limit }),
+    prisma.contacto.findMany({ where, orderBy, skip: (page - 1) * limit, take: limit }),
     prisma.contacto.count({ where }),
   ]);
   res.json({ items, total, page, limit });

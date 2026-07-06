@@ -48,19 +48,19 @@ afterEach(() => cleanup());
 describe('clientes/page — columnas de la tabla (3ª pasada)', () => {
   it('cabecera exacta: Id Cliente, Empresa, Contacto, Teléfono, Email, Facturas, Acciones', () => {
     render(<Page />);
-    const headerCells = screen.getAllByRole('columnheader').map((th) => th.textContent);
+    const headerCells = screen.getAllByRole('columnheader').map((th) => th.textContent?.replace(/[▲▼↕]/g, '').trim());
     expect(headerCells).toEqual(['Id Cliente', 'Empresa', 'Contacto', 'Teléfono', 'Email', 'Facturas', 'Acciones']);
   });
 
   it('Facturas va ANTES que Acciones', () => {
     render(<Page />);
-    const headerCells = screen.getAllByRole('columnheader').map((th) => th.textContent);
+    const headerCells = screen.getAllByRole('columnheader').map((th) => th.textContent?.replace(/[▲▼↕]/g, '').trim());
     expect(headerCells.indexOf('Facturas')).toBeLessThan(headerCells.indexOf('Acciones'));
   });
 
   it('no muestra Segmento, Visitas ni Gasto como columnas de tabla', () => {
     render(<Page />);
-    const headerCells = screen.getAllByRole('columnheader').map((th) => th.textContent);
+    const headerCells = screen.getAllByRole('columnheader').map((th) => th.textContent?.replace(/[▲▼↕]/g, '').trim());
     expect(headerCells).not.toContain('Segmento');
     expect(headerCells).not.toContain('Visitas');
     expect(headerCells).not.toContain('Gasto');

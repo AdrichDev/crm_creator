@@ -1,5 +1,5 @@
 'use client';
-import { Td, Badge, IconButton } from '@/components/ui/primitives';
+import { Td, Badge, IconButton, type TableHeadCell } from '@/components/ui/primitives';
 import { Info, Pencil, Trash2 } from 'lucide-react';
 
 // Tipos y constantes de la agenda de contactos (paridad Agents Agency, crm-operaos WU4).
@@ -77,9 +77,14 @@ export function formatDateTime(iso: string): string {
   });
 }
 
-export const CONTACTOS_HEAD = (selectionMode: boolean): string[] => [
+// Cabeceras de la tabla de contactos. Columnas ordenables (sortKey): Código, Tipo,
+// Nombre, Email, Sector y Fecha de alta (createdAt). Teléfono, Contactado y Acciones
+// no son ordenables. La columna de selección ('') tampoco.
+export const CONTACTOS_HEAD = (selectionMode: boolean): TableHeadCell[] => [
   ...(selectionMode ? [''] : []),
-  'Código', 'Tipo', 'Nombre', 'Teléfono', 'Email', 'Sector', 'Contactado', 'Fecha de alta', 'Acciones',
+  { label: 'Código', sortKey: 'codigo' }, { label: 'Tipo', sortKey: 'tipo' },
+  { label: 'Nombre', sortKey: 'nombre' }, 'Teléfono', { label: 'Email', sortKey: 'email' },
+  { label: 'Sector', sortKey: 'sector' }, 'Contactado', { label: 'Fecha de alta', sortKey: 'createdAt' }, 'Acciones',
 ];
 
 export interface ContactosListaProps {

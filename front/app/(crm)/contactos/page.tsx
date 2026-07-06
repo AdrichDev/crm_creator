@@ -13,8 +13,7 @@ import { isApiEnabled, apiFetch } from '@/lib/api/client';
 import { useCollection } from '@/lib/data/use-collection';
 import {
   ContactosLista, CONTACTOS_HEAD, CONTACTADO_CYCLE, CONTACTADO_LABELS, CONTACTOS_SEED, EMPTY_FORM, formatDateTime,
-  isSameCalendarDay,
-  type ContactoRow, type ContactoForm, type ContactoTipo, type ContactadoEstado,
+  type ContactoRow, type ContactoForm,
 } from '@/components/crm/contactos-lista';
 import { ContactoFormModal } from '@/components/crm/contacto-modal';
 import { buildGoogleMapsSearchUrl } from '@/lib/citas/google-maps-url';
@@ -28,16 +27,21 @@ export default function ContactosPage() {
   const apiEnabled = isApiEnabled();
   const dialog = useDialog();
 
-  // Filtros + búsqueda + paginación.
-  const [filterTipo, setFilterTipo] = useState<'' | ContactoTipo>('');
-  const [filterContactado, setFilterContactado] = useState<'' | ContactadoEstado>('');
-  const [filterCodigo, setFilterCodigo] = useState('');
-  const [filterNombre, setFilterNombre] = useState('');
-  const [filterEmail, setFilterEmail] = useState('');
-  const [filterSector, setFilterSector] = useState('');
-  const [filterFecha, setFilterFecha] = useState('');
+  // Búsqueda + paginación + ordenación por cabecera.
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  // Columnas ordenables: codigo, tipo, nombre, email, sector, createdAt (Fecha de alta).
+  // Server-side en modo API (sort/order), client-side en modo generador. Vacío = orden
+  // por defecto del back (createdAt desc).
+  type SortKey = 'codigo' | 'tipo' | 'nombre' | 'email' | 'sector' | 'createdAt';
+  const [sortKey, setSortKey] = useState<'' | SortKey>('');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  function onSort(key: string) {
+    setPage(1);
+    if (sortKey === key) { setSortDir((d) => (d === 'asc' ? 'desc' : 'asc')); return; }
+    setSortKey(key as SortKey);
+    setSortDir('asc');
+  }
 
   // Modo API: datos remotos con filtros y paginación server-side.
   const [apiRows, setApiRows] = useState<ContactoRow[]>([]);
@@ -53,13 +57,7 @@ export default function ContactosPage() {
     const myId = ++fetchSeq.current;
     const params = new URLSearchParams({ page: String(page), limit: String(LIMIT) });
     if (search) params.set('search', search);
-    if (filterTipo) params.set('tipo', filterTipo);
-    if (filterContactado) params.set('contactado', filterContactado);
-    if (filterCodigo) params.set('codigo', filterCodigo);
-    if (filterNombre) params.set('nombre', filterNombre);
-    if (filterEmail) params.set('email', filterEmail);
-    if (filterSector) params.set('sector', filterSector);
-    if (filterFecha) params.set('fecha', filterFecha);
+    if (sortKey) { params.set('sort', sortKey); params.set('order', sortDir); }
     try {
       const data = await apiFetch<{ items: ContactoRow[]; total: number }>(`/contactos?${params.toString()}`);
       if (myId !== fetchSeq.current) return; // respuesta obsoleta: no pisar datos más nuevos
@@ -70,29 +68,23 @@ export default function ContactosPage() {
       setApiRows([]);
       setApiTotal(0);
     }
-  }, [apiEnabled, page, search, filterTipo, filterContactado, filterCodigo, filterNombre, filterEmail, filterSector, filterFecha]);
+  }, [apiEnabled, page, search, sortKey, sortDir]);
   useEffect(() => { void fetchApi(); }, [fetchApi]);
 
-  // Modo generador: colección en localStorage con filtros/búsqueda client-side.
+  // Modo generador: colección en localStorage con búsqueda + ordenación client-side.
   const seed = useMemo(() => CONTACTOS_SEED, []);
   const { items: mockItems, create, update, remove } = useCollection<ContactoRow>('contactos', seed);
   const mockRows = useMemo(() => {
     const term2 = search.trim().toLowerCase();
-    const codigo2 = filterCodigo.trim().toLowerCase();
-    const nombre2 = filterNombre.trim().toLowerCase();
-    const email2 = filterEmail.trim().toLowerCase();
-    const sector2 = filterSector.trim().toLowerCase();
-    return mockItems.filter((c) =>
-      (!filterTipo || c.tipo === filterTipo) &&
-      (!filterContactado || c.contactado === filterContactado) &&
-      (!term2 || [c.nombre, c.codigo, c.email, c.telefono, c.sector].some((v) => (v || '').toLowerCase().includes(term2))) &&
-      (!codigo2 || c.codigo.toLowerCase().includes(codigo2)) &&
-      (!nombre2 || c.nombre.toLowerCase().includes(nombre2)) &&
-      (!email2 || (c.email || '').toLowerCase().includes(email2)) &&
-      (!sector2 || (c.sector || '').toLowerCase().includes(sector2)) &&
-      (!filterFecha || isSameCalendarDay(c.createdAt, filterFecha)),
+    const filtered = mockItems.filter((c) =>
+      !term2 || [c.nombre, c.codigo, c.email, c.telefono, c.sector].some((v) => (v || '').toLowerCase().includes(term2)),
     );
-  }, [mockItems, filterTipo, filterContactado, search, filterCodigo, filterNombre, filterEmail, filterSector, filterFecha]);
+    if (!sortKey) return filtered;
+    const dir = sortDir === 'asc' ? 1 : -1;
+    return [...filtered].sort((a, b) =>
+      String(a[sortKey] ?? '').localeCompare(String(b[sortKey] ?? ''), 'es', { sensitivity: 'base' }) * dir,
+    );
+  }, [mockItems, search, sortKey, sortDir]);
 
   const rows = apiEnabled ? apiRows : mockRows;
   const total = apiEnabled ? apiTotal : mockRows.length;
@@ -168,7 +160,6 @@ export default function ContactosPage() {
       setApiRows((prev) => prev.map((x) => (x.id === c.id ? { ...x, contactado: next } : x)));
       try {
         await apiFetch(`/contactos/${c.id}`, { method: 'PATCH', body: JSON.stringify({ contactado: next }) });
-        if (filterContactado) await fetchApi();
       } catch { await fetchApi(); }
     } else {
       update(c.id, { contactado: next });
@@ -218,34 +209,6 @@ export default function ContactosPage() {
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <SearchInput value={search} onChange={(v) => { setSearch(v); setPage(1); }} placeholder="Buscar contacto..." />
-        <select className="rounded-xl border border-[var(--line)] bg-transparent px-3 py-2 text-sm" value={filterTipo}
-          onChange={(e) => { setFilterTipo(e.target.value as '' | ContactoTipo); setPage(1); }} aria-label="Filtrar por tipo">
-          <option value="">Todos los tipos</option>
-          <option value="lead">Lead</option>
-          <option value="prospecto">Prospecto</option>
-        </select>
-        <select className="rounded-xl border border-[var(--line)] bg-transparent px-3 py-2 text-sm" value={filterContactado}
-          onChange={(e) => { setFilterContactado(e.target.value as '' | ContactadoEstado); setPage(1); }} aria-label="Filtrar por contactado">
-          <option value="">Todos</option>
-          <option value="si">Contactado: Sí</option>
-          <option value="no">Contactado: No</option>
-          <option value="nc">Contactado: NC</option>
-        </select>
-        <input type="text" placeholder="Código" aria-label="Filtrar por código"
-          className="w-28 rounded-xl border border-[var(--line)] bg-transparent px-3 py-2 text-sm"
-          value={filterCodigo} onChange={(e) => { setFilterCodigo(e.target.value); setPage(1); }} />
-        <input type="text" placeholder="Nombre" aria-label="Filtrar por nombre"
-          className="w-36 rounded-xl border border-[var(--line)] bg-transparent px-3 py-2 text-sm"
-          value={filterNombre} onChange={(e) => { setFilterNombre(e.target.value); setPage(1); }} />
-        <input type="text" placeholder="Email" aria-label="Filtrar por email"
-          className="w-40 rounded-xl border border-[var(--line)] bg-transparent px-3 py-2 text-sm"
-          value={filterEmail} onChange={(e) => { setFilterEmail(e.target.value); setPage(1); }} />
-        <input type="text" placeholder="Sector" aria-label="Filtrar por sector"
-          className="w-32 rounded-xl border border-[var(--line)] bg-transparent px-3 py-2 text-sm"
-          value={filterSector} onChange={(e) => { setFilterSector(e.target.value); setPage(1); }} />
-        <input type="date" aria-label="Filtrar por fecha"
-          className="rounded-xl border border-[var(--line)] bg-transparent px-3 py-2 text-sm"
-          value={filterFecha} onChange={(e) => { setFilterFecha(e.target.value); setPage(1); }} />
         {puedeEditar && (
           <div className="ml-auto flex items-center gap-2">
             {selectionMode ? (
@@ -263,9 +226,9 @@ export default function ContactosPage() {
       </div>
 
       {rows.length === 0 ? (
-        <EmptyState title="No hay contactos" hint='Pulsa en "Nuevo contacto" o ajusta los filtros.' />
+        <EmptyState title="No hay contactos" hint='Pulsa en "Nuevo contacto" o usa el buscador.' />
       ) : (
-        <Table head={CONTACTOS_HEAD(selectionMode)}>
+        <Table head={CONTACTOS_HEAD(selectionMode)} sort={{ key: sortKey, dir: sortDir, onSort }}>
           <ContactosLista rows={rows} puedeEditar={puedeEditar} selectionMode={selectionMode} selectedIds={selectedIds}
             onToggleSelect={toggleSelect} onCycleContactado={cycleContactado} onInfo={setInfo} onEdit={openEdit} onDelete={handleDelete} />
         </Table>

@@ -98,10 +98,10 @@ describe('contactos/page — editar persiste visualmente a la primera (modo API)
     await flush();
     expect(screen.getByText('Marta Ibáñez')).toBeInTheDocument();
 
-    // El usuario teclea en un filtro → GET en vuelo con snapshot PRE-edición que
-    // tarda en responder (red lenta / back frío).
+    // El usuario cambia la ordenación por cabecera → GET en vuelo con snapshot
+    // PRE-edición que tarda en responder (red lenta / back frío).
     deferNextGet = true;
-    fireEvent.change(screen.getByLabelText('Filtrar por nombre'), { target: { value: 'mar' } });
+    fireEvent.click(screen.getByLabelText('Ordenar por Nombre'));
     await flush();
     expect(pendingGet).not.toBeNull();
 
