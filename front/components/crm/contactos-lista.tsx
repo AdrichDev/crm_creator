@@ -15,6 +15,10 @@ export interface ContactoRow {
   email: string | null;
   sector: string | null;
   direccion: string | null;
+  // Dirección estructurada (crm-operaos 9.2). Opcionales: filas antiguas no los tienen.
+  numero?: string | null;
+  piso?: string | null;
+  codigoPostal?: string | null;
   peticion: string | null;
   contactado: ContactadoEstado;
   contactadoEn?: string | null;
@@ -28,10 +32,14 @@ export interface ContactoForm {
   email: string;
   sector: string;
   direccion: string;
+  numero: string;
+  piso: string;
+  codigoPostal: string;
 }
 
 export const EMPTY_FORM: ContactoForm = {
   tipo: 'prospecto', nombre: '', telefono: '', email: '', sector: '', direccion: '',
+  numero: '', piso: '', codigoPostal: '',
 };
 
 // Semilla del modo generador (localStorage) — compartida entre /contactos y el

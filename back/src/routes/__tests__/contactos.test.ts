@@ -133,6 +133,22 @@ describe('contactos · schemas zod', () => {
   it('update admite null para limpiar campos opcionales', () => {
     assert.equal(updateContactoSchema.safeParse({ telefono: null, sector: null }).success, true);
   });
+  // crm-operaos 9.2: dirección estructurada en contactos.
+  it('create acepta numero, piso y codigoPostal estructurados', () => {
+    const r = createContactoSchema.safeParse({
+      nombre: 'Ana', direccion: 'Calle Bailen', numero: '5', piso: '3B', codigoPostal: '28005',
+    });
+    assert.equal(r.success, true);
+    assert.equal(r.success && r.data.numero, '5');
+    assert.equal(r.success && r.data.piso, '3B');
+    assert.equal(r.success && r.data.codigoPostal, '28005');
+  });
+  it('update admite null para limpiar numero/piso/codigoPostal', () => {
+    assert.equal(updateContactoSchema.safeParse({ numero: null, piso: null, codigoPostal: null }).success, true);
+    const r = updateContactoSchema.safeParse({ numero: '12', piso: 'Bajo A', codigoPostal: '28013' });
+    assert.equal(r.success, true);
+    assert.equal(r.success && r.data.piso, 'Bajo A');
+  });
   it('convert exige al menos un id', () => {
     assert.equal(convertContactosSchema.safeParse({ ids: [] }).success, false);
     assert.equal(convertContactosSchema.safeParse({ ids: ['x'] }).success, true);

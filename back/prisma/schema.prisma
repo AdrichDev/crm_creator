@@ -370,6 +370,10 @@ model Customer {
   fechaNacimiento DateTime? @map("fecha_nacimiento")
   genero      String?  @map("genero")
   direccion   String?  @map("direccion")
+  // Dirección estructurada (crm-operaos 9.2). Aditivos/nullable: `direccion` sigue siendo
+  // la calle (con número embebido en filas antiguas); filas nuevas usan numero/piso aparte.
+  numero      String?  @map("numero")
+  piso        String?  @map("piso")
   imagenUrl   String?  @map("imagen_url")
   canalCaptacion String? @map("canal_captacion")
   notas       String?  @map("notas")
@@ -1004,6 +1008,11 @@ model Contacto {
   email        String?   @map("email")
   sector       String?   @map("sector")
   direccion    String?   @map("direccion")
+  // Dirección estructurada (crm-operaos 9.2). Aditivos/nullable, sin localidad/provincia
+  // (el alcance pedido para Contacto es solo dirección + número + piso + código postal).
+  numero       String?   @map("numero")
+  piso         String?   @map("piso")
+  codigoPostal String?   @map("codigo_postal")
   peticion     String?   @map("peticion")
   contactado   String    @default("no") @map("contactado")
   contactadoEn DateTime? @map("contactado_en")

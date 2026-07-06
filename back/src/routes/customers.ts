@@ -41,14 +41,16 @@ function segmentoDe(visitas: number, gastoTotal: number, ultima: Date | null): s
   return 'Recurrente';
 }
 
-// Columnas editables (los derivados se ignoran al escribir). Incluye comercial de campo.
+// Columnas editables (los derivados se ignoran al escribir). Incluye comercial de campo
+// y dirección estructurada (numero/piso, crm-operaos 9.2).
 const INPUT = [
-  'razonSocial', 'email', 'telefono', 'direccion', 'notas',
+  'razonSocial', 'email', 'telefono', 'direccion', 'numero', 'piso', 'notas',
   'localidad', 'provincia', 'codigoPostal',
   'categoriaAbc', 'estadoVisitaId', 'tipoRegistro', 'proximaAccionEn',
 ] as const;
 
-function buildData(body: Record<string, unknown>): Record<string, unknown> {
+// Exportada para tests de contrato (whitelist de campos editables).
+export function buildData(body: Record<string, unknown>): Record<string, unknown> {
   const data = pickFields(body, INPUT);
   if (typeof body.nombre === 'string') {
     const { nombre, apellido } = splitNombre(body.nombre);
@@ -72,6 +74,7 @@ async function resolveGeo(body: Record<string, unknown>, data: Record<string, un
   if (!hasAddress) return; // sin dirección ni coords → queda PENDING (default) o intacto
   const geo = await resolveGeocoder().geocode({
     direccion: (body.direccion as string) ?? null,
+    numero: (body.numero as string) ?? null,
     localidad: (body.localidad as string) ?? null,
     provincia: (body.provincia as string) ?? null,
     codigoPostal: (body.codigoPostal as string) ?? null,
@@ -197,7 +200,7 @@ customersRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
   const body = (req.body ?? {}) as Record<string, unknown>;
   const data = buildData(body);
   // Sólo re-geocodifica si cambian dirección o coords en el body.
-  if (['latitud', 'longitud', 'direccion', 'localidad', 'provincia', 'codigoPostal'].some((k) => k in body)) {
+  if (['latitud', 'longitud', 'direccion', 'numero', 'localidad', 'provincia', 'codigoPostal'].some((k) => k in body)) {
     await resolveGeo(body, data);
   }
   const row = await prisma.customer.update({
@@ -274,7 +277,7 @@ customersRouter.post('/geocode/rerun', requireRole('ADMIN', 'MANAGER'), async (r
       eliminadoEn: null,
       ...(force ? {} : { geoEstado: { in: ['PENDING', 'FAILED'] } }),
     },
-    select: { id: true, direccion: true, localidad: true, provincia: true, codigoPostal: true },
+    select: { id: true, direccion: true, numero: true, localidad: true, provincia: true, codigoPostal: true },
     orderBy: { createdAt: 'asc' },
     take: GEOCODE_RERUN_BATCH,
   });
@@ -287,7 +290,7 @@ customersRouter.post('/geocode/rerun', requireRole('ADMIN', 'MANAGER'), async (r
     const hasAddress = ['direccion', 'localidad', 'provincia', 'codigoPostal']
       .some((k) => typeof c[k as keyof typeof c] === 'string' && String(c[k as keyof typeof c]).trim());
     if (!hasAddress) { skipped += 1; continue; }
-    const geo = await geocoder.geocode({ direccion: c.direccion, localidad: c.localidad, provincia: c.provincia, codigoPostal: c.codigoPostal });
+    const geo = await geocoder.geocode({ direccion: c.direccion, numero: c.numero, localidad: c.localidad, provincia: c.provincia, codigoPostal: c.codigoPostal });
     if (geo) {
       await prisma.customer.update({ where: { id: c.id }, data: { latitud: geo.lat, longitud: geo.lng, geoEstado: 'OK' } });
       ok += 1;
@@ -352,6 +355,8 @@ function shapeCustomer(c: CustomerRow, aggs: Aggregates, distanciaKm?: number): 
     email: c.email ?? '',
     telefono: c.telefono ?? '',
     direccion: c.direccion ?? '',
+    numero: c.numero ?? '',
+    piso: c.piso ?? '',
     localidad: c.localidad ?? '',
     provincia: c.provincia ?? '',
     codigoPostal: c.codigoPostal ?? '',

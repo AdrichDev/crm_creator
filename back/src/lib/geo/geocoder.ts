@@ -8,6 +8,8 @@ export interface GeoResult {
 
 export interface GeoQuery {
   direccion?: string | null;
+  /** Número de portal estructurado (crm-operaos 9.2). Opcional: filas antiguas lo llevan embebido en `direccion`. */
+  numero?: string | null;
   localidad?: string | null;
   provincia?: string | null;
   codigoPostal?: string | null;
@@ -18,9 +20,17 @@ export interface GeocoderPort {
   geocode(q: GeoQuery): Promise<GeoResult | null>;
 }
 
-/** Compone una cadena de búsqueda a partir de los campos de dirección disponibles. */
+/**
+ * Compone una cadena de búsqueda a partir de los campos de dirección disponibles.
+ * Cambio ADITIVO (crm-operaos 9.2): si hay `numero` estructurado se anexa a la calle
+ * ("Calle Mayor 5"); si `numero` es null/vacío (filas antiguas con el número embebido
+ * en `direccion`), la query es EXACTAMENTE la de siempre — cero regresión geo.
+ */
 export function buildAddressQuery(q: GeoQuery): string {
-  return [q.direccion, q.codigoPostal, q.localidad, q.provincia]
+  const direccion = (q.direccion ?? '').trim();
+  const numero = (q.numero ?? '').trim();
+  const calle = direccion && numero ? `${direccion} ${numero}` : direccion;
+  return [calle, q.codigoPostal, q.localidad, q.provincia]
     .map((p) => (p ?? '').trim())
     .filter(Boolean)
     .join(', ');

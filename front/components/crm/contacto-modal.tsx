@@ -67,10 +67,26 @@ export function ContactoFormModal({ open, editing, form, setForm, saving, error,
           <input id="contacto-sector" className={inputClass} value={form.sector}
             onChange={(e) => setForm({ ...form, sector: e.target.value })} />
         </div>
+        {/* Dirección estructurada (crm-operaos 9.2): calle → número → piso → código postal. */}
         <div>
-          <label className={labelClass} htmlFor="contacto-direccion">Dirección</label>
+          <label className={labelClass} htmlFor="contacto-direccion">Dirección (calle)</label>
           <input id="contacto-direccion" className={inputClass} value={form.direccion}
             onChange={(e) => setForm({ ...form, direccion: e.target.value })} />
+        </div>
+        <div>
+          <label className={labelClass} htmlFor="contacto-numero">Número</label>
+          <input id="contacto-numero" className={inputClass} value={form.numero}
+            onChange={(e) => setForm({ ...form, numero: e.target.value })} />
+        </div>
+        <div>
+          <label className={labelClass} htmlFor="contacto-piso">Piso</label>
+          <input id="contacto-piso" className={inputClass} value={form.piso}
+            onChange={(e) => setForm({ ...form, piso: e.target.value })} />
+        </div>
+        <div>
+          <label className={labelClass} htmlFor="contacto-cp">Código postal</label>
+          <input id="contacto-cp" className={inputClass} value={form.codigoPostal}
+            onChange={(e) => setForm({ ...form, codigoPostal: e.target.value })} />
         </div>
       </div>
       {error && <p className="mt-4 text-sm text-red-400">{error}</p>}

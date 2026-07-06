@@ -30,6 +30,9 @@ type ClienteApiRow = {
   email: string;
   telefono: string;
   direccion: string;
+  numero?: string;
+  piso?: string;
+  codigoPostal?: string;
   visitas: number;
   gastoTotal: number;
   gastoPendiente: number;
@@ -47,7 +50,11 @@ const FIELDS: Field[] = [
   { name: 'cif', label: 'NIF / CIF' },
   { name: 'email', label: 'Email', type: 'email' },
   { name: 'telefono', label: 'Teléfono' },
-  { name: 'direccion', label: 'Dirección' },
+  // Dirección estructurada (crm-operaos 9.2): calle → número → piso → código postal.
+  { name: 'direccion', label: 'Dirección (calle)' },
+  { name: 'numero', label: 'Número' },
+  { name: 'piso', label: 'Piso' },
+  { name: 'codigoPostal', label: 'Código postal' },
   { name: 'segmento', label: 'Segmento', type: 'select', options: ['Nuevo', 'Recurrente', 'VIP'] },
   { name: 'visitas', label: 'Visitas', type: 'number' },
   { name: 'gastoTotal', label: 'Gasto total (€)', type: 'number', step: '0.01' },
@@ -124,7 +131,11 @@ export default function Page() {
   // del módulo comercial) — este es solo el icono de "ver en el mapa" de la ficha.
   const mapsUrlActual = useMemo(() => {
     if (!actual) return null;
-    const byAddress = buildGoogleMapsSearchUrl(actual.direccion ?? null);
+    // Aditivo (crm-operaos 9.2): si hay número estructurado se anexa a la calle;
+    // sin número la búsqueda queda exactamente como antes (número embebido en direccion).
+    const numero = (actual as unknown as { numero?: string | null }).numero?.trim();
+    const calle = actual.direccion?.trim();
+    const byAddress = buildGoogleMapsSearchUrl(calle && numero ? `${calle} ${numero}` : (actual.direccion ?? null));
     if (byAddress) return byAddress;
     const located = actual as unknown as { latitud?: number | null; longitud?: number | null };
     if (hasValidCoords(located)) return buildPinUrl(located);
@@ -256,8 +267,10 @@ export default function Page() {
         {actual && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3 text-sm">
+              {/* Dirección estructurada agrupada: calle → número → piso → código postal (crm-operaos 9.2). */}
               {([['razonSocial', 'Empresa'], ['contacto', 'Otro contacto'], ['cif', 'NIF / CIF'], ['email', 'Email'], ['telefono', 'Teléfono'],
-                 ['direccion', 'Dirección'], ['segmento', 'Segmento'], ['visitas', 'Visitas'],
+                 ['direccion', 'Dirección'], ['numero', 'Número'], ['piso', 'Piso'], ['codigoPostal', 'Código postal'],
+                 ['segmento', 'Segmento'], ['visitas', 'Visitas'],
                  ['gastoTotal', 'Gasto total'], ['ultimaVisita', 'Última visita']] as const).map(([k, label]) => (
                 <div key={k}>
                   <span className="text-[var(--panel-muted)]">{label}</span>

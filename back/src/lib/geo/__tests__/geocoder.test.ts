@@ -12,6 +12,32 @@ describe('geocoder helpers', () => {
     assert.equal(buildAddressQuery({ direccion: '  ', localidad: null }), '');
   });
 
+  // crm-operaos 9.2: `numero` estructurado es ADITIVO. Sin numero la query debe ser
+  // byte a byte la de siempre (las filas antiguas llevan el número embebido en direccion).
+  test('buildAddressQuery sin numero = comportamiento actual idéntico (filas antiguas)', () => {
+    assert.equal(
+      buildAddressQuery({ direccion: 'Calle Bailen 5', codigoPostal: '28005', localidad: 'Madrid', provincia: 'Madrid' }),
+      'Calle Bailen 5, 28005, Madrid, Madrid',
+    );
+    assert.equal(
+      buildAddressQuery({ direccion: 'Calle Bailen 5', numero: null, codigoPostal: '28005', localidad: 'Madrid', provincia: 'Madrid' }),
+      'Calle Bailen 5, 28005, Madrid, Madrid',
+    );
+    assert.equal(
+      buildAddressQuery({ direccion: 'Calle Bailen 5', numero: '  ', localidad: 'Madrid' }),
+      'Calle Bailen 5, Madrid',
+    );
+  });
+
+  test('buildAddressQuery con numero estructurado lo anexa a la calle', () => {
+    assert.equal(
+      buildAddressQuery({ direccion: 'Calle Bailen', numero: '5', codigoPostal: '28005', localidad: 'Madrid', provincia: 'Madrid' }),
+      'Calle Bailen 5, 28005, Madrid, Madrid',
+    );
+    // numero sin direccion no aporta calle: se ignora (nunca una query solo con el número).
+    assert.equal(buildAddressQuery({ numero: '5', localidad: 'Madrid' }), 'Madrid');
+  });
+
   test('isValidCoord valida rango', () => {
     assert.ok(isValidCoord(40.4, -3.7));
     assert.ok(!isValidCoord(91, 0));

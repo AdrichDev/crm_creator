@@ -110,7 +110,14 @@ export default function ContactosPage() {
   // Enlace a Google Maps del contacto abierto en el modal: Contacto no tiene
   // coordenadas (a diferencia de Customer), así que siempre se construye por
   // texto de dirección. Sin dirección → sin pin (mismo criterio que Clientes).
-  const infoMapsUrl = useMemo(() => (info ? buildGoogleMapsSearchUrl(info.direccion) : null), [info]);
+  // Aditivo (crm-operaos 9.2): número estructurado anexado a la calle si existe;
+  // sin número la búsqueda queda exactamente como antes.
+  const infoMapsUrl = useMemo(() => {
+    if (!info) return null;
+    const calle = info.direccion?.trim();
+    const numero = info.numero?.trim();
+    return buildGoogleMapsSearchUrl(calle && numero ? `${calle} ${numero}` : info.direccion);
+  }, [info]);
 
   // Modo selección → añadir a cliente.
   const [selectionMode, setSelectionMode] = useState(false);
@@ -122,7 +129,10 @@ export default function ContactosPage() {
   const openCreate = () => { setEditingId(null); setForm(EMPTY_FORM); setFormError(''); setModalOpen(true); };
   const openEdit = (c: ContactoRow) => {
     setEditingId(c.id);
-    setForm({ tipo: c.tipo, nombre: c.nombre, telefono: c.telefono ?? '', email: c.email ?? '', sector: c.sector ?? '', direccion: c.direccion ?? '' });
+    setForm({
+      tipo: c.tipo, nombre: c.nombre, telefono: c.telefono ?? '', email: c.email ?? '', sector: c.sector ?? '',
+      direccion: c.direccion ?? '', numero: c.numero ?? '', piso: c.piso ?? '', codigoPostal: c.codigoPostal ?? '',
+    });
     setFormError('');
     setModalOpen(true);
   };
@@ -131,7 +141,7 @@ export default function ContactosPage() {
     if (!form.nombre.trim()) { setFormError('El nombre es obligatorio.'); return; }
     setSaving(true); setFormError('');
     const payload: Record<string, unknown> = { tipo: form.tipo, nombre: form.nombre.trim() };
-    for (const key of ['telefono', 'email', 'sector', 'direccion'] as const) {
+    for (const key of ['telefono', 'email', 'sector', 'direccion', 'numero', 'piso', 'codigoPostal'] as const) {
       const v = form[key].trim();
       if (v) payload[key] = v; else if (editingId) payload[key] = null;
     }
@@ -144,7 +154,7 @@ export default function ContactosPage() {
       } else if (editingId) {
         update(editingId, payload as Partial<ContactoRow>);
       } else {
-        create({ codigo: `pc-${String(mockItems.length + 1).padStart(2, '0')}`, contactado: 'no', createdAt: new Date().toISOString(), peticion: null, telefono: null, email: null, sector: null, direccion: null, ...payload } as Omit<ContactoRow, 'id'>);
+        create({ codigo: `pc-${String(mockItems.length + 1).padStart(2, '0')}`, contactado: 'no', createdAt: new Date().toISOString(), peticion: null, telefono: null, email: null, sector: null, direccion: null, numero: null, piso: null, codigoPostal: null, ...payload } as Omit<ContactoRow, 'id'>);
       }
       setModalOpen(false);
     } catch {
@@ -274,7 +284,10 @@ export default function ContactosPage() {
             {([
               ['Código', info.codigo], ['Nombre', info.nombre], ['Tipo', info.tipo === 'lead' ? 'Lead' : 'Prospecto'],
               ['Teléfono', info.telefono || '—'], ['Email', info.email || '—'], ['Sector', info.sector || '—'],
-              ['Dirección', info.direccion || '—'], ['Contactado', CONTACTADO_LABELS[info.contactado] ?? 'NC'],
+              // Dirección estructurada agrupada: calle → número → piso → código postal (crm-operaos 9.2).
+              ['Dirección', info.direccion || '—'], ['Número', info.numero || '—'],
+              ['Piso', info.piso || '—'], ['Código postal', info.codigoPostal || '—'],
+              ['Contactado', CONTACTADO_LABELS[info.contactado] ?? 'NC'],
               ['Fecha de alta', formatDateTime(info.createdAt)], ['Petición', info.peticion || '—'],
             ] as const).map(([label, value]) => (
               <div key={label} className="grid grid-cols-[110px_1fr] gap-3 py-2">
