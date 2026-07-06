@@ -61,6 +61,23 @@ export function buildData(body: Record<string, unknown>): Record<string, unknown
   return data;
 }
 
+// Filtros de comercial de campo (RF-14, crm-operaos 9.3). Exportada para tests de
+// contrato. `localidad`/`provincia`/`codigoPostal` son filtros independientes (AND):
+// reemplazan al antiguo `zona` combinado (OR sobre los tres campos), sin otros consumidores.
+export function buildListFilters(q: Record<string, unknown>): Record<string, unknown> {
+  const filters: Record<string, unknown> = {};
+  if (typeof q.estadoVisitaId === 'string') filters.estadoVisitaId = q.estadoVisitaId;
+  if (q.categoriaAbc === 'A' || q.categoriaAbc === 'B' || q.categoriaAbc === 'C') filters.categoriaAbc = q.categoriaAbc;
+  if (q.tipoRegistro === 'CLIENTE' || q.tipoRegistro === 'PROSPECTO') filters.tipoRegistro = q.tipoRegistro;
+  for (const key of ['localidad', 'provincia', 'codigoPostal'] as const) {
+    const raw = q[key];
+    if (typeof raw === 'string' && raw.trim()) {
+      filters[key] = { contains: raw.trim(), mode: 'insensitive' as const };
+    }
+  }
+  return filters;
+}
+
 // Resuelve lat/lng + geo_estado. Coordenadas manuales tienen prioridad. Si hay dirección y no
 // hay coords → geocodifica (OK/FAILED). Nunca lanza: un fallo externo no rompe el alta (RNF-10).
 async function resolveGeo(body: Record<string, unknown>, data: Record<string, unknown>): Promise<void> {
@@ -96,22 +113,12 @@ customersRouter.get('/', async (req: AuthedRequest, res: Response) => {
     ],
   } : {};
 
-  // Filtros de comercial de campo (RF-14).
-  const filters: Record<string, unknown> = {};
-  if (typeof q.estadoVisitaId === 'string') filters.estadoVisitaId = q.estadoVisitaId;
-  if (q.categoriaAbc === 'A' || q.categoriaAbc === 'B' || q.categoriaAbc === 'C') filters.categoriaAbc = q.categoriaAbc;
-  if (q.tipoRegistro === 'CLIENTE' || q.tipoRegistro === 'PROSPECTO') filters.tipoRegistro = q.tipoRegistro;
-  if (typeof q.zona === 'string' && q.zona.trim()) {
-    const zona = q.zona.trim();
-    Object.assign(filters, { OR: [
-      { localidad: { contains: zona, mode: 'insensitive' as const } },
-      { provincia: { contains: zona, mode: 'insensitive' as const } },
-      { codigoPostal: { contains: zona, mode: 'insensitive' as const } },
-    ] });
-  }
+  // Filtros de comercial de campo (RF-14): estado, categoría, tipo y zona desglosada
+  // en localidad/provincia/codigoPostal independientes (crm-operaos 9.3).
+  const filters = buildListFilters(q);
 
   // Filtros explícitos de la Cartera de Clientes (nombre/email/fecha), independientes del
-  // `search` genérico de arriba. Se combinan vía AND para no chocar con el OR de `zona`.
+  // `search` genérico de arriba. Se combinan vía AND.
   const andClauses: Record<string, unknown>[] = [];
   if (typeof q.nombre === 'string' && q.nombre.trim()) {
     const nombre = q.nombre.trim();

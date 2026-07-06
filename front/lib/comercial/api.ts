@@ -11,7 +11,9 @@ export interface CustomerFilters {
   estadoVisitaId?: string;
   categoriaAbc?: string;
   tipoRegistro?: string;
-  zona?: string;
+  localidad?: string;
+  provincia?: string;
+  codigoPostal?: string;
   near?: { lat: number; lng: number; radiusKm?: number };
   search?: string;
   page?: number;
@@ -26,7 +28,9 @@ export async function fetchCustomers(f: CustomerFilters = {}): Promise<{ items: 
   if (f.estadoVisitaId) p.set('estadoVisitaId', f.estadoVisitaId);
   if (f.categoriaAbc) p.set('categoriaAbc', f.categoriaAbc);
   if (f.tipoRegistro) p.set('tipoRegistro', f.tipoRegistro);
-  if (f.zona) p.set('zona', f.zona);
+  if (f.localidad) p.set('localidad', f.localidad);
+  if (f.provincia) p.set('provincia', f.provincia);
+  if (f.codigoPostal) p.set('codigoPostal', f.codigoPostal);
   if (f.near) {
     p.set('near', `${f.near.lat},${f.near.lng}`);
     if (f.near.radiusKm) p.set('radiusKm', String(f.near.radiusKm));

@@ -59,7 +59,7 @@ export default function Page() {
   const [importOpen, setImportOpen] = useState(false);
   const [prospectoOpen, setProspectoOpen] = useState(false);
   const [near, setNear] = useState<{ lat: number; lng: number } | null>(null);
-  const [filters, setFilters] = useState({ estadoVisitaId: '', categoriaAbc: '', tipoRegistro: '', zona: '' });
+  const [filters, setFilters] = useState({ estadoVisitaId: '', categoriaAbc: '', tipoRegistro: '', localidad: '', provincia: '', codigoPostal: '' });
   const [colorMode, setColorMode] = useState<ColorMode>('estado');
 
   // Preferencia de modo de color persistida por tenant (comportamiento por defecto = estado, sin regresión).
@@ -182,29 +182,28 @@ export default function Page() {
 
       {tab === 'mapa' && (
         <div className="space-y-4">
-          {/* Filtros */}
+          {/* Filtros (crm-operaos 9.3): estado y categoría se filtran clicando la leyenda;
+              zona desglosada en localidad/provincia/código postal independientes. */}
           <div className="flex flex-wrap items-center gap-2">
-            <select className={selCls} value={filters.estadoVisitaId} onChange={(e) => setFilters({ ...filters, estadoVisitaId: e.target.value })}>
-              <option value="">Todos los estados</option>
-              {states.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-            </select>
-            <select className={selCls} value={filters.categoriaAbc} onChange={(e) => setFilters({ ...filters, categoriaAbc: e.target.value })}>
-              <option value="">Toda categoría</option>
-              <option value="A">A</option><option value="B">B</option><option value="C">C</option>
-            </select>
             <select className={selCls} value={filters.tipoRegistro} onChange={(e) => setFilters({ ...filters, tipoRegistro: e.target.value })}>
               <option value="">Cliente y prospecto</option>
               <option value="CLIENTE">Solo clientes</option>
               <option value="PROSPECTO">Solo prospectos</option>
             </select>
-            <input className={selCls} placeholder="Zona (localidad/provincia/CP)" value={filters.zona} onChange={(e) => setFilters({ ...filters, zona: e.target.value })} />
+            <input className={selCls} placeholder="Localidad" value={filters.localidad} onChange={(e) => setFilters({ ...filters, localidad: e.target.value })} />
+            <input className={selCls} placeholder="Provincia" value={filters.provincia} onChange={(e) => setFilters({ ...filters, provincia: e.target.value })} />
+            <input className={selCls} placeholder="Código postal" value={filters.codigoPostal} onChange={(e) => setFilters({ ...filters, codigoPostal: e.target.value })} />
             <Button variant={near ? 'primary' : 'outline'} onClick={near ? () => setNear(null) : pedirUbicacion}>
               <LocateFixed className="h-4 w-4" /> {near ? 'Cercanía activa' : 'Cerca de mí'}
             </Button>
           </div>
 
-          {/* Selector de modo de color + leyenda dinámica (regla 9 / §16.3) */}
-          <MapaColorSelector modo={colorMode} onModoChange={changeColorMode} estados={states} />
+          {/* Selector de modo de color + leyenda dinámica (regla 9 / §16.3). La leyenda
+              es clicable: aplica/quita el filtro de estado o categoría (toggle). */}
+          <MapaColorSelector modo={colorMode} onModoChange={changeColorMode} estados={states}
+            filtroEstadoId={filters.estadoVisitaId} filtroCategoria={filters.categoriaAbc}
+            onFiltroEstadoChange={(id) => setFilters({ ...filters, estadoVisitaId: id })}
+            onFiltroCategoriaChange={(cat) => setFilters({ ...filters, categoriaAbc: cat })} />
 
           <MapaClientes customers={geolocated} selectedId={selected?.id} onSelect={setSelected} center={near ?? undefined} modo={colorMode} />
 
