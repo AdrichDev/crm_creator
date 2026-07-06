@@ -8,7 +8,7 @@ describe('naming del vertical comerciales (WU2.1)', () => {
     expect(t.comercial).toBe('Mapa comercial');
     expect(t.clientes).toBe('Cartera de clientes');
     expect(t.citas).toBe('Agenda');
-    expect(t.ventas).toBe('Pedidos');
+    expect(t.ventas).toBe('TPV');
     expect(t.estadisticas).toBe('Informes');
   });
 });

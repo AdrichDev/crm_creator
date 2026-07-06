@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, cleanup, screen, fireEvent } from '@testing-library/react';
+import { render, cleanup, screen, fireEvent, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import type { Pedido } from '@/lib/mock/data';
 import Page from '@/app/(crm)/pedidos/page';
@@ -82,14 +82,14 @@ describe('pedidos/page — documental (Fase 3)', () => {
     expect(apiFetchMock).toHaveBeenCalledWith('/pedidos');
 
     // La sugerencia de nº también sale del total del negocio (57 + 1), no de items.length.
-    fireEvent.click(screen.getByText('+ Nuevo pedido'));
+    fireEvent.click(screen.getByText('+ Nuevo presupuesto'));
     const year = new Date().getFullYear();
     expect(screen.getByDisplayValue(`P-${year}-058`)).toBeInTheDocument();
   });
 
   it('modo local: la sugerencia de nº se deriva del total de pedidos', () => {
     render(<Page />);
-    fireEvent.click(screen.getByText('+ Nuevo pedido'));
+    fireEvent.click(screen.getByText('+ Nuevo presupuesto'));
     const year = new Date().getFullYear();
     expect(screen.getByDisplayValue(`P-${year}-003`)).toBeInTheDocument(); // 2 pedidos → 003
   });
@@ -109,15 +109,49 @@ describe('pedidos/page — documental (Fase 3)', () => {
 
   it('"+ Nuevo pedido" abre el formulario de alta (flujo separado del TPV)', () => {
     render(<Page />);
-    fireEvent.click(screen.getByText('+ Nuevo pedido'));
-    expect(screen.getByRole('heading', { name: 'Nuevo pedido' })).toBeInTheDocument();
+    fireEvent.click(screen.getByText('+ Nuevo presupuesto'));
+    expect(screen.getByRole('heading', { name: 'Nuevo presupuesto' })).toBeInTheDocument();
+  });
+
+  it('las cabeceras Nº/Cliente/Fecha/Estado son ordenables; Total no', () => {
+    render(<Page />);
+    expect(screen.getByRole('button', { name: 'Ordenar por Nº' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ordenar por Cliente' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ordenar por Fecha' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ordenar por Estado' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ordenar por Total' })).toBeNull();
+  });
+
+  it('ordena por Cliente client-side (desc invierte el orden de filas)', () => {
+    render(<Page />);
+    const numeroDeFila = (i: number) => within(screen.getAllByRole('row')[i + 1]).getByText(/^P-2026-/).textContent;
+    // Orden por defecto (createdAt del mock): P-2026-001 primero.
+    expect(numeroDeFila(0)).toBe('P-2026-001');
+    fireEvent.click(screen.getByRole('button', { name: 'Ordenar por Cliente' })); // asc: Ana, Lucía
+    expect(numeroDeFila(0)).toBe('P-2026-001');
+    fireEvent.click(screen.getByRole('button', { name: 'Ordenar por Cliente' })); // desc: Lucía, Ana
+    expect(numeroDeFila(0)).toBe('P-2026-002');
+  });
+
+  it('Editar abre el formulario precargado y guarda con PATCH (update) el presupuesto', () => {
+    render(<Page />);
+    // La fila aceptada (P-2026-002) NO ofrece Editar; solo la generada.
+    expect(screen.getAllByText('Editar')).toHaveLength(1);
+    fireEvent.click(screen.getByText('Editar'));
+    expect(screen.getByRole('heading', { name: 'Editar presupuesto' })).toBeInTheDocument();
+    expect(screen.getByDisplayValue('P-2026-001')).toBeInTheDocument(); // nº precargado (sin sufijo)
+
+    fireEvent.click(screen.getByText('Guardar cambios'));
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    expect(updateMock.mock.calls[0][0]).toBe(3101);
+    expect((updateMock.mock.calls[0][1] as { numero: string }).numero).toBe('P-2026-001');
   });
 
   // Último test: vacía PEDIDOS in situ (el mock cierra sobre esta referencia).
   it('lista vacía → estado vacío', () => {
     PEDIDOS.length = 0;
     render(<Page />);
-    expect(screen.getByText('Aún no hay pedidos')).toBeInTheDocument();
+    expect(screen.getByText('Aún no hay presupuestos')).toBeInTheDocument();
     expect(screen.queryByText('Ver / Imprimir')).toBeNull();
   });
 });

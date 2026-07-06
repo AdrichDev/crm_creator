@@ -12,10 +12,11 @@ export interface Emisor { empresa: string; cif: string; direccion: string; email
 /** Concepto seleccionable (catálogo de servicios adaptado al modelo de líneas de AA). */
 export interface ConceptoRow { id: string; nombre: string; descripcion: string; precioImpl: number; precioMant: number; selected: boolean; cantidad: number; }
 
-/** Estado inicial del formulario (alta nueva o nueva versión de un pedido rechazado). */
+/** Estado inicial del formulario (alta nueva o edición de un presupuesto existente). */
 export interface PedidoDraft {
   linkedClientId: string;
   clientName: string;
+  clientRazonSocial: string;
   clientCif: string;
   clientAddress: string;
   clientEmail: string;
@@ -30,6 +31,8 @@ interface PedidoFormProps {
   clientsList: Cliente[];
   emisor: Emisor;
   saving: boolean;
+  /** true → edición de un presupuesto existente (PATCH); false/undefined → alta (POST). */
+  editing?: boolean;
   onSaveEmisor: (e: Emisor) => void;
   onCancel: () => void;
   onGenerate: (pedido: Omit<Pedido, 'id'>) => void;
@@ -48,7 +51,7 @@ const IVA = 0.21;
  * se conserva por paridad de modelo. Los totales se calculan también en cliente para el
  * preview inmediato; en modo API el back los RECALCULA server-side (fuente de verdad).
  */
-export function PedidoForm({ draft, clientsList, emisor, saving, onSaveEmisor, onCancel, onGenerate }: PedidoFormProps) {
+export function PedidoForm({ draft, clientsList, emisor, saving, editing, onSaveEmisor, onCancel, onGenerate }: PedidoFormProps) {
   // Emisor (edición inline).
   const [editingEmisor, setEditingEmisor] = useState(false);
   const [tmp, setTmp] = useState<Emisor>(emisor);
@@ -56,6 +59,7 @@ export function PedidoForm({ draft, clientsList, emisor, saving, onSaveEmisor, o
   // Cliente.
   const [linkedClientId, setLinkedClientId] = useState(draft.linkedClientId);
   const [clientName, setClientName] = useState(draft.clientName);
+  const [clientRazonSocial, setClientRazonSocial] = useState(draft.clientRazonSocial);
   const [clientCif, setClientCif] = useState(draft.clientCif);
   const [clientAddress, setClientAddress] = useState(draft.clientAddress);
   const [clientEmail, setClientEmail] = useState(draft.clientEmail);
@@ -83,6 +87,7 @@ export function PedidoForm({ draft, clientsList, emisor, saving, onSaveEmisor, o
     const c = clientsList.find((cl) => String(cl.id) === id);
     if (!c) return;
     setClientName(c.nombre || '');
+    setClientRazonSocial(c.razonSocial || c.nombre || '');
     setClientCif(c.cif || '');
     setClientAddress(c.direccion || '');
     setClientEmail(c.email || '');
@@ -110,7 +115,7 @@ export function PedidoForm({ draft, clientsList, emisor, saving, onSaveEmisor, o
     const pedido: Omit<Pedido, 'id'> = {
       numero,
       customerId: linkedClientId || null,
-      clienteSnapshot: { nombre: clientName, cif: clientCif, direccion: clientAddress, email: clientEmail, telefono: clientPhone, contacto: clientContact },
+      clienteSnapshot: { nombre: clientName, razonSocial: clientRazonSocial, cif: clientCif, direccion: clientAddress, email: clientEmail, telefono: clientPhone, contacto: clientContact },
       emisorSnapshot: { empresa: emisor.empresa, cif: emisor.cif, direccion: emisor.direccion, email: emisor.email, telefono: emisor.telefono },
       estado: 'generada',
       subtotalImpl, subtotalMant, totalImpl, totalMant,
@@ -127,8 +132,8 @@ export function PedidoForm({ draft, clientsList, emisor, saving, onSaveEmisor, o
     <div className="w-full">
       <div className="panel-header">
         <div>
-          <h1>Nuevo pedido</h1>
-          <p className="subtitle">Presupuesto/pedido comercial documental, con vista previa imprimible.</p>
+          <h1>{editing ? 'Editar presupuesto' : 'Nuevo presupuesto'}</h1>
+          <p className="subtitle">Presupuesto comercial documental, con vista previa imprimible.</p>
         </div>
         <Button variant="outline" onClick={onCancel}>Cancelar</Button>
       </div>
@@ -194,8 +199,9 @@ export function PedidoForm({ draft, clientsList, emisor, saving, onSaveEmisor, o
               )}
             </div>
             <div className="opera-field"><label className="opera-label">Nombre *</label><input className="opera-control" value={clientName} onChange={(e) => setClientName(e.target.value)} /></div>
+            <div className="opera-field"><label className="opera-label">Razón Social</label><input className="opera-control" value={clientRazonSocial} onChange={(e) => setClientRazonSocial(e.target.value)} /></div>
             <div className="opera-field"><label className="opera-label">NIF / CIF</label><input className="opera-control" value={clientCif} onChange={(e) => setClientCif(e.target.value)} /></div>
-            <div className="opera-field"><label className="opera-label">Nº de pedido *</label><input className="opera-control" value={numero} onChange={(e) => setNumero(e.target.value)} /></div>
+            <div className="opera-field"><label className="opera-label">Nº de presupuesto *</label><input className="opera-control" value={numero} onChange={(e) => setNumero(e.target.value)} /></div>
             <div className="opera-field"><label className="opera-label">Persona de contacto</label><input className="opera-control" value={clientContact} onChange={(e) => setClientContact(e.target.value)} /></div>
             <div className="opera-field md:col-span-2"><label className="opera-label">Dirección</label><input className="opera-control" value={clientAddress} onChange={(e) => setClientAddress(e.target.value)} /></div>
             <div className="opera-field"><label className="opera-label">Email</label><input className="opera-control" type="email" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} /></div>
@@ -244,7 +250,7 @@ export function PedidoForm({ draft, clientsList, emisor, saving, onSaveEmisor, o
           </div>
         </div>
         <Button variant="primary" onClick={handleGenerate} disabled={!canGenerate || saving}>
-          {saving ? 'Guardando…' : 'Generar pedido'}
+          {saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Generar presupuesto'}
         </Button>
       </div>
     </div>

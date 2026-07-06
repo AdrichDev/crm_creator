@@ -101,7 +101,7 @@ export const VERTICALS: VerticalDef[] = [
     // columna Facturas (para cualquier vertical con `clientes` activo) — dejarlo fuera
     // hacía que ese botón rebotara a /panel en negocios nuevos de este vertical.
     defaultModules: ['clientes', 'comercial', 'citas', 'pedidos', 'facturas'],
-    terminology: { citas: 'Agenda', empleados: 'Comerciales', servicios: 'Productos y tarifas', clientes: 'Cartera de clientes', ventas: 'Pedidos', comercial: 'Mapa comercial', estadisticas: 'Informes' },
+    terminology: { citas: 'Agenda', empleados: 'Comerciales', servicios: 'Productos y tarifas', clientes: 'Cartera de clientes', ventas: 'TPV', comercial: 'Mapa comercial', estadisticas: 'Informes' },
     // `comercial` sube a "Área de Trabajo": es el módulo central de este vertical.
     moduleCategories: { comercial: 'core' },
     branding: { primary: '#1e3a5f', secondary: '#3b82f6' },

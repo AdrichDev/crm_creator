@@ -48,9 +48,39 @@ const createSchema = z.object({
 
 const statusSchema = z.object({ estado: z.enum(PEDIDO_ESTADOS) });
 
+// Esquema de EDICIÓN (PATCH /:id): todos los campos son opcionales (parche parcial). Reusa
+// `lineSchema`. Los totales NUNCA llegan del cliente: se recalculan server-side desde las
+// líneas (igual que en POST /). No admite `estado`: las transiciones van por PUT /:id/status.
+const updateSchema = z.object({
+  numero: z.string().min(1).optional(),
+  customerId: z.string().nullable().optional(),
+  clienteSnapshot: z.record(z.unknown()).optional(),
+  emisorSnapshot: z.record(z.unknown()).optional(),
+  tasaIva: z.number().min(0).max(1).optional(),
+  diasValidez: z.number().int().positive().optional(),
+  notas: z.string().nullable().optional(),
+  lines: z.array(lineSchema).optional(),
+});
+
+// Ordenación por cabecera del listado de presupuestos/pedidos. Whitelist de columnas con
+// respaldo escalar en BD (Nº, Estado, Fecha de alta). Sin `sort` válido → orden por defecto
+// (createdAt desc, sin cambiar el comportamiento previo). Exportada para tests.
+//
+// NOTA sobre "Cliente": el nombre visible del cliente vive en `clienteSnapshot` (JSON), sin
+// columna escalar ordenable, por lo que NO es ordenable server-side (Prisma no ordena por
+// clave anidada de un Json). El front ordena esa columna en cliente sobre la página cargada.
+const PEDIDO_SORTABLE = new Set(['numero', 'estado', 'createdAt']);
+export function buildPedidosOrderBy(q: Record<string, unknown>): Record<string, 'asc' | 'desc'> {
+  const sort = typeof q.sort === 'string' && PEDIDO_SORTABLE.has(q.sort) ? q.sort : null;
+  if (!sort) return { createdAt: 'desc' };
+  const order = q.order === 'asc' ? 'asc' : 'desc';
+  return { [sort]: order };
+}
+
 /* ---------- GET / (listado paginado, scoping por negocio) ---------- */
 pedidosRouter.get('/', async (req: AuthedRequest, res: Response) => {
-  const { page, limit, search } = parsePagination(req.query as Record<string, unknown>);
+  const q = req.query as Record<string, unknown>;
+  const { page, limit, search } = parsePagination(q);
   const searchWhere = search
     ? { OR: [{ numero: { contains: search, mode: 'insensitive' as const } }] }
     : {};
@@ -60,7 +90,7 @@ pedidosRouter.get('/', async (req: AuthedRequest, res: Response) => {
     prisma.pedido.findMany({
       where,
       include: { lines: { orderBy: { posicion: 'asc' } } },
-      orderBy: { createdAt: 'desc' },
+      orderBy: buildPedidosOrderBy(q),
       skip: (page - 1) * limit,
       take: limit,
     }),
@@ -208,3 +238,112 @@ export async function pedidoStatusHandler(db: PedidoStatusDb, req: AuthedRequest
 }
 
 pedidosRouter.put('/:id/status', (req: AuthedRequest, res: Response) => pedidoStatusHandler(prisma as unknown as PedidoStatusDb, req, res));
+
+/* ---------- PATCH /:id (edición documental, persiste a BD) ---------- */
+
+/** Fila mínima que necesita el handler de edición (estado + factura para la regla de bloqueo). */
+interface PedidoUpdateRow {
+  id: string;
+  estado: string;
+  tasaIva: unknown;
+  invoice: { id: string } | null;
+}
+
+/** BD inyectable del handler de edición (patrón DI, igual que pedidoStatusHandler). */
+export interface PedidoUpdateDb {
+  pedido: {
+    findFirst: (args: unknown) => Promise<PedidoUpdateRow | null>;
+    update: (args: { where: { id: string }; data: Record<string, unknown>; include?: unknown }) => Promise<unknown>;
+  };
+  customer: { findFirst: (args: unknown) => Promise<{ id: string } | null> };
+}
+
+/**
+ * Edita un presupuesto/pedido existente y PERSISTE a BD. Handler extraído (DI) para poder
+ * testear en unidad sin servidor ni BD.
+ *
+ * Reglas:
+ *   - scoping por negocio + soft-delete (404 si no es propio/activo o está eliminado);
+ *   - REGLA DE ACEPTADO: un presupuesto ya `aceptada` generó su factura vinculada (PR-2b).
+ *     Editar sus líneas/totales desincronizaría la factura, así que se BLOQUEA la edición de
+ *     un presupuesto ya facturado (409). Se detecta por la factura vinculada — el mismo signo
+ *     que el guard de des-aceptación. El resto de estados (generada/rechazada/caducada) se
+ *     edita libremente.
+ *   - customerId (si viene y es truthy) debe pertenecer al negocio (guard cross-tenant);
+ *   - totales SIEMPRE server-side: si se reenvían las líneas se recalculan desde ellas
+ *     (nunca se confían al cliente, mismo criterio que POST /).
+ */
+export async function pedidoUpdateHandler(db: PedidoUpdateDb, req: AuthedRequest, res: Response): Promise<void> {
+  const parsed = updateSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(422).json({ error: { code: 'invalid', message: parsed.error.issues[0]?.message ?? 'Datos inválidos' } });
+    return;
+  }
+
+  const existing = await db.pedido.findFirst({
+    where: { id: req.params.id, businessId: req.businessId, eliminadoEn: null },
+    include: { invoice: { select: { id: true } } },
+  });
+  if (!existing) {
+    res.status(404).json({ error: { code: 'not_found', message: 'Pedido no encontrado' } });
+    return;
+  }
+
+  // Regla de aceptado: un presupuesto ya facturado no se edita (protege la factura vinculada).
+  if (existing.invoice) {
+    res.status(409).json({
+      error: { code: 'conflict', message: 'No se puede editar un presupuesto ya aceptado (tiene una factura asociada)' },
+    });
+    return;
+  }
+
+  const { numero, customerId, clienteSnapshot, emisorSnapshot, tasaIva, diasValidez, notas, lines } = parsed.data;
+  const data: Record<string, unknown> = {};
+
+  if (customerId !== undefined) {
+    if (customerId) {
+      const owner = await db.customer.findFirst({ where: { id: customerId, businessId: req.businessId, eliminadoEn: null } });
+      if (!owner) { res.status(422).json({ error: { code: 'invalid', message: 'Cliente inválido' } }); return; }
+      data.customerId = customerId;
+    } else {
+      data.customerId = null;
+    }
+  }
+  if (numero !== undefined) data.numero = numero;
+  if (clienteSnapshot !== undefined) data.clienteSnapshot = clienteSnapshot as object;
+  if (emisorSnapshot !== undefined) data.emisorSnapshot = emisorSnapshot as object;
+  if (diasValidez !== undefined) data.diasValidez = diasValidez;
+  if (notas !== undefined) data.notas = notas ?? null;
+  if (tasaIva !== undefined) data.tasaIva = tasaIva;
+
+  // Si se reenvían las líneas, se reemplaza el conjunto y se RECALCULAN los totales server-side.
+  if (lines !== undefined) {
+    const rate = tasaIva !== undefined ? tasaIva : Number(existing.tasaIva ?? 0.21);
+    const totals = computePedidoTotals(lines, rate);
+    data.subtotalImpl = totals.subtotalImpl;
+    data.subtotalMant = totals.subtotalMant;
+    data.totalImpl = totals.totalImpl;
+    data.totalMant = totals.totalMant;
+    data.lines = {
+      deleteMany: {},
+      create: lines.map((l, i) => ({
+        servicioId: l.servicioId,
+        nombre: l.nombre,
+        descripcion: l.descripcion ?? null,
+        cantidad: l.cantidad ?? 1,
+        precioImpl: l.precioImpl ?? 0,
+        precioMant: l.precioMant ?? 0,
+        posicion: i,
+      })),
+    };
+  }
+
+  const pedido = await db.pedido.update({
+    where: { id: existing.id },
+    data,
+    include: { lines: { orderBy: { posicion: 'asc' } } },
+  });
+  res.json(pedido);
+}
+
+pedidosRouter.patch('/:id', (req: AuthedRequest, res: Response) => pedidoUpdateHandler(prisma as unknown as PedidoUpdateDb, req, res));
