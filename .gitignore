@@ -58,3 +58,6 @@ front/lib/config/generated-tenant.ts
 
 # Worktrees de subagentes (no versionar)
 .claude/
+
+# Material comercial (PDF + mocks), no es código del repo
+presentacion_comercial/
