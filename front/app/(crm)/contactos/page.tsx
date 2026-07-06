@@ -131,7 +131,7 @@ export default function ContactosPage() {
     setEditingId(c.id);
     setForm({
       tipo: c.tipo, nombre: c.nombre, telefono: c.telefono ?? '', email: c.email ?? '', sector: c.sector ?? '',
-      direccion: c.direccion ?? '', numero: c.numero ?? '', piso: c.piso ?? '', codigoPostal: c.codigoPostal ?? '',
+      direccion: c.direccion ?? '', numero: c.numero ?? '', piso: c.piso ?? '', codigoPostal: c.codigoPostal ?? '', localidad: c.localidad ?? '',
     });
     setFormError('');
     setModalOpen(true);
@@ -141,7 +141,7 @@ export default function ContactosPage() {
     if (!form.nombre.trim()) { setFormError('El nombre es obligatorio.'); return; }
     setSaving(true); setFormError('');
     const payload: Record<string, unknown> = { tipo: form.tipo, nombre: form.nombre.trim() };
-    for (const key of ['telefono', 'email', 'sector', 'direccion', 'numero', 'piso', 'codigoPostal'] as const) {
+    for (const key of ['telefono', 'email', 'sector', 'direccion', 'numero', 'piso', 'codigoPostal', 'localidad'] as const) {
       const v = form[key].trim();
       if (v) payload[key] = v; else if (editingId) payload[key] = null;
     }
@@ -154,7 +154,7 @@ export default function ContactosPage() {
       } else if (editingId) {
         update(editingId, payload as Partial<ContactoRow>);
       } else {
-        create({ codigo: `pc-${String(mockItems.length + 1).padStart(2, '0')}`, contactado: 'no', createdAt: new Date().toISOString(), peticion: null, telefono: null, email: null, sector: null, direccion: null, numero: null, piso: null, codigoPostal: null, ...payload } as Omit<ContactoRow, 'id'>);
+        create({ codigo: `pc-${String(mockItems.length + 1).padStart(2, '0')}`, contactado: 'no', createdAt: new Date().toISOString(), peticion: null, telefono: null, email: null, sector: null, direccion: null, numero: null, piso: null, codigoPostal: null, localidad: null, ...payload } as Omit<ContactoRow, 'id'>);
       }
       setModalOpen(false);
     } catch {
@@ -287,6 +287,7 @@ export default function ContactosPage() {
               // Dirección estructurada agrupada: calle → número → piso → código postal (crm-operaos 9.2).
               ['Dirección', info.direccion || '—'], ['Número', info.numero || '—'],
               ['Piso', info.piso || '—'], ['Código postal', info.codigoPostal || '—'],
+              ['Localidad', info.localidad || '—'],
               ['Contactado', CONTACTADO_LABELS[info.contactado] ?? 'NC'],
               ['Fecha de alta', formatDateTime(info.createdAt)], ['Petición', info.peticion || '—'],
             ] as const).map(([label, value]) => (

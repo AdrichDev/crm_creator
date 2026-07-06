@@ -88,6 +88,11 @@ export function ContactoFormModal({ open, editing, form, setForm, saving, error,
           <input id="contacto-cp" className={inputClass} value={form.codigoPostal}
             onChange={(e) => setForm({ ...form, codigoPostal: e.target.value })} />
         </div>
+        <div>
+          <label className={labelClass} htmlFor="contacto-localidad">Localidad</label>
+          <input id="contacto-localidad" className={inputClass} value={form.localidad}
+            onChange={(e) => setForm({ ...form, localidad: e.target.value })} />
+        </div>
       </div>
       {error && <p className="mt-4 text-sm text-red-400">{error}</p>}
     </Modal>

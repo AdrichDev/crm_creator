@@ -19,6 +19,7 @@ export interface ContactoRow {
   numero?: string | null;
   piso?: string | null;
   codigoPostal?: string | null;
+  localidad?: string | null;
   peticion: string | null;
   contactado: ContactadoEstado;
   contactadoEn?: string | null;
@@ -35,11 +36,12 @@ export interface ContactoForm {
   numero: string;
   piso: string;
   codigoPostal: string;
+  localidad: string;
 }
 
 export const EMPTY_FORM: ContactoForm = {
   tipo: 'prospecto', nombre: '', telefono: '', email: '', sector: '', direccion: '',
-  numero: '', piso: '', codigoPostal: '',
+  numero: '', piso: '', codigoPostal: '', localidad: '',
 };
 
 // Semilla del modo generador (localStorage) — compartida entre /contactos y el

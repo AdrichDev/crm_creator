@@ -23,10 +23,11 @@ export const createContactoSchema = z.object({
   email: z.string().trim().email('Email no válido').optional(),
   sector: z.string().trim().optional(),
   direccion: z.string().trim().optional(),
-  // Dirección estructurada (crm-operaos 9.2): número, piso y código postal opcionales.
+  // Dirección estructurada (crm-operaos 9.2): número, piso, código postal y localidad opcionales.
   numero: z.string().trim().optional(),
   piso: z.string().trim().optional(),
   codigoPostal: z.string().trim().optional(),
+  localidad: z.string().trim().optional(),
   peticion: z.string().trim().optional(),
   contactado: z.enum(CONTACTADO_VALORES).optional(),
 });
@@ -41,6 +42,7 @@ export const updateContactoSchema = z.object({
   numero: z.string().trim().nullable().optional(),
   piso: z.string().trim().nullable().optional(),
   codigoPostal: z.string().trim().nullable().optional(),
+  localidad: z.string().trim().nullable().optional(),
   peticion: z.string().trim().nullable().optional(),
   contactado: z.enum(CONTACTADO_VALORES).optional(),
 });
@@ -186,6 +188,7 @@ contactosRouter.post('/', async (req: AuthedRequest, res: Response) => {
           numero: d.numero ?? null,
           piso: d.piso ?? null,
           codigoPostal: d.codigoPostal ?? null,
+          localidad: d.localidad ?? null,
           peticion: d.peticion ?? null,
           contactado,
           contactadoEn: contactado === 'si' ? new Date() : null,
@@ -221,6 +224,7 @@ contactosRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
       ...(d.numero !== undefined && { numero: d.numero }),
       ...(d.piso !== undefined && { piso: d.piso }),
       ...(d.codigoPostal !== undefined && { codigoPostal: d.codigoPostal }),
+      ...(d.localidad !== undefined && { localidad: d.localidad }),
       ...(d.peticion !== undefined && { peticion: d.peticion }),
       ...(d.contactado !== undefined && { contactado: d.contactado }),
       ...contactadoEnPatch(d.contactado, current),
@@ -272,6 +276,7 @@ contactosRouter.post('/convert', async (req: AuthedRequest, res: Response) => {
             numero: c.numero ?? null,
             piso: c.piso ?? null,
             codigoPostal: c.codigoPostal ?? null,
+            localidad: c.localidad ?? null,
             notas: c.sector ? `Sector: ${c.sector}` : null,
             tipoRegistro: 'CLIENTE',
           },

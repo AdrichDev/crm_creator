@@ -1008,11 +1008,12 @@ model Contacto {
   email        String?   @map("email")
   sector       String?   @map("sector")
   direccion    String?   @map("direccion")
-  // Dirección estructurada (crm-operaos 9.2). Aditivos/nullable, sin localidad/provincia
-  // (el alcance pedido para Contacto es solo dirección + número + piso + código postal).
+  // Dirección estructurada (crm-operaos 9.2 + localidad añadida en la 2ª pasada).
+  // Aditivos/nullable. Sin provincia (fuera del alcance pedido para Contacto).
   numero       String?   @map("numero")
   piso         String?   @map("piso")
   codigoPostal String?   @map("codigo_postal")
+  localidad    String?   @map("localidad")
   peticion     String?   @map("peticion")
   contactado   String    @default("no") @map("contactado")
   contactadoEn DateTime? @map("contactado_en")
