@@ -74,8 +74,8 @@ Chain strategy: pending
 ## Phase 9: Contactos info + dirección estructurada + mapa comercial + Presupuestos/Facturas (2026-07-06)
 Regla de esta fase: una tarea por vez, sin commitear ni pasar a la siguiente sin OK explícito del dueño del proyecto.
 - [x] 9.1 Pin de Google Maps también en el modal de información de Contactos (Contacto no tiene lat/long, usa `buildGoogleMapsSearchUrl` por texto siempre). El pin de Clientes se ajustó para priorizar TAMBIÉN el texto de dirección (antes priorizaba coords aproximadas) — mismo comportamiento confiable en ambas tablas.
-- [ ] 9.2 Dirección estructurada (dirección, número, piso, código postal) en Clientes Y Contactos — campos nuevos, migración si aplica, mostrados juntos en la vista de información.
-- [ ] 9.3 Mapa comercial: quitar filtros "todos los estados"/"todas categorías"; zona filtra por localidad/provincia + nuevo input de código postal; filtro por estado de visita y categoría vía click en la leyenda (un click filtra, segundo click en la misma opción lo quita); color de estado de visita pasa a verde si hay algún filtro de estado activo, mismo comportamiento para categoría/gasto.
+- [x] 9.2 Dirección estructurada (dirección, número, piso, código postal) en Clientes Y Contactos. Migración `20260706000000_structured_address` aplicada. `buildAddressQuery` aditivo (número mejora la query, ausencia = comportamiento idéntico). 2ª pasada: `localidad` añadida a Contactos (migración `20260706010000_contacto_localidad`).
+- [x] 9.3 Mapa comercial: quitados los `<select>` de estado/categoría; zona desglosada en 3 inputs (localidad/provincia/código postal) con filtros AND independientes en backend (`buildListFilters`, `zona` OR eliminado); leyenda del selector de color ahora clicable con toggle single-select (click filtra, click en el activo quita); botón de modo de color pasa a emerald cuando hay filtro activo en esa dimensión.
 - [ ] 9.4 Vista de Presupuestos y Facturas equivalente a agents-agency (misma logica de funcionamiento y visual).
 
 ### Fixes intercalados durante la Fase 9 (bugs reportados en vivo, antes de continuar con 9.2)
