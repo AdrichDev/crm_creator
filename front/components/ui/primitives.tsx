@@ -6,8 +6,13 @@ import { useRole } from '@/lib/tenant-config-context';
 import { canWrite, moduleFromPath } from '@/lib/config/roles';
 
 /**
- * ¿El perfil activo puede escribir en el módulo de la ruta actual?
- * Oculta de forma centralizada los botones de crear/editar/eliminar.
+ * Hook personalizado para determinar si el usuario actual tiene permisos de escritura
+ * en el módulo correspondiente a la ruta (URL) actual.
+ *
+ * Utiliza el pathname y el rol del contexto de configuración del tenant para verificar
+ * la política de permisos mediante la función `canWrite`.
+ *
+ * @returns {boolean} `true` si el usuario tiene acceso de escritura (o si la ruta no tiene módulo asociado), `false` en caso contrario.
  */
 export function useWriteAccess(): boolean {
   const pathname = usePathname();
@@ -17,15 +22,38 @@ export function useWriteAccess(): boolean {
   return canWrite(role, mod);
 }
 
+interface CardProps {
+  children: ReactNode;
+  className?: string;
+}
+
+/**
+ * Componente contenedor básico con bordes redondeados, borde sutil y fondo oscuro.
+ * Se utiliza para estructurar tarjetas físicas y bloques lógicos en los paneles del CRM.
+ *
+ * @param {CardProps} props - Propiedades del componente.
+ */
 export function Card({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={cn('rounded-[10px] border border-white/5 bg-[var(--panel-card)]', className)}>{children}</div>;
 }
 
+/**
+ * Componente contenedor interno para añadir padding estándar a las tarjetas (`Card`).
+ *
+ * @param {{ children: ReactNode; className?: string }} props - Propiedades del componente.
+ */
 export function CardBody({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={cn('p-5', className)}>{children}</div>;
 }
 
 export type Tone = 'gray' | 'green' | 'amber' | 'red' | 'blue' | 'brand';
+
+/**
+ * Componente para mostrar etiquetas de estado de forma compacta y visual.
+ * Mapea tonos de color semánticos a clases CSS específicas del tema.
+ *
+ * @param {{ children: ReactNode; tone?: Tone }} props - Propiedades del componente.
+ */
 export function Badge({ children, tone = 'gray' }: { children: ReactNode; tone?: Tone }) {
   const map: Record<Tone, string> = {
     gray: 'tone-gray', green: 'tone-green', amber: 'tone-amber',
@@ -34,6 +62,12 @@ export function Badge({ children, tone = 'gray' }: { children: ReactNode; tone?:
   return <span className={cn('status-badge', map[tone])}>{children}</span>;
 }
 
+/**
+ * Tarjeta de KPI/Estadísticas individuales.
+ * Muestra un título (label), un valor destacado (value) y opcionalmente un texto secundario de ayuda (hint).
+ *
+ * @param {{ label: string; value: ReactNode; hint?: string; accent?: boolean }} props - Propiedades del componente.
+ */
 export function Stat({ label, value, hint, accent }: { label: string; value: ReactNode; hint?: string; accent?: boolean }) {
   return (
     <div className="kpi-card">
@@ -44,6 +78,13 @@ export function Stat({ label, value, hint, accent }: { label: string; value: Rea
   );
 }
 
+/**
+ * Cabecera estándar para páginas del panel de control.
+ * Muestra el título principal de la sección, un subtítulo descriptivo opcional
+ * y un componente de acción (ej. un botón de crear) condicionado al acceso de escritura del usuario.
+ *
+ * @param {{ title: string; subtitle?: string; action?: ReactNode }} props - Propiedades del componente.
+ */
 export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
   const canW = useWriteAccess();
   return (
@@ -67,6 +108,14 @@ export interface TableSort {
   onSort: (key: string) => void;
 }
 
+/**
+ * Componente Tabla de datos estructurada con soporte opcional de ordenación interactiva.
+ * Genera la estructura HTML `<table>` clásica con estilos unificados del CRM.
+ * Las celdas de cabecera que incluyen `sortKey` se renderizan como botones interactivos
+ * para cambiar el orden de los datos.
+ *
+ * @param {{ head: TableHeadCell[]; children: ReactNode; sort?: TableSort }} props - Propiedades del componente.
+ */
 export function Table({ head, children, sort }: { head: TableHeadCell[]; children: ReactNode; sort?: TableSort }) {
   return (
     <div className="panel">
@@ -106,10 +155,22 @@ export function Table({ head, children, sort }: { head: TableHeadCell[]; childre
   );
 }
 
+/**
+ * Componente celda estándar de tabla (`<td>`), envoltorio directo con soporte de clases condicionales.
+ *
+ * @param {{ children: ReactNode; className?: string }} props - Propiedades del componente.
+ */
 export function Td({ children, className }: { children: ReactNode; className?: string }) {
   return <td className={cn(className)}>{children}</td>;
 }
 
+/**
+ * Componente Botón básico.
+ * Soporta variantes preestablecidas: `primary` (acción principal), `outline` (secundario con borde)
+ * y `ghost` (sin fondo ni borde, sutil).
+ *
+ * @param {{ children: ReactNode; variant?: 'primary' | 'ghost' | 'outline'; onClick?: () => void; type?: 'button' | 'submit'; className?: string; disabled?: boolean }} props - Propiedades del componente.
+ */
 export function Button({ children, variant = 'primary', onClick, type = 'button', className, disabled }:
   { children: ReactNode; variant?: 'primary' | 'ghost' | 'outline'; onClick?: () => void; type?: 'button' | 'submit'; className?: string; disabled?: boolean }) {
   const variants: Record<string, string> = {
@@ -122,7 +183,6 @@ export function Button({ children, variant = 'primary', onClick, type = 'button'
 
 const ICON_BTN_BASE = 'inline-grid place-items-center w-8 h-8 rounded-lg border border-white/10 text-[var(--panel-muted)] transition hover:text-[var(--acc)] hover:border-[var(--acc)]';
 
-/** Tonos persistentes (no solo en hover) paridad con agents-agency icon-btn-info/edit/delete. */
 export type IconButtonTone = 'view' | 'edit' | 'delete';
 const ICON_BTN_TONE: Record<IconButtonTone, string> = {
   view: 'border-[rgba(234,179,8,0.4)] bg-[rgba(234,179,8,0.1)] text-[#facc15] hover:bg-[rgba(234,179,8,0.2)]',
@@ -131,9 +191,11 @@ const ICON_BTN_TONE: Record<IconButtonTone, string> = {
 };
 
 /**
- * Botón de acción con icono para celdas de tabla (ver/editar/eliminar).
- * `tone` aplica los colores persistentes de agents-agency (view/edit/delete). Sin `tone`,
- * mantiene el estilo gris neutro de siempre; `danger` sigue disponible para ese caso legacy.
+ * Botón con icono, ideal para celdas de acción en tablas.
+ * Soporta tonos específicos (`view`, `edit`, `delete`) alineados con la UI del CRM de `agents-agency`
+ * para dar un feedback de color coherente.
+ *
+ * @param {{ title: string; ariaLabel?: string; onClick?: () => void; danger?: boolean; tone?: IconButtonTone; className?: string; children: ReactNode }} props - Propiedades del componente.
  */
 export function IconButton({ title, ariaLabel, onClick, danger, tone, className, children }:
   { title: string; ariaLabel?: string; onClick?: () => void; danger?: boolean; tone?: IconButtonTone; className?: string; children: ReactNode }) {
@@ -148,22 +210,16 @@ export function IconButton({ title, ariaLabel, onClick, danger, tone, className,
 
 // Chip neutro cuando el estado no tiene color asignado en `colors`.
 const CHIP_NEUTRAL = 'bg-white/10 text-white';
-// Color de la <option> del desplegable: fondo oscuro (como AA) + el token `text-*` del chip.
 const optionColor = (chip?: string): string =>
   chip?.split(' ').find((c) => c.startsWith('text-')) ?? 'text-white';
 
 /**
- * Selector de estado compartido por Presupuestos y Facturas (crm 5a), renderizado como CHIP
- * redondeado de color — paridad con el `<select>` de estado de agents-agency (BudgetList +
- * `badgeVariantClass`). `colors` mapea cada literal de estado a sus clases de color Tailwind
- * (bg + text); si falta cae a un chip neutro. `value` conserva el literal REAL almacenado
- * (p. ej. `'generada'` | `'Pendiente'`) y `onChange` emite ese literal para llamar a los
- * endpoints de estado existentes (PUT /pedidos/:id/status | PUT /invoices/:id/status).
+ * Selector de estado renderizado con aspecto de CHIP de color interactivo.
+ * Se utiliza de forma unificada en el CRM (ej. en listados de Presupuestos y Facturas).
+ * Permite interceptar el cambio de estado mediante un callback de confirmación `onBeforeChange`
+ * (si este resuelve `false`, el selector revierte su valor automáticamente).
  *
- * `onBeforeChange` (opcional) confirma un cambio ANTES de emitirlo: recibe el estado destino y,
- * si resuelve `false`, cancela el cambio y revierte el `<select>` al valor real (vía `nonce`,
- * que remonta el control controlado — de otro modo no vuelve solo). `disabled` deja el estado
- * visible pero no editable (rol sin escritura). Reutilizado en ambas pantallas: una sola pieza.
+ * @param {{ value: string; options: readonly string[]; onChange: (v: string) => void; onBeforeChange?: (next: string) => boolean | Promise<boolean>; colors?: Record<string, string>; disabled?: boolean; title?: string; ariaLabel?: string }} props - Propiedades del componente.
  */
 export function EstadoSelect({ value, options, onChange, onBeforeChange, colors, disabled, title, ariaLabel = 'Estado' }:
   {
@@ -207,6 +263,12 @@ export function EstadoSelect({ value, options, onChange, onBeforeChange, colors,
   );
 }
 
+/**
+ * Componente interruptor (Toggle / Switch) visual.
+ * Muestra el estado activo en el color de acento y ofrece transiciones de deslizamiento suaves.
+ *
+ * @param {{ checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }} props - Propiedades del componente.
+ */
 export function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <button type="button" disabled={disabled} onClick={() => onChange(!checked)}
@@ -218,6 +280,11 @@ export function Toggle({ checked, onChange, disabled }: { checked: boolean; onCh
   );
 }
 
+/**
+ * Componente reutilizable para indicar estados vacíos o sin resultados en listas y paneles.
+ *
+ * @param {{ title: string; hint?: string }} props - Propiedades del componente.
+ */
 export function EmptyState({ title, hint }: { title: string; hint?: string }) {
   return (
     <div className="panel">
@@ -229,6 +296,12 @@ export function EmptyState({ title, hint }: { title: string; hint?: string }) {
   );
 }
 
+/**
+ * Componente para renderizar botones rápidos de Editar/Eliminar en el extremo derecho de una fila.
+ * La visibilidad de estas acciones está controlada internamente mediante el hook `useWriteAccess()`.
+ *
+ * @param {{ onEdit?: () => void; onDelete?: () => void }} props - Propiedades del componente.
+ */
 export function RowActions({ onEdit, onDelete }: { onEdit?: () => void; onDelete?: () => void }) {
   const canW = useWriteAccess();
   if (!canW) return null;
