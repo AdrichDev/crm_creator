@@ -20,12 +20,14 @@ export function TelegramConversacion({
   loading = false,
   sending = false,
   onSend,
+  isOperatorTab = false,
 }: {
   conversation: TelegramConversationDto | null;
   messages: TelegramMessageDto[];
   loading?: boolean;
   sending?: boolean;
   onSend: (text: string) => void;
+  isOperatorTab?: boolean;
 }) {
   const [draft, setDraft] = useState('');
   const endRef = useRef<HTMLDivElement | null>(null);
@@ -57,16 +59,16 @@ export function TelegramConversacion({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-gray-200 px-4 py-3">
+      <div className="border-b border-[var(--line)] px-4 py-3">
         <p className="font-semibold">{titulo}</p>
-        <p className="text-xs text-gray-500">Minion · {conversation.total} mensajes</p>
+        <p className="text-xs text-[var(--panel-muted)]">Minion · {conversation.total} mensajes</p>
       </div>
 
       <div className="flex-1 space-y-2 overflow-y-auto px-4 py-3" data-testid="telegram-thread">
         {loading && messages.length === 0 ? (
-          <p className="text-sm text-gray-500">Cargando mensajes…</p>
+          <p className="text-sm text-[var(--panel-muted)]">Cargando mensajes…</p>
         ) : messages.length === 0 ? (
-          <p className="text-sm text-gray-500">No hay mensajes todavía.</p>
+          <p className="text-sm text-[var(--panel-muted)]">No hay mensajes todavía.</p>
         ) : (
           messages.map((m) => (
             <div
@@ -75,12 +77,24 @@ export function TelegramConversacion({
               className={`flex ${m.direction === 'out' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-[75%] rounded-lg px-3 py-2 text-sm ${
-                  m.direction === 'out' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-900'
+                className={`max-w-[75%] rounded-lg px-3 py-2 text-sm border ${
+                  m.direction === 'out'
+                    ? 'bg-[var(--acc)] text-[var(--panel-bg)] border-transparent'
+                    : isOperatorTab
+                    ? 'bg-[var(--acc-light)] text-[#0a0a0a] border-transparent'
+                    : 'bg-[var(--panel-bg)] text-[var(--panel-text)] border-[var(--line)]'
                 }`}
               >
                 <p className="whitespace-pre-wrap break-words">{m.text}</p>
-                <p className={`mt-1 text-[10px] ${m.direction === 'out' ? 'text-emerald-100' : 'text-gray-500'}`}>
+                <p
+                  className={`mt-1 text-[10px] ${
+                    m.direction === 'out'
+                      ? 'text-[var(--panel-bg)]/75'
+                      : isOperatorTab
+                      ? 'text-[#0a0a0a]/70'
+                      : 'text-[var(--panel-muted)]'
+                  }`}
+                >
                   {hhmm(m.createdAt)}
                   {m.direction === 'out' && m.providerMessageId == null ? ' · pendiente' : ''}
                 </p>
@@ -91,11 +105,11 @@ export function TelegramConversacion({
         <div ref={endRef} />
       </div>
 
-      <div className="border-t border-gray-200 p-3">
+      <div className="border-t border-[var(--line)] p-3">
         <div className="flex items-end gap-2">
           <textarea
             aria-label="Escribe una respuesta"
-            className="min-h-[42px] flex-1 resize-none rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+            className="min-h-[42px] flex-1 resize-none rounded-md border border-[var(--line)] bg-[var(--panel-bg)] text-[var(--panel-text)] px-3 py-2 text-sm focus:border-[var(--acc)] focus:outline-none placeholder-[var(--panel-muted)]"
             placeholder="Escribe una respuesta…"
             rows={1}
             value={draft}

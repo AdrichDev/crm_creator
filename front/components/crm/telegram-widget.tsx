@@ -36,15 +36,15 @@ export function TelegramWidget() {
           role="dialog"
           aria-label="Conversaciones de Minion"
           data-testid="telegram-widget-panel"
-          className="fixed bottom-24 right-5 z-50 flex h-[70vh] max-h-[560px] w-[min(92vw,380px)] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#111]"
+          className="fixed bottom-24 right-5 z-50 flex h-[70vh] max-h-[560px] w-[min(92vw,380px)] flex-col overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--panel-card)] text-[var(--panel-text)] shadow-2xl"
         >
-          <div className="flex items-center justify-between gap-2 border-b border-gray-200 bg-emerald-600 px-4 py-3 text-white dark:border-white/10">
+          <div className="flex items-center justify-between gap-2 border-b border-[var(--line)] bg-[var(--acc)] px-4 py-3 text-[var(--panel-bg)]">
             <div className="flex min-w-0 items-center gap-2">
               {view === 'thread' && (
                 <button
                   onClick={() => setView('list')}
                   aria-label="Volver a la lista"
-                  className="rounded p-1 hover:bg-emerald-700"
+                  className="rounded p-1 hover:bg-current/10"
                 >
                   <ArrowLeft className="h-4 w-4" />
                 </button>
@@ -57,15 +57,33 @@ export function TelegramWidget() {
             <button
               onClick={() => setOpen(false)}
               aria-label="Cerrar panel de Minion"
-              className="rounded p-1 hover:bg-emerald-700"
+              className="rounded p-1 hover:bg-current/10"
             >
               <X className="h-4 w-4" />
             </button>
           </div>
 
-          <div className="flex border-b border-gray-200 text-sm dark:border-white/10">
-            <button onClick={() => setView('operator')} className={`flex-1 px-3 py-2 ${view === 'operator' ? 'bg-emerald-50 font-semibold text-emerald-700' : ''}`}>OpenClaw</button>
-            <button onClick={() => setView('list')} className={`flex-1 px-3 py-2 ${view !== 'operator' ? 'bg-emerald-50 font-semibold text-emerald-700' : ''}`}>CRM</button>
+          <div className="flex border-b border-[var(--line)] text-sm">
+            <button
+              onClick={() => setView('operator')}
+              className={`flex-1 px-3 py-2 transition-colors ${
+                view === 'operator'
+                  ? 'bg-[var(--hover-bg)] font-semibold text-[var(--hover-text)]'
+                  : 'text-[var(--panel-muted)] hover:text-[var(--panel-text)]'
+              }`}
+            >
+              OpenClaw
+            </button>
+            <button
+              onClick={() => setView('list')}
+              className={`flex-1 px-3 py-2 transition-colors ${
+                view !== 'operator'
+                  ? 'bg-[var(--hover-bg)] font-semibold text-[var(--hover-text)]'
+                  : 'text-[var(--panel-muted)] hover:text-[var(--panel-text)]'
+              }`}
+            >
+              CRM
+            </button>
           </div>
 
           <div className="min-h-0 flex-1">
@@ -78,7 +96,7 @@ export function TelegramWidget() {
                 <EmptyState title="No se pudo cargar" hint={error} />
               </div>
             ) : view === 'operator' ? (
-              <TelegramConversacion conversation={operator.conversation} messages={operator.messages} loading={operator.loading} sending={operator.sending} onSend={operator.send} />
+              <TelegramConversacion isOperatorTab conversation={operator.conversation} messages={operator.messages} loading={operator.loading} sending={operator.sending} onSend={operator.send} />
             ) : view === 'list' ? (
               <div className="h-full overflow-y-auto" data-testid="telegram-widget-conversations">
                 {conversations.length === 0 ? (
@@ -92,7 +110,7 @@ export function TelegramWidget() {
                       onClick={() => openConversation(c.conversationId)}
                       className="flex w-full items-start gap-2 border-b border-gray-100 px-4 py-3 text-left hover:bg-[var(--hover-bg)] dark:border-white/5"
                     >
-                      <MessageCircle className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                      <MessageCircle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--acc)]" />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-medium">{c.remitente || c.conversationId}</span>
                         <span className="block truncate text-xs text-gray-500">{c.lastText}</span>
@@ -119,7 +137,7 @@ export function TelegramWidget() {
         aria-label={open ? 'Cerrar Minion' : 'Abrir Minion'}
         aria-expanded={open}
         data-testid="telegram-widget-chip"
-        className="fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2"
+        className="fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-[var(--acc)] text-[var(--panel-bg)] shadow-lg transition hover:bg-[var(--acc-light)] focus:outline-none focus:ring-2 focus:ring-[var(--acc)] focus:ring-offset-2"
       >
         {open ? <X className="h-6 w-6" /> : <MinionIcon className="h-7 w-7" />}
       </button>
