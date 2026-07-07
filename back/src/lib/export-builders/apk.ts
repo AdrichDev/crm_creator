@@ -1,105 +1,228 @@
 /**
  * back/src/lib/export-builders/apk.ts
  *
- * Builds an Android .apk via Capacitor + Gradle.
- * RF-04: apk = createTempCopy → next build → cap sync android → gradlew assembleRelease → copy.
+ * Android ZIP = app Next.js estatica empaquetada con Capacitor + Gradle.
  *
- * RNF-02: shell: false in ALL spawn calls.
- * spawnAsync is implemented inline (no separate utility file).
+ * Flujo (D7 del design):
+ *   createTempCopy → applyExportCompat (quita app/api y paginas dinamicas de la
+ *   copia, incompatibles con output:'export') → personalizar capacitor.config.ts
+ *   de la copia (appId derivado del slug, appName = nombre del tenant) → npm ci
+ *   → `next build` con NEXT_OUTPUT_MODE=export (genera out/) → `npx cap sync
+ *   android` → escribir android/local.properties (sdk.dir) → ensureKeystore →
+ *   `gradlew.bat assembleRelease -Prel... --no-daemon` (firma release) →
+ *   localizar APK en android/app/build/outputs/apk/release/ → ensamblar
+ *   `<slug>-android.zip` con archiver:
+ *       mobile-src/          fuente del tmp (incluye android/, sin builds/deps)
+ *       app-release.apk      APK firmado
+ *       README.md            plantilla readme-android.md
+ *
+ * Emite progreso granular y limpia la copia temporal en finally.
+ *
+ * NOTA (Fase 5): se elimina la llamada a `checkToolchain('apk')` heredada; el
+ * preflight por proyecto se reintroduce en la Fase 6 (export-preflight reescrito
+ * + autoinstall). Igual que hizo exe.ts, este builder ya no consulta el PATH.
+ *
+ * RNF-02: shell: false en todos los spawn (spawnAsync envuelve `.bat`/`.cmd`).
  */
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { spawn } from 'node:child_process';
-import { checkToolchain } from '../export-preflight.js';
-import { createTempCopy, cleanupTempCopy } from '../export-temp-copy.js';
+import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+import { spawn as nodeSpawn } from 'node:child_process';
+import { spawnAsync } from '../spawn-async.js';
+import { applyExportCompat as defaultApplyExportCompat } from '../export-compat.js';
+import {
+  createTempCopy as defaultCreateTempCopy,
+  cleanupTempCopy as defaultCleanupTempCopy,
+  runNpmCi as defaultRunNpmCi,
+} from '../export-temp-copy.js';
+import { ensureKeystore as defaultEnsureKeystore } from '../export-keystore.js';
+import { checkToolchain as defaultCheckToolchain } from '../export-preflight.js';
+import { ensureAndroidToolchain as defaultEnsureAndroidToolchain } from '../export-autoinstall.js';
 import type { TenantConfig } from '../../../../shared/generate/tenant-types.js';
 import type { Emitter, BuildResult } from './web-zip.js';
 
 export type { Emitter, BuildResult };
 
-// ---------------------------------------------------------------------------
-// Internal: spawnAsync
-// ---------------------------------------------------------------------------
+// `archiver` publica sus tipos con `export =`; se carga via createRequire para
+// obtener la funcion invocable de forma portable con moduleResolution Bundler.
+const require = createRequire(import.meta.url);
+type Archiver = import('archiver').Archiver;
+type EntryData = import('archiver').EntryData;
+type ArchiverFactory = (
+  format: 'zip' | 'tar',
+  options?: { zlib?: { level?: number } },
+) => Archiver;
+const archiver = require('archiver') as ArchiverFactory;
 
-interface SpawnOpts {
-  cwd?: string;
-  signal?: AbortSignal;
-  onStdoutLine?: (line: string) => void;
+const __dirname_ = path.dirname(fileURLToPath(import.meta.url));
+
+// Segmentos que NUNCA entran en `mobile-src/` (builds y dependencias, tanto de
+// front como del proyecto android/).
+const MOBILE_EXCLUDED = new Set(['node_modules', '.next', 'out', 'build', '.gradle']);
+
+function toSlug(name: string): string {
+  return name.toLowerCase().replace(/\s+/g, '-');
 }
 
-interface SpawnResult {
-  exitCode: number;
-  stdout: string;
-  stderr: string;
+/** Deriva un applicationId Android valido a partir del slug del tenant. */
+function toAppId(slug: string): string {
+  const suffix = slug.replace(/[^a-z0-9]/g, '') || 'app';
+  return `com.operaos.${suffix}`;
+}
+
+/** Lee la plantilla README y sustituye los placeholders del tenant. */
+function renderReadme(productName: string): string {
+  const templatePath = path.join(__dirname_, '../export-templates/readme-android.md');
+  const template = fs.readFileSync(templatePath, 'utf8');
+  return template.replace(/\{\{PRODUCT_NAME\}\}/g, productName);
+}
+
+/** Escapa un texto para insertarlo como contenido de un elemento XML. */
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/'/g, '&apos;')
+    .replace(/"/g, '&quot;');
 }
 
 /**
- * Spawn a child process with shell: false, capturing stdout/stderr.
- * Abort signal triggers SIGTERM followed by SIGKILL after 3 seconds.
+ * Reescribe `capacitor.config.ts` de la copia con el appId/appName del tenant.
+ * Los valores se serializan con JSON.stringify para tolerar comillas/acentos en
+ * el nombre del negocio. Ademas alinea `applicationId` y `namespace` en
+ * `android/app/build.gradle` (cap sync NO propaga el appId al proyecto android
+ * ya generado, solo lo fija en `cap add`) y el nombre visible de la app en
+ * `strings.xml` (bug detectado en gate 5.V: ni capacitor.config ni cap sync
+ * tocan `app_name`/`title_activity_main`, asi que el APK instalado mostraba
+ * "OperaOS" en vez del nombre del negocio).
  */
-async function spawnAsync(
-  cmd: string,
-  args: string[],
-  opts: SpawnOpts = {},
-): Promise<SpawnResult> {
-  return new Promise<SpawnResult>((resolve, reject) => {
-    const child = spawn(cmd, args, {
-      cwd: opts.cwd,
-      shell: false,
-      stdio: 'pipe',
+function customizeCapacitorConfig(
+  frontDir: string,
+  appId: string,
+  appName: string,
+): void {
+  const configPath = path.join(frontDir, 'capacitor.config.ts');
+  const content =
+    `import type { CapacitorConfig } from '@capacitor/cli';\n\n` +
+    `// Config horneada por el exportador para este tenant.\n` +
+    `const config: CapacitorConfig = {\n` +
+    `  appId: ${JSON.stringify(appId)},\n` +
+    `  appName: ${JSON.stringify(appName)},\n` +
+    `  webDir: 'out',\n` +
+    `};\n\n` +
+    `export default config;\n`;
+  fs.writeFileSync(configPath, content, 'utf8');
+
+  // Alinear applicationId/namespace del proyecto android/ ya scaffoldeado.
+  const gradlePath = path.join(frontDir, 'android', 'app', 'build.gradle');
+  if (fs.existsSync(gradlePath)) {
+    let gradle = fs.readFileSync(gradlePath, 'utf8');
+    gradle = gradle.replace(/namespace\s+"[^"]*"/, `namespace "${appId}"`);
+    gradle = gradle.replace(/applicationId\s+"[^"]*"/, `applicationId "${appId}"`);
+    fs.writeFileSync(gradlePath, gradle, 'utf8');
+  }
+
+  // Nombre visible de la app (label del launcher/activity), leido por Android
+  // desde los recursos de strings, NO desde capacitor.config.ts.
+  const stringsPath = path.join(
+    frontDir,
+    'android',
+    'app',
+    'src',
+    'main',
+    'res',
+    'values',
+    'strings.xml',
+  );
+  if (fs.existsSync(stringsPath)) {
+    let strings = fs.readFileSync(stringsPath, 'utf8');
+    const escapedName = escapeXml(appName);
+    strings = strings.replace(
+      /(<string name="app_name">)[^<]*(<\/string>)/,
+      `$1${escapedName}$2`,
+    );
+    strings = strings.replace(
+      /(<string name="title_activity_main">)[^<]*(<\/string>)/,
+      `$1${escapedName}$2`,
+    );
+    fs.writeFileSync(stringsPath, strings, 'utf8');
+  }
+}
+
+/** Escribe android/local.properties con la ruta del SDK (backslashes escapados). */
+function writeLocalProperties(androidDir: string): void {
+  const sdkDir =
+    process.env.ANDROID_HOME ||
+    path.join(process.env.LOCALAPPDATA ?? '', 'Android', 'Sdk');
+  // Formato .properties: los backslashes de Windows deben ir escapados (\\).
+  const escaped = sdkDir.replace(/\\/g, '\\\\');
+  fs.writeFileSync(
+    path.join(androidDir, 'local.properties'),
+    `sdk.dir=${escaped}\n`,
+    'utf8',
+  );
+}
+
+/** Localiza el APK de release generado por Gradle. */
+function locateApk(releaseDir: string): string {
+  if (!fs.existsSync(releaseDir)) {
+    throw new Error(`No existe el directorio de salida ${releaseDir}`);
+  }
+  const apk = fs.readdirSync(releaseDir).find((f) => f.toLowerCase().endsWith('.apk'));
+  if (!apk) throw new Error(`No se encontro el .apk en ${releaseDir}`);
+  return path.join(releaseDir, apk);
+}
+
+/** Ensambla el ZIP final con archiver (streaming). */
+async function assembleZip(
+  frontDir: string,
+  outputPath: string,
+  artifacts: { apk: string; readme: string },
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const outStream = fs.createWriteStream(outputPath);
+    const archive = archiver('zip', { zlib: { level: 9 } });
+
+    outStream.on('close', () => resolve());
+    outStream.on('error', reject);
+    archive.on('error', reject);
+    archive.on('warning', (err: NodeJS.ErrnoException) => {
+      if (err.code !== 'ENOENT') reject(err);
     });
 
-    let stdoutBuf = '';
-    let stderrBuf = '';
-    let lineBuffer = '';
+    archive.pipe(outStream);
 
-    child.stdout.on('data', (chunk: Buffer) => {
-      const text = chunk.toString();
-      stdoutBuf += text;
-      if (opts.onStdoutLine) {
-        lineBuffer += text;
-        const lines = lineBuffer.split('\n');
-        lineBuffer = lines.pop() ?? '';
-        for (const line of lines) {
-          opts.onStdoutLine(line);
-        }
-      }
+    // mobile-src/ — fuente (incluye android/) sin builds ni node_modules.
+    archive.directory(frontDir, 'mobile-src', (entry: EntryData) => {
+      const segs = entry.name.split(/[\\/]/);
+      return segs.some((s) => MOBILE_EXCLUDED.has(s)) ? false : entry;
     });
 
-    child.stderr.on('data', (chunk: Buffer) => {
-      stderrBuf += chunk.toString();
-    });
+    // APK firmado + README en la raiz del ZIP.
+    archive.file(artifacts.apk, { name: 'app-release.apk' });
+    archive.append(artifacts.readme, { name: 'README.md' });
 
-    let aborted = false;
-
-    if (opts.signal) {
-      const onAbort = (): void => {
-        aborted = true;
-        try { child.kill('SIGTERM'); } catch { /* process may already be gone */ }
-        setTimeout(() => {
-          try { child.kill('SIGKILL'); } catch { /* already dead */ }
-        }, 3000);
-      };
-
-      if (opts.signal.aborted) {
-        onAbort();
-      } else {
-        opts.signal.addEventListener('abort', onAbort, { once: true });
-      }
-    }
-
-    child.on('error', (err) => reject(err));
-
-    child.on('close', (code) => {
-      void aborted; // suppress unused warning — used for SIGKILL side effect
-      resolve({
-        exitCode: code ?? (aborted ? 1 : 0),
-        stdout: stdoutBuf,
-        stderr: stderrBuf,
-      });
-    });
+    void archive.finalize();
   });
+}
+
+// ---------------------------------------------------------------------------
+// Dependencias inyectables (para test)
+// ---------------------------------------------------------------------------
+
+export interface ApkDeps {
+  spawn?: typeof nodeSpawn;
+  createTempCopy?: typeof defaultCreateTempCopy;
+  cleanupTempCopy?: typeof defaultCleanupTempCopy;
+  runNpmCi?: typeof defaultRunNpmCi;
+  applyExportCompat?: typeof defaultApplyExportCompat;
+  ensureKeystore?: typeof defaultEnsureKeystore;
+  checkToolchain?: typeof defaultCheckToolchain;
+  ensureAndroidToolchain?: typeof defaultEnsureAndroidToolchain;
+  platform?: NodeJS.Platform;
 }
 
 // ---------------------------------------------------------------------------
@@ -107,13 +230,14 @@ async function spawnAsync(
 // ---------------------------------------------------------------------------
 
 /**
- * Build an Android .apk for the given tenant configuration.
+ * Construye `<slug>-android.zip`: APK firmado (Capacitor + Gradle) + fuente.
  *
- * @param config    - Tenant configuration baked into the copied front project.
- * @param frontDir  - Absolute path to the front/ project directory.
- * @param outputDir - Directory where the resulting .apk will be placed.
- * @param emit      - Event emitter for streaming progress to the client.
- * @param signal    - Optional AbortSignal to cancel the build mid-flight.
+ * @param config    - Configuracion del tenant horneada en la copia.
+ * @param frontDir  - Ruta absoluta al proyecto front/.
+ * @param outputDir - Carpeta donde se escribe el .zip.
+ * @param emit      - Emisor de progreso.
+ * @param signal    - Señal de aborto opcional.
+ * @param deps      - Inyeccion de dependencias (para test).
  */
 export async function buildApk(
   config: TenantConfig,
@@ -121,130 +245,145 @@ export async function buildApk(
   outputDir: string,
   emit: Emitter,
   signal?: AbortSignal,
+  deps: ApkDeps = {},
 ): Promise<BuildResult> {
-  // Preflight: ensure java and gradle/gradlew are available.
-  const preflight = await checkToolchain('apk');
-  if (!preflight.ok) {
-    emit({ type: 'format-error', format: 'apk', message: preflight.message });
-    return { success: false, error: preflight.message };
-  }
+  const createTempCopy = deps.createTempCopy ?? defaultCreateTempCopy;
+  const cleanupTempCopy = deps.cleanupTempCopy ?? defaultCleanupTempCopy;
+  const runNpmCi = deps.runNpmCi ?? defaultRunNpmCi;
+  const applyExportCompat = deps.applyExportCompat ?? defaultApplyExportCompat;
+  const ensureKeystore = deps.ensureKeystore ?? defaultEnsureKeystore;
+  const checkToolchain = deps.checkToolchain ?? defaultCheckToolchain;
+  const ensureAndroidToolchain = deps.ensureAndroidToolchain ?? defaultEnsureAndroidToolchain;
+  const spawnFn = deps.spawn;
+  const platform = deps.platform ?? process.platform;
 
-  let tmpDir: string | undefined;
+  const productName = config.business.name;
+  const slug = toSlug(productName);
+  const appId = toAppId(slug);
+
+  let rootDir: string | undefined;
 
   try {
+    // Preflight POR PROYECTO (Fase 6.3): herramientas del proyecto, no PATH.
+    // Se ejecuta sobre el frontDir REAL antes de crear la copia temporal.
+    emit({ type: 'progress', format: 'apk', step: 'Verificando toolchain...', pct: 1 });
+    let pf = await checkToolchain('apk', frontDir, { platform });
+
+    if (pf.missing.includes('gradlew')) {
+      // El wrapper de Gradle deberia estar commiteado (Fase 5.1). Si falta, el
+      // repositorio esta incompleto: NO es auto-instalable.
+      throw new Error(
+        'El proyecto no incluye el wrapper de Gradle ' +
+          '(android/gradlew.bat + gradle/wrapper/gradle-wrapper.jar). ' +
+          'El repositorio esta incompleto y no puede auto-repararse.',
+      );
+    }
+
+    const autoMissing = pf.missing.filter((m) => m === 'jdk' || m === 'sdk');
+    if (autoMissing.length > 0) {
+      const install = await ensureAndroidToolchain(autoMissing, emit, signal, { platform });
+      if (!install.ok) {
+        throw new Error(install.instructions ?? 'No se pudo instalar la toolchain de Android.');
+      }
+      // Re-preflight: confirmar que la instalacion resolvio lo ausente.
+      pf = await checkToolchain('apk', frontDir, { platform });
+      const stillMissing = pf.missing.filter((m) => m === 'jdk' || m === 'sdk');
+      if (stillMissing.length > 0) {
+        throw new Error(
+          'Tras la instalacion automatica sigue faltando: ' +
+            stillMissing.join(', ') +
+            '. Instala manualmente los requisitos y reintenta la exportacion.',
+        );
+      }
+    }
+
     emit({ type: 'progress', format: 'apk', step: 'Copiando proyecto...', pct: 5 });
-    tmpDir = await createTempCopy(frontDir, config);
+    const copy = await createTempCopy(frontDir, config);
+    rootDir = copy.rootDir;
+    const tmpFrontDir = copy.frontDir;
 
-    // Step 1: next build (pct 10 → 40)
-    emit({ type: 'progress', format: 'apk', step: 'Compilando (next build)...', pct: 10 });
+    // Compat output:'export' — quita app/api y paginas dinamicas de la copia.
+    const removed = applyExportCompat(tmpFrontDir);
+    emit({
+      type: 'progress',
+      format: 'apk',
+      step: `Preparando salida estatica (${removed.length} rutas excluidas)...`,
+      pct: 10,
+    });
 
-    let nextPct = 10;
-    const { exitCode: nextCode, stderr: nextStderr } = await spawnAsync(
-      'npx',
-      ['next', 'build', '--no-lint'],
-      {
-        cwd: tmpDir,
-        signal,
-        onStdoutLine: () => {
-          if (nextPct < 40) {
-            nextPct = Math.min(40, nextPct + 2);
-            emit({
-              type: 'progress',
-              format: 'apk',
-              step: 'Compilando (next build)...',
-              pct: nextPct,
-            });
-          }
-        },
-      },
-    );
+    // Personaliza el appId/appName de Capacitor para este tenant.
+    customizeCapacitorConfig(tmpFrontDir, appId, productName);
 
-    if (nextCode !== 0) {
-      throw new Error('next build failed: ' + nextStderr.slice(-500));
+    // Instala dependencias — cwd = front/ del tmp (necesita @capacitor/cli local).
+    await runNpmCi(tmpFrontDir, emit, signal);
+
+    emit({ type: 'progress', format: 'apk', step: 'Compilando (next build export)...', pct: 35 });
+    const nextRes = await spawnAsync('npx', ['next', 'build'], {
+      cwd: tmpFrontDir,
+      signal,
+      spawn: spawnFn,
+      platform,
+      env: { ...process.env, NEXT_OUTPUT_MODE: 'export' },
+    });
+    if (nextRes.exitCode !== 0) {
+      throw new Error('next build (export) fallo: ' + nextRes.stderr.slice(-500));
     }
 
-    // Step 2: Capacitor sync (pct 40 → 50)
-    emit({ type: 'progress', format: 'apk', step: 'Sincronizando Capacitor...', pct: 40 });
-
-    const { exitCode: capCode, stderr: capStderr } = await spawnAsync(
-      'npx',
-      ['cap', 'sync', 'android'],
-      { cwd: tmpDir, signal },
-    );
-
-    if (capCode !== 0) {
-      throw new Error('cap sync android failed: ' + capStderr.slice(-500));
+    emit({ type: 'progress', format: 'apk', step: 'Sincronizando Capacitor...', pct: 50 });
+    const capRes = await spawnAsync('npx', ['cap', 'sync', 'android'], {
+      cwd: tmpFrontDir,
+      signal,
+      spawn: spawnFn,
+      platform,
+      env: process.env,
+    });
+    if (capRes.exitCode !== 0) {
+      throw new Error('cap sync android fallo: ' + capRes.stderr.slice(-500));
     }
 
-    // Step 3: Gradle assembleRelease (pct 50 → 90)
-    emit({ type: 'progress', format: 'apk', step: 'Compilando APK (Gradle)...', pct: 50 });
+    const androidDir = path.join(tmpFrontDir, 'android');
+    writeLocalProperties(androidDir);
 
-    const androidDir = path.join(tmpDir, 'android');
+    // Keystore de release (genera si falta, reutiliza si existe).
+    const keystore = await ensureKeystore(emit, { spawn: spawnFn, platform });
 
-    // Use gradlew.bat on Windows (shell: false requires the bat shim via cmd),
-    // or ./gradlew on Unix. Always append --no-daemon.
-    let gradlePct = 50;
-    const isWin = process.platform === 'win32';
-    const gradleCmd = isWin ? 'cmd' : './gradlew';
-    const gradleArgs = isWin
-      ? ['/c', 'gradlew.bat', 'assembleRelease', '--no-daemon']
-      : ['assembleRelease', '--no-daemon'];
-
-    const { exitCode: gradleCode, stderr: gradleStderr } = await spawnAsync(
-      gradleCmd,
-      gradleArgs,
-      {
-        cwd: androidDir,
-        signal,
-        onStdoutLine: () => {
-          if (gradlePct < 90) {
-            gradlePct = Math.min(90, gradlePct + 2);
-            emit({
-              type: 'progress',
-              format: 'apk',
-              step: 'Compilando APK (Gradle)...',
-              pct: gradlePct,
-            });
-          }
-        },
-      },
+    emit({ type: 'progress', format: 'apk', step: 'Compilando APK (Gradle)...', pct: 55 });
+    const gradlew = path.join(androidDir, platform === 'win32' ? 'gradlew.bat' : 'gradlew');
+    const gradlewCmd = platform === 'win32' ? gradlew : './gradlew';
+    const gradleRes = await spawnAsync(
+      gradlewCmd,
+      [
+        'assembleRelease',
+        `-PrelKeystore=${keystore.keystorePath}`,
+        `-PrelAlias=${keystore.alias}`,
+        `-PrelStorePass=${keystore.storePassword}`,
+        `-PrelKeyPass=${keystore.keyPassword}`,
+        '--no-daemon',
+      ],
+      { cwd: androidDir, signal, spawn: spawnFn, platform, env: process.env },
     );
-
-    if (gradleCode !== 0) {
-      throw new Error('gradlew assembleRelease failed: ' + gradleStderr.slice(-500));
+    if (gradleRes.exitCode !== 0) {
+      throw new Error('gradlew assembleRelease fallo: ' + gradleRes.stderr.slice(-500));
     }
 
-    emit({ type: 'progress', format: 'apk', step: 'Copiando artefacto...', pct: 95 });
+    emit({ type: 'progress', format: 'apk', step: 'Localizando APK...', pct: 88 });
+    const releaseDir = path.join(androidDir, 'app', 'build', 'outputs', 'apk', 'release');
+    const apkPath = locateApk(releaseDir);
 
-    // Locate the generated .apk
-    const apkDir = path.join(
-      tmpDir,
-      'android',
-      'app',
-      'build',
-      'outputs',
-      'apk',
-      'release',
-    );
-    const apkFiles = fs.readdirSync(apkDir);
-    const apkFile = apkFiles.find((f) => f.endsWith('.apk'));
-    if (!apkFile) {
-      throw new Error('No .apk file found in ' + apkDir);
-    }
-
+    emit({ type: 'progress', format: 'apk', step: 'Empaquetando ZIP...', pct: 92 });
     fs.mkdirSync(outputDir, { recursive: true });
-    const outputPath = path.join(outputDir, apkFile);
-    fs.copyFileSync(path.join(apkDir, apkFile), outputPath);
+    const outputPath = path.join(outputDir, `${slug}-android.zip`);
+    const readme = renderReadme(productName);
 
+    await assembleZip(tmpFrontDir, outputPath, { apk: apkPath, readme });
+
+    emit({ type: 'progress', format: 'apk', step: 'Guardando archivo...', pct: 100, outputPath });
     return { success: true, outputPath };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     emit({ type: 'format-error', format: 'apk', message: error });
     return { success: false, error };
   } finally {
-    // Always clean up the temporary directory — even on error or abort.
-    if (tmpDir) {
-      cleanupTempCopy(tmpDir);
-    }
+    if (rootDir) cleanupTempCopy(rootDir);
   }
 }

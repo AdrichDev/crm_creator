@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation';
+import { resolveHomeRedirectPath } from '@/lib/config/home-redirect';
 
 // La consola/dashboard vive en /dashboard. La raíz redirige allí.
-// El flujo por tenant generado (→ /panel o /login) lo resuelve la propia
-// página de dashboard una vez montada.
+// App exportada con tenant horneado (BAKED_TENANT_CONFIG): la consola/creador
+// NO se expone — la raíz va directa a /panel (la superficie del tenant).
 export default function Home() {
-  redirect('/dashboard');
+  redirect(resolveHomeRedirectPath());
 }

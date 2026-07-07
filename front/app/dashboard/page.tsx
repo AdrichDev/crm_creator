@@ -6,6 +6,7 @@ import { isAuthed, logout } from '@/lib/auth/session';
 import { useProjects } from '@/lib/tenant-config-context';
 import { ThemeToggle } from '@/components/layout/theme-toggle';
 import { DashboardTabs } from '@/components/dashboard/dashboard-tabs';
+import { ExportJobProvider } from '@/lib/export/export-job-context';
 
 export default function Consola() {
   const { ready, projects, config, openProject, deleteProject } = useProjects();
@@ -86,14 +87,16 @@ export default function Consola() {
         </div>
 
         {/* Main tabbed content: Dashboard (cards) + Exportar (multi-format export) */}
-        <DashboardTabs
-          projects={projects}
-          busy={busy}
-          onOpen={abrir}
-          onEdit={editar}
-          onDelete={deleteProject}
-          onNew={nuevo}
-        />
+        <ExportJobProvider>
+          <DashboardTabs
+            projects={projects}
+            busy={busy}
+            onOpen={abrir}
+            onEdit={editar}
+            onDelete={deleteProject}
+            onNew={nuevo}
+          />
+        </ExportJobProvider>
       </main>
     </div>
   );

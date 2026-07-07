@@ -5,10 +5,10 @@ import type { Project } from '@/lib/tenant-config-context';
 import { MODULES } from '@/lib/config/modules';
 import { VERTICAL_MAP } from '@/lib/config/verticals';
 import { useDialog } from '@/components/ui/dialog-provider';
-import { useExportStream } from '@/lib/export/use-export-stream';
-import type { BuildFormat } from '@/lib/export/use-export-stream';
+import { useExportJobContext } from '@/lib/export/export-job-context';
+import type { BuildFormat } from '@/lib/export/types';
 import { ExportTable } from './export-table';
-import { ExportProgress } from './export-progress';
+import { ExportHeaderProgress } from './export-header-progress';
 import { Plus, Pencil, Trash2, FolderOpen } from 'lucide-react';
 
 type Tab = 'dashboard' | 'exportar';
@@ -37,13 +37,7 @@ export function DashboardTabs({
   const [page, setPage] = useState(0);
   const dialog = useDialog();
 
-  const {
-    events: exportEvents,
-    isRunning: isExporting,
-    start: startExport,
-    reset: resetExport,
-  } = useExportStream();
-  const [exportFormats, setExportFormats] = useState<BuildFormat[]>([]);
+  const { isRunning: isExporting, start: startExport } = useExportJobContext();
 
   // crm-01, crm-02, … estable por fecha de creación
   const codeMap = useMemo(() => {
@@ -67,13 +61,7 @@ export function DashboardTabs({
   }
 
   function handleExport(projectId: string, formats: BuildFormat[], outputDir: string) {
-    setExportFormats(formats);
-    startExport({ projectId, formats, outputDir });
-  }
-
-  function handleCloseProgress() {
-    resetExport();
-    setExportFormats([]);
+    void startExport({ projectId, formats, outputDir });
   }
 
   function handleDelete(id: string) {
@@ -87,8 +75,10 @@ export function DashboardTabs({
 
   return (
     <div>
-      {/* Tab labels — no background, just labels + active indicator */}
-      <div className="flex" style={{ gap: '2px' }}>
+      {/* Tab labels — no background, just labels + active indicator.
+          La barra de progreso del exportador se ancla a la derecha y es
+          visible en cualquier pestaña mientras haya un job. */}
+      <div className="flex items-end" style={{ gap: '2px' }}>
         {(['dashboard', 'exportar'] as Tab[]).map((t, i) => {
           const active = tab === t;
           return (
@@ -123,6 +113,11 @@ export function DashboardTabs({
             </button>
           );
         })}
+
+        {/* Barra de progreso global del exportador (visible en toda pestaña) */}
+        <div className="flex flex-1 justify-end pb-1 pl-4">
+          <ExportHeaderProgress />
+        </div>
       </div>
 
       {/* Sheet — the single container that holds all content */}
@@ -292,15 +287,6 @@ export function DashboardTabs({
               isRunning={isExporting}
               onExport={handleExport}
             />
-
-            {exportEvents.length > 0 && (
-              <ExportProgress
-                events={exportEvents}
-                isRunning={isExporting}
-                formats={exportFormats}
-                onClose={handleCloseProgress}
-              />
-            )}
           </div>
         )}
       </div>

@@ -2,6 +2,7 @@
 /.next
 /out
 /build
+/dist-electron
 .DS_Store
 *.tsbuildinfo
 next-env.d.ts

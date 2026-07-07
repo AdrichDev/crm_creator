@@ -5,7 +5,7 @@ import type { Project } from '@/lib/tenant-config-context';
 import { VERTICAL_MAP } from '@/lib/config/verticals';
 import { apiFetch, isApiEnabled } from '@/lib/api/client';
 import type { ClientLite } from '@/lib/clients/picker';
-import type { BuildFormat } from '@/lib/export/use-export-stream';
+import type { BuildFormat } from '@/lib/export/types';
 import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 
 const FORMAT_LABEL: Record<BuildFormat, string> = {
@@ -66,17 +66,23 @@ export function ExportTable({ projects, codeMap, isRunning, onExport }: ExportTa
 
   async function handleExportRow(projectId: string, fmts: Set<BuildFormat>) {
     if (fmts.size === 0 || isRunning || pickingFor) return;
-    let dir = './exports';
+    let dir: string | null = null;
     if (isApiEnabled()) {
+      // Picker OBLIGATORIO: sin carpeta destino elegida no se exporta (AC-4).
       setPickingFor(projectId);
       try {
-        const res = await apiFetch<{ path: string }>('/exports/pick-folder');
-        if (res.path) dir = res.path;
+        const res = await apiFetch<{ path?: string }>('/exports/pick-folder');
+        dir = res?.path ?? null;
       } catch {
-        // Cancelado o sin GUI — exportar al directorio por defecto
+        // Cancelado o sin GUI: se aborta sin POST (nunca outputDir vacio).
+        dir = null;
       } finally {
         setPickingFor(null);
       }
+      if (!dir) return;
+    } else {
+      // Modo dev sin API: directorio por defecto.
+      dir = './exports';
     }
     onExport(projectId, Array.from(fmts), dir);
   }

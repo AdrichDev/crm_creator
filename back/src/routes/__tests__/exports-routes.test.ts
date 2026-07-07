@@ -1,0 +1,182 @@
+/**
+ * back/src/routes/__tests__/exports-routes.test.ts
+ *
+ * Tests del contrato HTTP del exportador (Fase 1, tarea 1.6).
+ * Runner: node --import tsx --test
+ *
+ * Estrategia (patron del repo, ver service-operator.test.ts): BD y job manager se
+ * inyectan como dobles (DI); se ejercita la logica REAL de los handlers sin BD ni
+ * lock. req/res se simulan.
+ */
+
+import { test, describe } from 'node:test';
+import assert from 'node:assert/strict';
+import type { Response } from 'express';
+import {
+  createExportHandler,
+  statusHandler,
+  activeHandler,
+  type ExportsDeps,
+} from '../exports.js';
+import { LockBusyError, type ExportJob } from '../../lib/export-job-manager.js';
+import type { AuthedRequest } from '../../middleware/types.js';
+
+// ── Helpers req/res ──────────────────────────────────────────────────────────
+
+function mockRes() {
+  const res = { statusCode: 200, ended: false } as unknown as Response & {
+    statusCode: number;
+    ended: boolean;
+    body?: unknown;
+    status(code: number): typeof res;
+    json(body: unknown): typeof res;
+    end(): typeof res;
+  };
+  res.status = (code: number) => {
+    res.statusCode = code;
+    return res;
+  };
+  res.json = (body: unknown) => {
+    res.body = body;
+    return res;
+  };
+  res.end = () => {
+    res.ended = true;
+    return res;
+  };
+  return res;
+}
+
+function fakeJob(id: string): ExportJob {
+  return {
+    id,
+    projectId: 'proj-1',
+    formats: ['web-zip'],
+    status: 'running',
+    pct: 10,
+    perFormat: { 'web-zip': { status: 'running', pct: 10 } },
+    createdAt: Date.now(),
+  };
+}
+
+const okDb: ExportsDeps['db'] = {
+  membership: { findFirst: async () => ({ id: 'm-1' }) },
+  businessSetting: { findFirst: async () => ({ datos: { business: { name: 'Demo' } } }) },
+};
+
+// ── POST / → 202 ─────────────────────────────────────────────────────────────
+
+describe('POST /api/exports', () => {
+  test('202 { jobId } con proyecto valido', async () => {
+    const deps: ExportsDeps = {
+      db: okDb,
+      jobs: {
+        startJob: () => fakeJob('job-abc'),
+        getJob: () => undefined,
+        getActiveJob: () => undefined,
+      },
+    };
+    const req = {
+      userId: 'u-1',
+      body: { projectId: 'proj-1', formats: ['web-zip'] },
+    } as unknown as AuthedRequest;
+    const res = mockRes();
+
+    await createExportHandler(deps)(req, res);
+    assert.equal(res.statusCode, 202);
+    assert.deepEqual(res.body, { jobId: 'job-abc' });
+  });
+
+  test('409 si el lock esta ocupado (LockBusyError)', async () => {
+    const deps: ExportsDeps = {
+      db: okDb,
+      jobs: {
+        startJob: () => {
+          throw new LockBusyError();
+        },
+        getJob: () => undefined,
+        getActiveJob: () => undefined,
+      },
+    };
+    const req = {
+      userId: 'u-1',
+      body: { projectId: 'proj-1', formats: ['web-zip'] },
+    } as unknown as AuthedRequest;
+    const res = mockRes();
+
+    await createExportHandler(deps)(req, res);
+    assert.equal(res.statusCode, 409);
+    assert.equal((res.body as { error: { code: string } }).error.code, 'build_in_progress');
+  });
+});
+
+// ── GET /:id/status ──────────────────────────────────────────────────────────
+
+describe('GET /api/exports/:id/status', () => {
+  test('200 con job existente', () => {
+    const deps: ExportsDeps = {
+      db: okDb,
+      jobs: {
+        startJob: () => fakeJob('x'),
+        getJob: (id) => (id === 'job-1' ? fakeJob('job-1') : undefined),
+        getActiveJob: () => undefined,
+      },
+    };
+    const req = { params: { id: 'job-1' } } as unknown as AuthedRequest;
+    const res = mockRes();
+
+    statusHandler(deps)(req as never, res);
+    assert.equal(res.statusCode, 200);
+    assert.equal((res.body as ExportJob).id, 'job-1');
+  });
+
+  test('404 con id inexistente', () => {
+    const deps: ExportsDeps = {
+      db: okDb,
+      jobs: {
+        startJob: () => fakeJob('x'),
+        getJob: () => undefined,
+        getActiveJob: () => undefined,
+      },
+    };
+    const req = { params: { id: 'nope' } } as unknown as AuthedRequest;
+    const res = mockRes();
+
+    statusHandler(deps)(req as never, res);
+    assert.equal(res.statusCode, 404);
+  });
+});
+
+// ── GET /active ──────────────────────────────────────────────────────────────
+
+describe('GET /api/exports/active', () => {
+  test('204 sin job activo', () => {
+    const deps: ExportsDeps = {
+      db: okDb,
+      jobs: {
+        startJob: () => fakeJob('x'),
+        getJob: () => undefined,
+        getActiveJob: () => undefined,
+      },
+    };
+    const res = mockRes();
+    activeHandler(deps)({} as never, res);
+    assert.equal(res.statusCode, 204);
+    assert.equal(res.ended, true);
+  });
+
+  test('200 con job activo', () => {
+    const deps: ExportsDeps = {
+      db: okDb,
+      jobs: {
+        startJob: () => fakeJob('x'),
+        getJob: () => undefined,
+        getActiveJob: () => fakeJob('job-live'),
+      },
+    };
+    const res = mockRes();
+    activeHandler(deps)({} as never, res);
+    assert.equal(res.statusCode, 200);
+    assert.equal((res.body as ExportJob).id, 'job-live');
+  });
+});

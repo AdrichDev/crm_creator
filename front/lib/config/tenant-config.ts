@@ -151,7 +151,22 @@ export const DEFAULT_CONFIG: TenantConfig = {
 export const STORAGE_KEY = 'saas-negocios.config.v1';
 
 /**
- * Config baked in at build time via NEXT_PUBLIC_TENANT_JSON env var.
+ * Decodifica un string base64 (UTF-8 safe) sin depender de `Buffer` — funciona
+ * tanto en el bundle de cliente (navegador) como en SSR (Node), ya que
+ * `atob`/`TextDecoder` son globales en ambos entornos modernos.
+ *
+ * El back codifica NEXT_PUBLIC_TENANT_JSON en base64 (ver export-temp-copy.ts)
+ * porque el JSON crudo en .env.local se corrompe: dotenv trata `#` como inicio
+ * de comentario y la config del tenant siempre trae colores hex (branding.*).
+ */
+function base64ToUtf8(b64: string): string {
+  const binary = atob(b64);
+  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+  return new TextDecoder('utf-8').decode(bytes);
+}
+
+/**
+ * Config baked in at build time via NEXT_PUBLIC_TENANT_JSON env var (base64).
  * Used by the exported standalone app to load its tenant config without localStorage.
  * null when the env var is absent (normal dev/prod CRM flow).
  */
@@ -159,7 +174,7 @@ export const BAKED_TENANT_CONFIG: TenantConfig | null =
   typeof process !== 'undefined' && process.env.NEXT_PUBLIC_TENANT_JSON
     ? (() => {
         try {
-          return JSON.parse(process.env.NEXT_PUBLIC_TENANT_JSON!) as TenantConfig;
+          return JSON.parse(base64ToUtf8(process.env.NEXT_PUBLIC_TENANT_JSON!)) as TenantConfig;
         } catch {
           return null;
         }

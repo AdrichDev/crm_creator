@@ -1,0 +1,35 @@
+# front/electron-builder.yml
+#
+# Configuracion de empaquetado de la app de escritorio (Fase 4 del exportador).
+#
+# El builder del back invoca electron-builder localmente y sobreescribe el
+# nombre del producto por tenant via CLI: `-c.productName=<Nombre del negocio>`
+# (mas explicito que interpolar variables de entorno en este YAML).
+#
+# artifactName usa sufijos deterministas (`-portable.exe` / `-setup.exe`) para
+# que el builder localice los dos ejecutables sin ambiguedad en dist-electron/.
+
+appId: com.operaos.export.desktop
+productName: OperaOS App
+
+directories:
+  output: dist-electron
+
+# Solo se empaqueta el proceso de Electron y la salida estatica de Next (out/).
+files:
+  - electron/**
+  - out/**
+
+win:
+  target:
+    - portable
+    - nsis
+
+portable:
+  artifactName: ${productName}-portable.${ext}
+
+nsis:
+  oneClick: true
+  perMachine: false
+  allowToChangeInstallationDirectory: false
+  artifactName: ${productName}-setup.${ext}
