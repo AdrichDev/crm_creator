@@ -222,3 +222,42 @@ describe('NuevaCitaModal — Acción es un <select> con opciones predefinidas', 
     expect(accionSelect.querySelectorAll('option').length).toBe(ACCIONES_COMERCIALES.length + 1);
   });
 });
+
+// Anotaciones bajo Canal (vertical comerciales): única fuente de `form.comentarios`,
+// se pliega en `notes` vía buildCitaNotes igual que el textarea "Otros" al que sustituye.
+describe('NuevaCitaModal — Anotaciones bajo Canal (mostrarCanal)', () => {
+  it('con mostrarCanal muestra el textarea Anotaciones y NO duplica el de "Otros"', async () => {
+    render(<NuevaCitaModal open mostrarCanal onClose={vi.fn()} onCreated={vi.fn()} />);
+    await flush();
+    expect(screen.getByText('Anotaciones')).toBeInTheDocument();
+    // Un único textarea de comentarios: el de "Otros" queda suprimido en esta vertical.
+    expect(screen.queryByText('Comentarios')).not.toBeInTheDocument();
+  });
+
+  it('el texto escrito en Anotaciones viaja como segmento Comentarios en el POST', async () => {
+    const { container } = render(<NuevaCitaModal open mostrarCanal onClose={vi.fn()} onCreated={vi.fn()} />);
+    await flush();
+
+    const placeholder = screen.getByText('Anotaciones');
+    const textarea = placeholder.parentElement!.querySelector('textarea')!;
+    fireEvent.change(textarea, { target: { value: 'Cliente pide revisar el jardín trasero' } });
+
+    // Servicio + fecha (obligatorios para que carguen los chips de hora, igual que en el
+    // test "sin cliente" — GET /bookings/slots exige ambos).
+    const servicioSelect = (screen.getByRole('option', { name: 'Corte' }) as HTMLOptionElement).closest('select')!;
+    fireEvent.change(servicioSelect, { target: { value: 's1' } });
+    const fechaInput = container.querySelector('input[type="date"]')!;
+    fireEvent.change(fechaInput, { target: { value: '2026-07-20' } });
+    await flush();
+
+    const chip = await screen.findByRole('button', { name: '11:00' });
+    fireEvent.click(chip);
+    fireEvent.click(screen.getByText('Crear cita'));
+    await flush();
+
+    const postCall = apiFetchMock.mock.calls.find((c) => c[0] === '/bookings' && c[1]?.method === 'POST');
+    expect(postCall).toBeDefined();
+    const body = JSON.parse(postCall![1].body);
+    expect(body.notes).toContain('Comentarios: Cliente pide revisar el jardín trasero');
+  });
+});

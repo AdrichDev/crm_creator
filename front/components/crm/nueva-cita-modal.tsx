@@ -95,7 +95,9 @@ export function NuevaCitaModal({ open, onClose, onCreated, mostrarCanal = false 
         body: JSON.stringify({
           locationId, serviceId: form.serviceId, customerId: form.customerId || undefined,
           employeeId: form.employeeId || undefined, start: `${form.fecha}T${form.hora}:00`,
-          notes: mostrarCanal || esOtros ? buildCitaNotes(form.accion, form.canal, esOtros ? form.comentarios : '') : undefined,
+          // Comentarios/Anotaciones: única fuente `form.comentarios`, rellenada desde el
+          // textarea que esté visible (bajo Canal en comerciales, o el de "Otros" en el resto).
+          notes: mostrarCanal || esOtros ? buildCitaNotes(form.accion, form.canal, form.comentarios) : undefined,
         }),
       });
       onCreated(); onClose();
@@ -124,7 +126,9 @@ export function NuevaCitaModal({ open, onClose, onCreated, mostrarCanal = false 
         <ServicioSelect className={inputCls} services={services} value={form.serviceId}
           onChange={(serviceId) => setForm({ ...form, serviceId })} />
 
-        {esOtros && (
+        {/* Vertical comerciales: el textarea de Anotaciones vive bajo Canal (más abajo) y es
+            la ÚNICA fuente de `form.comentarios` — se omite aquí para no duplicarlo. */}
+        {esOtros && !mostrarCanal && (
           <>
             <label className="mt-3 block text-xs font-medium text-[var(--panel-muted)]">Comentarios</label>
             <textarea className={inputCls} rows={2} value={form.comentarios} placeholder="Describe de qué trata esta cita…"
@@ -175,6 +179,10 @@ export function NuevaCitaModal({ open, onClose, onCreated, mostrarCanal = false 
             <select className={inputCls} value={form.canal} onChange={(e) => setForm({ ...form, canal: e.target.value })}>
               {CANALES.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
+
+            <label className="mt-3 block text-xs font-medium text-[var(--panel-muted)]">Anotaciones</label>
+            <textarea className={inputCls} rows={2} value={form.comentarios} placeholder="Anotaciones opcionales…"
+              onChange={(e) => setForm({ ...form, comentarios: e.target.value })} />
           </>
         )}
 
