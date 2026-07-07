@@ -86,8 +86,8 @@ export async function createTempCopy(
   // UTF-8) antes de JSON.parse.
   const json = JSON.stringify(tenantConfig);
   const b64 = Buffer.from(json, 'utf8').toString('base64');
-  const envContent = `NEXT_PUBLIC_TENANT_JSON=${b64}\n`;
-  fs.writeFileSync(path.join(tmpFrontDir, '.env.local'), envContent, 'utf8');
+  const envContent = `\nNEXT_PUBLIC_TENANT_JSON=${b64}\n`;
+  fs.appendFileSync(path.join(tmpFrontDir, '.env.local'), envContent, 'utf8');
 
   return { rootDir, frontDir: tmpFrontDir };
 }
