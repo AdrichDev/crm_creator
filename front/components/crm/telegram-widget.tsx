@@ -6,6 +6,7 @@ import { EmptyState } from '@/components/ui/primitives';
 import { MinionIcon } from '@/components/ui/minion-icon';
 import { TelegramConversacion } from '@/components/crm/telegram-conversacion';
 import { useTelegramInbox } from '@/lib/hooks/use-telegram-inbox';
+import { useOperatorChat } from '@/lib/hooks/use-operator-chat';
 
 // Widget flotante persistente de "Minion" (canal Telegram por debajo): chip fijo
 // abajo-derecha visible en toda la consola. Al pulsarlo abre/cierra un panel de chat
@@ -14,13 +15,14 @@ import { useTelegramInbox } from '@/lib/hooks/use-telegram-inbox';
 
 export function TelegramWidget() {
   const [open, setOpen] = useState(false);
-  const [view, setView] = useState<'list' | 'thread'>('list');
+  const [view, setView] = useState<'operator' | 'list' | 'thread'>('list');
   const apiEnabled = isApiEnabled();
 
   const {
     conversations, activeId, setActiveId, messages, active,
     loadingThread, sending, error, handleSend,
-  } = useTelegramInbox(apiEnabled && open);
+  } = useTelegramInbox(apiEnabled && open && view !== 'operator');
+  const operator = useOperatorChat(apiEnabled && open && view === 'operator');
 
   function openConversation(id: string) {
     setActiveId(id);
@@ -49,7 +51,7 @@ export function TelegramWidget() {
               )}
               <MinionIcon className="h-5 w-5 shrink-0" />
               <span className="truncate font-semibold">
-                {view === 'thread' && active ? (active.remitente || active.conversationId) : 'Minion'}
+                {view === 'operator' ? 'OpenClaw @Estudio3ABot' : view === 'thread' && active ? (active.remitente || active.conversationId) : 'Minion'}
               </span>
             </div>
             <button
@@ -61,6 +63,11 @@ export function TelegramWidget() {
             </button>
           </div>
 
+          <div className="flex border-b border-gray-200 text-sm dark:border-white/10">
+            <button onClick={() => setView('operator')} className={`flex-1 px-3 py-2 ${view === 'operator' ? 'bg-emerald-50 font-semibold text-emerald-700' : ''}`}>OpenClaw</button>
+            <button onClick={() => setView('list')} className={`flex-1 px-3 py-2 ${view !== 'operator' ? 'bg-emerald-50 font-semibold text-emerald-700' : ''}`}>CRM</button>
+          </div>
+
           <div className="min-h-0 flex-1">
             {!apiEnabled ? (
               <div className="p-6">
@@ -70,6 +77,8 @@ export function TelegramWidget() {
               <div className="p-6">
                 <EmptyState title="No se pudo cargar" hint={error} />
               </div>
+            ) : view === 'operator' ? (
+              <TelegramConversacion conversation={operator.conversation} messages={operator.messages} loading={operator.loading} sending={operator.sending} onSend={operator.send} />
             ) : view === 'list' ? (
               <div className="h-full overflow-y-auto" data-testid="telegram-widget-conversations">
                 {conversations.length === 0 ? (

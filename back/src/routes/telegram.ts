@@ -73,7 +73,7 @@ export interface TelegramDb {
 
 /** Proveedor de envío saliente (mcp-plataforma). Devuelve el id del proveedor si lo hay. */
 export interface TelegramSender {
-  send(input: { businessId: string; conversationId: string; text: string }): Promise<{ providerMessageId?: string }>;
+  send(input: { businessId: string; conversationId: string; text: string; clientMessageId?: string | null }): Promise<{ providerMessageId?: string }>;
 }
 
 const serialize = (r: TelegramRow) => ({ ...r, createdAt: r.createdAt.toISOString() });
@@ -89,7 +89,7 @@ export async function webhookHandler(db: TelegramDb, req: Request, res: Response
   try {
     const body = (req.body ?? {}) as {
       businessId?: unknown; conversationId?: unknown; text?: unknown;
-      providerMessageId?: unknown; remitente?: unknown;
+      providerMessageId?: unknown; clientMessageId?: unknown; remitente?: unknown; direction?: unknown;
     };
     const businessId = typeof body.businessId === 'string' ? body.businessId : '';
     const conversationId = typeof body.conversationId === 'string' ? body.conversationId : '';
@@ -101,6 +101,8 @@ export async function webhookHandler(db: TelegramDb, req: Request, res: Response
     if (!business) return res.status(404).json({ error: { code: 'business_not_found', message: 'Negocio no encontrado o inactivo' } });
 
     const providerMessageId = typeof body.providerMessageId === 'string' && body.providerMessageId ? body.providerMessageId : null;
+    const clientMessageId = typeof body.clientMessageId === 'string' && body.clientMessageId ? body.clientMessageId : null;
+    const direction = body.direction === 'out' ? 'out' : 'in';
     const remitente = typeof body.remitente === 'string' && body.remitente ? body.remitente : null;
 
     // Idempotencia de entrada: mismo (negocio, providerMessageId) → no duplicar.
@@ -207,7 +209,7 @@ export async function replyHandler(db: TelegramDb, sender: TelegramSender, req: 
     // Reenvío best-effort al proveedor (mcp-plataforma). Nunca tumba la respuesta.
     let sent = false;
     try {
-      const result = await sender.send({ businessId, conversationId, text });
+      const result = await sender.send({ businessId, conversationId, text, clientMessageId });
       if (result.providerMessageId) {
         const updated = await db.telegramMessage.update({
           where: { id: row.id }, data: { providerMessageId: result.providerMessageId },
@@ -280,14 +282,14 @@ const telegramDb: TelegramDb = {
  * mismo service token del operador. Best-effort: los errores los absorbe replyHandler.
  */
 const telegramSender: TelegramSender = {
-  send: async ({ businessId, conversationId, text }) => {
+  send: async ({ businessId, conversationId, text, clientMessageId }) => {
     const url = process.env.TELEGRAM_SEND_URL ?? '';
     const token = process.env.OPERATOR_SERVICE_TOKEN ?? '';
     if (!url) return {};
     const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-service-token': token },
-      body: JSON.stringify({ businessId, conversationId, text }),
+      body: JSON.stringify({ businessId, conversationId, text, clientMessageId }),
     });
     if (!resp.ok) throw new Error(`proveedor respondió ${resp.status}`);
     const data = (await resp.json().catch(() => ({}))) as { providerMessageId?: unknown; messageId?: unknown };
@@ -307,6 +309,7 @@ telegramRouter.post('/conversations/:conversationId/reply', (req: AuthedRequest,
 // Webhook: token-only. Montado en /service/operator/telegram (ver server.ts).
 export const telegramWebhookRouter = Router();
 telegramWebhookRouter.use(requireOperatorToken());
+telegramWebhookRouter.post('/', (req, res) => webhookHandler(telegramDb, req, res));
 telegramWebhookRouter.post('/webhook', (req, res) => webhookHandler(telegramDb, req, res));
 
 // Reexport de middleware para que index.ts monte la UI tras authenticate+staffOnly

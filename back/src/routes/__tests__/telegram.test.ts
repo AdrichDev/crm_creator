@@ -165,11 +165,13 @@ describe('replyHandler', () => {
         update: async (a) => { updatedWith = a.data; return row({ id: a.where.id, direction: 'out', ...(a.data as Partial<TelegramRow>) }); },
       },
     });
-    const sender: TelegramSender = { send: async () => ({ providerMessageId: 'tg-out-99' }) };
+    let sentInput: Parameters<TelegramSender['send']>[0] | undefined;
+    const sender: TelegramSender = { send: async (input) => { sentInput = input; return { providerMessageId: 'tg-out-99' }; } };
     const res = mockRes();
     await replyHandler(db, sender, mockAuthedReq({ params: { conversationId: 'chat-1' }, body: { text: 'Buenas', clientMessageId: 'ck-1' } }), res);
     assert.equal(res.statusCode, 201);
     assert.equal(created?.direction, 'out');
+    assert.equal(sentInput?.clientMessageId, 'ck-1');
     assert.equal(updatedWith?.providerMessageId, 'tg-out-99');
     assert.equal((res.body as { sent: boolean }).sent, true);
   });

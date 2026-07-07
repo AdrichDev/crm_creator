@@ -33,6 +33,7 @@ import { calendarRouter } from './calendar.js';
 import { integrationsRouter } from './integrations.js';
 import { contactosRouter } from './contactos.js';
 import { telegramRouter } from './telegram.js';
+import { operatorChatRouter } from './operator-chat.js';
 
 export const api = Router();
 
@@ -104,6 +105,7 @@ api.use('/contactos', contactosRouter);
 // Telegram UI (crm-operaos WU5): lista de conversaciones + hilo + respuesta manual del
 // tenant activo. Hereda authenticate + staffOnly. El webhook entrante es OTRO router
 // (telegramWebhookRouter, operator token) y se monta aparte.
+api.use('/operator-chat', operatorChatRouter);
 api.use('/telegram', telegramRouter);
 
 // Custom
