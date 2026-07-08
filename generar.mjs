@@ -329,7 +329,7 @@ Módulos: ${active.join(', ')}
 cd back
 npm install
 npm run prisma:generate
-npm run db:push      # crea las tablas en ${db.name}
+npm run migrate:deploy   # aplica las migraciones en ${db.name}
 npm run seed         # datos demo (opcional)
 npm run dev          # http://localhost:${backPort}
 \`\`\`
@@ -343,8 +343,8 @@ npm run dev          # http://localhost:${frontPort}
 \`\`\`
 ${connectApi ? `El front ya apunta a la API (NEXT_PUBLIC_API_URL=http://localhost:${backPort}).` : 'El front arranca en modo local (sin API).'}
 
-> Antes asegúrate de tener PostgreSQL arrancado y la base de datos \`${db.name}\` creada
-> (o deja que \`prisma db push\` la use si tu usuario tiene permisos).
+> Antes asegúrate de tener PostgreSQL arrancado y la base de datos \`${db.name}\` creada;
+> \`npm run migrate:deploy\` aplica las migraciones sobre ella.
 `);
 }
 
@@ -405,7 +405,7 @@ las variables en el panel de tu host o las inyectas en runtime desde tu SaaS.
 - **Puertos**: Vercel/Cloudflare asignan el routing; no fijes \`PORT\` ni uses \`localhost\`.
 - **BD en runtime**: si tu SaaS inyecta la conexión, deja \`DATABASE_URL\` solo en el
   entorno de ejecución; Prisma la lee al arrancar.
-- **Migraciones**: ejecuta \`prisma migrate deploy\` (o \`db push\`) contra la BD destino
+- **Migraciones**: ejecuta \`prisma migrate deploy\` contra la BD destino
   como paso de release, con \`DATABASE_URL\` ya apuntando a producción.
 - Plantillas de variables en \`back/.env.example\` y \`front/.env.local.example\`.
 

@@ -61,7 +61,7 @@ los puertos.
 cd generated/<slug>/back
 npm install
 npm run prisma:generate
-npm run db:push     # crea las tablas
+npm run migrate:deploy   # aplica las migraciones
 npm run seed        # datos demo (opcional)
 npm run dev
 

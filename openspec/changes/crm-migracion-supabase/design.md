@@ -25,7 +25,7 @@ No se toca: `lib/auth.ts` verifica ES256 contra `${SUPABASE_URL}/auth/v1/.well-k
 `getBackend()` ya conmuta: `isApiEnabled()` (`NEXT_PUBLIC_API_URL`) → `apiBackend`. Setear la env activa el camino REST y desactiva `localBackend`. No hay branch nuevo que escribir; sí verificación e2e.
 
 ### D4 — Esquema crm aditivo
-`prisma migrate deploy` / `db push` con `schema=crm` en el `DATABASE_URL`. Migración **aditiva**: no DROP de objetos del schema `aa`. Workaround EPERM Windows en `prisma generate` ([[crm-prisma-migration-gotcha]]).
+`prisma migrate deploy` con `schema=crm` en el `DATABASE_URL`. Migración **aditiva**: no DROP de objetos del schema `aa`. Workaround EPERM Windows en `prisma generate` ([[crm-prisma-migration-gotcha]]).
 
 ### D5 — Fix anti-deadlock onAuthStateChange
 Si el hook de auth del front CRM (revisar `lib/auth/session.ts` + hook equivalente a `useAuthUser`) llama `supabase.auth.*` síncronamente dentro de `onAuthStateChange`, aplicar el mismo `setTimeout(…,0)` que en AA ([[aa-login-deadlock-onauthstatechange]]).
