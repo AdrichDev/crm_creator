@@ -15,35 +15,36 @@
  * consulta el progreso por polling.
  */
 
-import * as path from 'node:path';
-import { exec } from 'node:child_process';
-import { promisify } from 'node:util';
-import { Router } from 'express';
-import type { Request, Response } from 'express';
+import * as path from "node:path";
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
+import { Router } from "express";
+import type { Request, Response } from "express";
 
 const execAsync = promisify(exec);
-import { prisma } from '../prisma.js';
+import { prisma } from "../prisma.js";
 import {
   startJob as startJobDefault,
   getJob as getJobDefault,
   getActiveJob as getActiveJobDefault,
+  cancelJob as cancelJobDefault,
   LockBusyError,
   type BuildFormat,
   type ExportJob,
   type StartJobParams,
-} from '../lib/export-job-manager.js';
-import type { TenantConfig } from '../../../shared/generate/tenant-types.js';
-import type { AuthedRequest } from '../middleware/types.js';
+} from "../lib/export-job-manager.js";
+import type { TenantConfig } from "../../../shared/generate/tenant-types.js";
+import type { AuthedRequest } from "../middleware/types.js";
 
 // ---------------------------------------------------------------------------
 // Tipos e inyeccion de dependencias (permite testear handlers sin BD ni lock)
 // ---------------------------------------------------------------------------
 
 const VALID_FORMATS: ReadonlySet<string> = new Set<BuildFormat>([
-  'web-zip',
-  'exe',
-  'apk',
-  'ipa',
+  "web-zip",
+  "exe",
+  "apk",
+  "ipa",
 ]);
 
 /** Subconjunto de Prisma que consumen los handlers. */
@@ -61,6 +62,7 @@ export interface ExportsJobsApi {
   startJob(params: StartJobParams): ExportJob;
   getJob(id: string): ExportJob | undefined;
   getActiveJob(): ExportJob | undefined;
+  cancelJob(id: string): boolean;
 }
 
 export interface ExportsDeps {
@@ -74,6 +76,7 @@ const defaultDeps: ExportsDeps = {
     startJob: (params) => startJobDefault(params),
     getJob: getJobDefault,
     getActiveJob: getActiveJobDefault,
+    cancelJob: cancelJobDefault,
   },
 };
 
@@ -82,7 +85,7 @@ const defaultDeps: ExportsDeps = {
 // ---------------------------------------------------------------------------
 
 function toSlug(name: string): string {
-  return name.toLowerCase().replace(/\s+/g, '-');
+  return name.toLowerCase().replace(/\s+/g, "-");
 }
 
 // ---------------------------------------------------------------------------
@@ -93,34 +96,29 @@ function toSlug(name: string): string {
  * GET /pick-folder — abre un selector nativo de carpeta del SO y devuelve la ruta.
  * Solo funciona cuando el back corre localmente (misma maquina que el usuario).
  */
-export async function pickFolderHandler(_req: Request, res: Response): Promise<Response> {
+export async function pickFolderHandler(
+  _req: Request,
+  res: Response,
+): Promise<Response> {
   try {
     let command: string;
-    if (process.platform === 'win32') {
+    if (process.platform === "win32") {
       command = [
         'powershell -sta -NoProfile -Command "',
-        'Add-Type -AssemblyName System.Windows.Forms;',
-        '$f = New-Object System.Windows.Forms.Form;',
-        '$f.TopMost = $true;',
-        '$f.Show();',
-        '$f.Hide();',
-        '$d = New-Object System.Windows.Forms.FolderBrowserDialog;',
+        "Add-Type -AssemblyName System.Windows.Forms;",
+        "$d = New-Object System.Windows.Forms.FolderBrowserDialog;",
         "$d.Description = 'Selecciona carpeta de destino';",
-        "if ($d.ShowDialog($f) -eq 'OK') { $d.SelectedPath } else { '' }\"",
-      ].join(' ');
-    } else if (process.platform === 'darwin') {
+        "if ($d.ShowDialog() -eq 'OK') { $d.SelectedPath } else { '' }\"",
+      ].join(" ");
+    } else if (process.platform === "darwin") {
       command = `osascript -e 'POSIX path of (choose folder with prompt "Selecciona carpeta de destino")'`;
     } else {
-      console.log("[pickFolderHandler] Unsupported platform:", process.platform);
-      return res.json({ path: '' });
+      return res.json({ path: "" });
     }
-    console.log("[pickFolderHandler] Executing command:", command);
     const { stdout } = await execAsync(command, { timeout: 60_000 });
-    console.log("[pickFolderHandler] Success, path:", stdout.trim());
     return res.json({ path: stdout.trim() });
-  } catch (err) {
-    console.error("[pickFolderHandler] Error:", err);
-    return res.json({ path: '' });
+  } catch {
+    return res.json({ path: "" });
   }
 }
 
@@ -129,9 +127,16 @@ export async function pickFolderHandler(_req: Request, res: Response): Promise<R
  * 202 { jobId }. 409 si el lock esta ocupado.
  */
 export function createExportHandler(deps: ExportsDeps) {
-  return async function create(req: AuthedRequest, res: Response): Promise<Response> {
+  return async function create(
+    req: AuthedRequest,
+    res: Response,
+  ): Promise<Response> {
     // --- Validar body antes de tocar el lock ---
-    const { projectId, formats, outputDir: rawOutputDir } = req.body as {
+    const {
+      projectId,
+      formats,
+      outputDir: rawOutputDir,
+    } = req.body as {
       projectId?: string;
       formats?: unknown[];
       outputDir?: string;
@@ -139,13 +144,19 @@ export function createExportHandler(deps: ExportsDeps) {
 
     if (!projectId) {
       return res.status(400).json({
-        error: { code: 'missing_project_id', message: 'projectId es requerido' },
+        error: {
+          code: "missing_project_id",
+          message: "projectId es requerido",
+        },
       });
     }
 
     if (!Array.isArray(formats) || formats.length === 0) {
       return res.status(400).json({
-        error: { code: 'missing_formats', message: 'formats debe ser un array no vacío' },
+        error: {
+          code: "missing_formats",
+          message: "formats debe ser un array no vacío",
+        },
       });
     }
 
@@ -153,7 +164,7 @@ export function createExportHandler(deps: ExportsDeps) {
     if (invalidFormat !== undefined) {
       return res.status(400).json({
         error: {
-          code: 'invalid_format',
+          code: "invalid_format",
           message: `Formato no válido: ${String(invalidFormat)}. Válidos: web-zip, exe, apk, ipa`,
         },
       });
@@ -168,22 +179,22 @@ export function createExportHandler(deps: ExportsDeps) {
 
     if (!membership) {
       return res.status(404).json({
-        error: { code: 'not_found', message: 'Proyecto no encontrado' },
+        error: { code: "not_found", message: "Proyecto no encontrado" },
       });
     }
 
     // --- Cargar config ---
     const setting = await deps.db.businessSetting.findFirst({
-      where: { businessId: projectId, categoria: 'config' },
+      where: { businessId: projectId, categoria: "config" },
       select: { datos: true },
     });
 
     if (!setting) {
       return res.status(422).json({
         error: {
-          code: 'config_not_found',
+          code: "config_not_found",
           message:
-            'El proyecto no tiene configuración guardada. Completa el onboarding primero.',
+            "El proyecto no tiene configuración guardada. Completa el onboarding primero.",
         },
       });
     }
@@ -192,9 +203,9 @@ export function createExportHandler(deps: ExportsDeps) {
 
     // --- Derivar outputDir y frontDir ---
     const slug = toSlug(config.business.name);
-    const outputDir = rawOutputDir ?? path.join(process.cwd(), 'exports', slug);
+    const outputDir = rawOutputDir ?? path.join(process.cwd(), "exports", slug);
     // front/ vive un nivel por encima de back/ (directorio hermano).
-    const frontDir = path.resolve(process.cwd(), '..', 'front');
+    const frontDir = path.resolve(process.cwd(), "..", "front");
 
     // --- Arrancar job (202) o 409 si el lock esta ocupado ---
     try {
@@ -223,7 +234,7 @@ export function statusHandler(deps: ExportsDeps) {
     const job = deps.jobs.getJob(req.params.id);
     if (!job) {
       return res.status(404).json({
-        error: { code: 'job_not_found', message: 'Job no encontrado' },
+        error: { code: "job_not_found", message: "Job no encontrado" },
       });
     }
     return res.status(200).json(job);
@@ -241,6 +252,19 @@ export function activeHandler(deps: ExportsDeps) {
   };
 }
 
+/** DELETE /:id — cancela el job si esta corriendo. */
+export function cancelHandler(deps: ExportsDeps) {
+  return function cancel(req: Request, res: Response): Response {
+    const success = deps.jobs.cancelJob(req.params.id);
+    if (!success) {
+      return res.status(404).json({
+        error: { code: "job_not_cancellable", message: "Job no encontrado o ya finalizado" },
+      });
+    }
+    return res.status(204).end();
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
@@ -248,10 +272,11 @@ export function activeHandler(deps: ExportsDeps) {
 export function makeExportsRouter(deps: ExportsDeps = defaultDeps): Router {
   const router = Router();
   // Orden importante: las rutas literales van ANTES de la parametrica /:id/status.
-  router.get('/pick-folder', pickFolderHandler);
-  router.get('/active', activeHandler(deps));
-  router.get('/:id/status', statusHandler(deps));
-  router.post('/', createExportHandler(deps));
+  router.get("/pick-folder", pickFolderHandler);
+  router.get("/active", activeHandler(deps));
+  router.get("/:id/status", statusHandler(deps));
+  router.delete("/:id", cancelHandler(deps));
+  router.post("/", createExportHandler(deps));
   return router;
 }
 

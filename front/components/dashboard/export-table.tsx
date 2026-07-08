@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { Project } from '@/lib/tenant-config-context';
 import { VERTICAL_MAP } from '@/lib/config/verticals';
 import { apiFetch, isApiEnabled } from '@/lib/api/client';
@@ -9,10 +9,10 @@ import type { BuildFormat } from '@/lib/export/types';
 import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 
 const FORMAT_LABEL: Record<BuildFormat, string> = {
-  'web-zip': 'Web ZIP',
-  exe: '.exe',
-  apk: '.apk',
-  ipa: '.ipa',
+  'web-zip': 'Web (ZIP)',
+  exe: 'Escritorio (ZIP)',
+  apk: 'Android (ZIP)',
+  ipa: 'iOS (ZIP)',
 };
 
 const ALL_FORMATS: BuildFormat[] = ['web-zip', 'exe', 'apk', 'ipa'];
@@ -23,19 +23,28 @@ interface ExportTableProps {
   projects: Project[];
   codeMap: Record<string, string>;
   isRunning: boolean;
+  exportingProjectId?: string;
   onExport: (projectId: string, formats: BuildFormat[], outputDir: string) => void;
 }
 
-export function ExportTable({ projects, codeMap, isRunning, onExport }: ExportTableProps) {
+function AnimatingDots() {
+  const [dots, setDots] = useState('');
+  useEffect(() => {
+    const id = setInterval(() => {
+      setDots(d => d.length >= 3 ? '' : d + '.');
+    }, 500);
+    return () => clearInterval(id);
+  }, []);
+  return <span className="inline-block w-4 text-left">{dots}</span>;
+}
+
+export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, onExport }: ExportTableProps) {
   const [filter, setFilter] = useState('');
   const [selected, setSelected] = useState<Record<string, Set<BuildFormat>>>({});
   const [tenantMap, setTenantMap] = useState<Record<string, string>>({});
   const [sortCol, setSortCol] = useState<SortCol | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [pickingFor, setPickingFor] = useState<string | null>(null);
-
-  const isWindows =
-    typeof navigator !== 'undefined' && /Win/i.test(navigator.platform);
 
   useEffect(() => {
     if (!isApiEnabled()) return;
@@ -46,6 +55,20 @@ export function ExportTable({ projects, codeMap, isRunning, onExport }: ExportTa
       })
       .catch(() => {});
   }, []);
+
+  const prevExportingIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (prevExportingIdRef.current && !exportingProjectId) {
+      // La exportación para este proyecto acaba de terminar (pasó de tener un ID a undefined)
+      const finishedProjectId = prevExportingIdRef.current;
+      setSelected((prev) => {
+        const next = { ...prev };
+        delete next[finishedProjectId];
+        return next;
+      });
+    }
+    prevExportingIdRef.current = exportingProjectId;
+  }, [exportingProjectId]);
 
   function getFormats(id: string): Set<BuildFormat> {
     return selected[id] ?? new Set<BuildFormat>();
@@ -68,18 +91,24 @@ export function ExportTable({ projects, codeMap, isRunning, onExport }: ExportTa
     if (fmts.size === 0 || isRunning || pickingFor) return;
     let dir: string | null = null;
     if (isApiEnabled()) {
-      // Picker OBLIGATORIO: sin carpeta destino elegida no se exporta (AC-4).
       setPickingFor(projectId);
       try {
         const res = await apiFetch<{ path?: string }>('/exports/pick-folder');
         dir = res?.path ?? null;
       } catch {
-        // Cancelado o sin GUI: se aborta sin POST (nunca outputDir vacio).
+        // Cancelado o sin GUI
         dir = null;
       } finally {
         setPickingFor(null);
       }
-      if (!dir) return;
+
+      // FALLBACK: Si falla el popup nativo (o el usuario canceló sin querer), le damos la opción de pegar la ruta
+      if (!dir) {
+        dir = window.prompt(
+          'No se pudo obtener la ruta automáticamente o cancelaste. Pega la ruta absoluta donde quieres guardar la exportación (ej: C:\\Users\\Adrian\\Desktop):'
+        );
+        if (!dir) return; // Si vuelve a cancelar, abortamos.
+      }
     } else {
       // Modo dev sin API: directorio por defecto.
       dir = './exports';
@@ -172,6 +201,7 @@ export function ExportTable({ projects, codeMap, isRunning, onExport }: ExportTa
                   const clientName = tenantMap[p.config.business.clienteId ?? ''] ?? '—';
                   const fmts = getFormats(p.id);
                   const isPicking = pickingFor === p.id;
+                  const isThisExporting = exportingProjectId === p.id;
                   const canExport = fmts.size > 0 && !isRunning && !pickingFor;
 
                   return (
@@ -194,7 +224,7 @@ export function ExportTable({ projects, codeMap, isRunning, onExport }: ExportTa
                       <td>
                         <div className="flex flex-wrap gap-2">
                           {ALL_FORMATS.map((fmt) => {
-                            const disabled = fmt === 'ipa' && isWindows;
+                            const disabled = false; // Ya no hay restriccion de SO porque se exporta codigo fuente
                             return (
                               <label
                                 key={fmt}
@@ -223,17 +253,27 @@ export function ExportTable({ projects, codeMap, isRunning, onExport }: ExportTa
                       <td>
                         <button
                           type="button"
-                          disabled={!canExport && !isPicking}
+                          disabled={(!canExport && !isPicking) || isThisExporting}
                           onClick={() => void handleExportRow(p.id, fmts)}
                           className={
-                            isPicking
+                            isThisExporting
+                              ? 'rounded-lg border border-[var(--gold)] bg-[#c5a0281a] px-3 py-1.5 text-xs font-medium text-[var(--gold)] cursor-default transition'
+                              : isPicking
                               ? 'rounded-lg border border-[var(--line)] px-3 py-1.5 text-xs font-medium text-[var(--panel-muted)] cursor-wait transition'
                               : canExport
                               ? 'rounded-lg border border-[var(--panel-muted)] px-3 py-1.5 text-xs font-medium text-[var(--panel-muted)] transition hover:border-[var(--gold)] hover:text-[var(--gold)]'
                               : 'rounded-lg border border-transparent px-3 py-1.5 text-xs font-medium text-[var(--panel-muted)] opacity-25 cursor-not-allowed'
                           }
                         >
-                          {isPicking ? 'Eligiendo…' : 'Exportar'}
+                          {isThisExporting ? (
+                            <span className="flex items-center">
+                              Exportando<AnimatingDots />
+                            </span>
+                          ) : isPicking ? (
+                            'Eligiendo…'
+                          ) : (
+                            'Exportar'
+                          )}
                         </button>
                       </td>
                     </tr>

@@ -17,6 +17,7 @@ export interface UseExportJobReturn {
   error: string | null;
   start: (params: StartExportParams) => Promise<void>;
   resume: (existing: ExportJob) => void;
+  cancel: () => Promise<void>;
   dismiss: () => void;
 }
 
@@ -118,6 +119,19 @@ export function useExportJob(): UseExportJobReturn {
     setError(null);
   }, [stopPolling]);
 
+  const cancel = useCallback(async () => {
+    const id = jobIdRef.current;
+    if (!id) return;
+    try {
+      await apiFetch(`/exports/${id}`, { method: 'DELETE' });
+      // El siguiente tick de polling leerá el estado 'error' ('Exportación cancelada')
+      // y se detendrá solo, pero forzamos un tick inmediato para más feedback.
+      void poll();
+    } catch (err) {
+      console.error('Error al cancelar exportación:', err);
+    }
+  }, [poll]);
+
   // Limpieza del intervalo al desmontar.
   useEffect(() => stopPolling, [stopPolling]);
 
@@ -127,6 +141,7 @@ export function useExportJob(): UseExportJobReturn {
     error,
     start,
     resume,
+    cancel,
     dismiss,
   };
 }

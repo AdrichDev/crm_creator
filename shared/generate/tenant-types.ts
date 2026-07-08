@@ -148,6 +148,9 @@ export interface TenantConfig {
     password?: string;
     url?: string;
   };
+  api?: {
+    url?: string;
+  };
   landing?: {
     enabled: boolean;
     source: string;

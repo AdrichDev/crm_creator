@@ -13,13 +13,13 @@ import type { BuildFormat } from '@/lib/export/types';
 
 const FORMAT_LABEL: Record<BuildFormat, string> = {
   'web-zip': 'Web ZIP',
-  exe: '.exe',
-  apk: '.apk',
-  ipa: '.ipa',
+  exe: 'Escritorio (ZIP)',
+  apk: 'Android (ZIP)',
+  ipa: 'iOS (ZIP)',
 };
 
 export function ExportHeaderProgress() {
-  const { job, error: globalError, dismiss } = useExportJobContext();
+  const { job, error: globalError, dismiss, cancel } = useExportJobContext();
   const [open, setOpen] = useState(false);
 
   if (!job && !globalError) return null;
@@ -77,6 +77,16 @@ export function ExportHeaderProgress() {
             type="button"
             onClick={dismiss}
             aria-label="Descartar"
+            className="flex-shrink-0 rounded p-0.5 text-[var(--panel-muted)] transition hover:text-[var(--panel-text)]"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+        {isRunning && (
+          <button
+            type="button"
+            onClick={() => void cancel()}
+            aria-label="Cancelar exportación"
             className="flex-shrink-0 rounded p-0.5 text-[var(--panel-muted)] transition hover:text-[var(--panel-text)]"
           >
             <X className="h-3.5 w-3.5" />

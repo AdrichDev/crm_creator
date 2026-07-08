@@ -104,7 +104,7 @@ const RETENTION_MS = 30 * 60 * 1000; // 30 minutos
 
 const defaultBuilders: BuilderMap = {
   'web-zip': (ctx, emit, signal) => buildWebZip(ctx.config, ctx.frontDir, ctx.outputDir, emit, signal),
-  ipa: (_ctx, emit) => buildIpa(emit),
+  ipa: (ctx, emit, signal) => buildIpa(ctx.config, ctx.frontDir, ctx.outputDir, emit, signal),
   exe: (ctx, emit, signal) => buildExe(ctx.config, ctx.frontDir, ctx.outputDir, emit, signal),
   apk: (ctx, emit, signal) => buildApk(ctx.config, ctx.frontDir, ctx.outputDir, emit, signal),
 };
@@ -119,11 +119,14 @@ const defaultLock: LockApi = { acquireLock, releaseLock, startWatchdog };
 let currentJob: ExportJob | undefined;
 // Todos los jobs accesibles por id (respetando la retencion).
 const jobsById = new Map<string, ExportJob>();
+// Controladores de aborto para poder cancelar jobs en curso.
+const controllersById = new Map<string, AbortController>();
 
 /** Programa la limpieza del job terminado tras la ventana de retencion. */
 function scheduleRetention(job: ExportJob, retentionMs: number): void {
   const timer = setTimeout(() => {
     jobsById.delete(job.id);
+    controllersById.delete(job.id);
     if (currentJob?.id === job.id) currentJob = undefined;
   }, retentionMs);
   // No debe mantener vivo el event loop del proceso.
@@ -167,6 +170,7 @@ export function startJob(params: StartJobParams, deps: JobDeps = {}): ExportJob 
   jobsById.set(job.id, job);
 
   const controller = new AbortController();
+  controllersById.set(job.id, controller);
 
   // Watchdog (20 min, existente): al disparar libera el lock y marca error.
   lock.startWatchdog(controller, () => {
@@ -278,8 +282,28 @@ export function getActiveJob(): ExportJob | undefined {
   return currentJob;
 }
 
+/**
+ * Cancela un job en curso invocando el AbortController asociado.
+ * La tarea de fondo (runJob) capturara la señal y limpiara el lock.
+ */
+export function cancelJob(id: string): boolean {
+  const job = jobsById.get(id);
+  const controller = controllersById.get(id);
+  
+  if (job && job.status === 'running' && controller) {
+    job.status = 'error';
+    job.error = 'Exportación cancelada por el usuario';
+    job.finishedAt = Date.now();
+    controller.abort();
+    // La limpieza de retention se dispara en runJob (finally)
+    return true;
+  }
+  return false;
+}
+
 /** Solo para tests: resetea el estado en memoria del gestor. */
 export function __resetJobsForTest(): void {
   currentJob = undefined;
   jobsById.clear();
+  controllersById.clear();
 }

@@ -20,6 +20,7 @@ import * as path from 'path';
 import { spawn as nodeSpawn } from 'node:child_process';
 import { spawnAsync } from './spawn-async.js';
 import { randomUUID } from 'crypto';
+import * as os from 'os';
 import type { TenantConfig } from '../../../shared/generate/tenant-types';
 import type { Emitter } from './export-builders/web-zip.js';
 
@@ -42,6 +43,26 @@ export interface TempCopyResult {
   rootDir: string;
   /** Carpeta front/ dentro del tmp — cwd de npm ci/next build y raiz del ZIP `app/`. */
   frontDir: string;
+}
+
+/** 
+ * Obtiene la IP local de la máquina (útil para pruebas en móviles que 
+ * necesitan conectarse al backend local en vez de localhost).
+ */
+function getLocalIp(): string | null {
+  const nets = os.networkInterfaces();
+  let ip: string | null = null;
+  for (const name of Object.keys(nets)) {
+    if (name.toLowerCase().includes('vswitch') || name.toLowerCase().includes('wsl')) continue;
+    for (const net of nets[name] || []) {
+      if (net.family === 'IPv4' && !net.internal) {
+        ip = net.address;
+        break;
+      }
+    }
+    if (ip) break;
+  }
+  return ip;
 }
 
 /**
@@ -86,8 +107,21 @@ export async function createTempCopy(
   // UTF-8) antes de JSON.parse.
   const json = JSON.stringify(tenantConfig);
   const b64 = Buffer.from(json, 'utf8').toString('base64');
-  const envContent = `\nNEXT_PUBLIC_TENANT_JSON=${b64}\n`;
-  fs.appendFileSync(path.join(tmpFrontDir, '.env.local'), envContent, 'utf8');
+  let envContent = `\nNEXT_PUBLIC_TENANT_JSON=${b64}\n`;
+  
+  const envPath = path.join(tmpFrontDir, '.env.local');
+  if (fs.existsSync(envPath)) {
+    let currentEnv = fs.readFileSync(envPath, 'utf8');
+    // Reemplaza localhost por la IP local para que las apps moviles
+    // exportadas en desarrollo puedan conectarse al backend.
+    const localIp = getLocalIp();
+    if (localIp) {
+      currentEnv = currentEnv.replace(/localhost/g, localIp);
+      fs.writeFileSync(envPath, currentEnv, 'utf8');
+    }
+  }
+
+  fs.appendFileSync(envPath, envContent, 'utf8');
 
   return { rootDir, frontDir: tmpFrontDir };
 }

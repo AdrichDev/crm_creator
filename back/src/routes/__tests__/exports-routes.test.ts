@@ -74,6 +74,7 @@ describe('POST /api/exports', () => {
         startJob: () => fakeJob('job-abc'),
         getJob: () => undefined,
         getActiveJob: () => undefined,
+        cancelJob: () => false,
       },
     };
     const req = {
@@ -96,6 +97,7 @@ describe('POST /api/exports', () => {
         },
         getJob: () => undefined,
         getActiveJob: () => undefined,
+        cancelJob: () => false,
       },
     };
     const req = {
@@ -120,6 +122,7 @@ describe('GET /api/exports/:id/status', () => {
         startJob: () => fakeJob('x'),
         getJob: (id) => (id === 'job-1' ? fakeJob('job-1') : undefined),
         getActiveJob: () => undefined,
+        cancelJob: () => false,
       },
     };
     const req = { params: { id: 'job-1' } } as unknown as AuthedRequest;
@@ -137,6 +140,7 @@ describe('GET /api/exports/:id/status', () => {
         startJob: () => fakeJob('x'),
         getJob: () => undefined,
         getActiveJob: () => undefined,
+        cancelJob: () => false,
       },
     };
     const req = { params: { id: 'nope' } } as unknown as AuthedRequest;
@@ -157,6 +161,7 @@ describe('GET /api/exports/active', () => {
         startJob: () => fakeJob('x'),
         getJob: () => undefined,
         getActiveJob: () => undefined,
+        cancelJob: () => false,
       },
     };
     const res = mockRes();
@@ -172,6 +177,7 @@ describe('GET /api/exports/active', () => {
         startJob: () => fakeJob('x'),
         getJob: () => undefined,
         getActiveJob: () => fakeJob('job-live'),
+        cancelJob: () => false,
       },
     };
     const res = mockRes();

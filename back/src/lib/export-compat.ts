@@ -68,5 +68,17 @@ export function applyExportCompat(frontDir: string): string[] {
   };
   walk(appDir);
 
+  // 3) Inyectar output: 'export' en next.config.mjs.
+  // Next.js 14+ no admite NEXT_OUTPUT_MODE nativamente para exportar.
+  const nextConfigPath = path.join(frontDir, 'next.config.mjs');
+  if (fs.existsSync(nextConfigPath)) {
+    let configStr = fs.readFileSync(nextConfigPath, 'utf8');
+    if (!configStr.includes('output: "export"') && !configStr.includes("output: 'export'")) {
+      configStr = configStr.replace('const nextConfig = {', 'const nextConfig = {\n  output: "export",');
+      fs.writeFileSync(nextConfigPath, configStr, 'utf8');
+      removed.push('next.config.mjs (patched output: export)');
+    }
+  }
+
   return removed;
 }

@@ -14,13 +14,14 @@ interface ExportJobContextValue {
   isRunning: boolean;
   error: string | null;
   start: (params: StartExportParams) => Promise<void>;
+  cancel: () => Promise<void>;
   dismiss: () => void;
 }
 
 const ExportJobContext = createContext<ExportJobContextValue | null>(null);
 
 export function ExportJobProvider({ children }: { children: ReactNode }) {
-  const { job, isRunning, error, start, resume, dismiss } = useExportJob();
+  const { job, isRunning, error, start, resume, cancel, dismiss } = useExportJob();
   const rehydrated = useRef(false);
 
   useEffect(() => {
@@ -38,7 +39,7 @@ export function ExportJobProvider({ children }: { children: ReactNode }) {
   }, [resume]);
 
   return (
-    <ExportJobContext.Provider value={{ job, isRunning, error, start, dismiss }}>
+    <ExportJobContext.Provider value={{ job, isRunning, error, start, cancel, dismiss }}>
       {children}
     </ExportJobContext.Provider>
   );
