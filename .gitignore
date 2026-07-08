@@ -47,7 +47,6 @@ front/test-results/
 generated/
 vitaldent/
 manifest.json
-front/lib/config/generated-tenant.ts
 
 # Security: env backups duplicate secrets — never commit
 *.bak
