@@ -28,6 +28,13 @@ const notFoundResponse = {
   content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
 };
 
+// Respuesta de límite de peticiones alcanzado (publicRateLimiter: 100 req/IP cada 15 min).
+// Solo aplica a los endpoints públicos sin auth (/public/*).
+const tooManyRequestsResponse = {
+  description: 'Demasiadas peticiones (límite por IP alcanzado: 100 cada 15 min)',
+  content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+};
+
 // Parámetros de ordenación por cabecera (?sort=&order=). `fields` es puramente documental
 // (la whitelist real vive server-side en cada build*OrderBy); sin `sort` válido el back
 // aplica createdAt desc por defecto.
@@ -180,6 +187,8 @@ export const swaggerSpec = {
     { name: 'Pedidos', description: 'Presupuestos / pedidos documentales' },
     { name: 'Invoices', description: 'Facturas' },
     { name: 'Config', description: 'Configuración del negocio (horario de apertura)' },
+    { name: 'Public', description: 'API pública headless sin auth (scoped por businessId, rate-limited). Para landings/integraciones externas.' },
+    { name: 'Exports', description: 'Exportación del proyecto a ZIP/instaladores (job asíncrono, un job activo por negocio).' },
   ],
   components: {
     securitySchemes: {
@@ -392,6 +401,100 @@ export const swaggerSpec = {
           locationId: { type: 'string', description: 'Sucursal del negocio activo' },
           tramos: { type: 'array', items: { $ref: '#/components/schemas/HorarioTramo' } },
         },
+      },
+      // ─── API pública (sin auth; businessId en el body/query en lugar de token) ───────────
+      PublicLeadInput: {
+        type: 'object',
+        description: 'Alta de lead desde una landing externa. `businessId` sustituye al Bearer token: identifica el negocio destino.',
+        properties: {
+          businessId: { type: 'string', description: 'CUID del negocio destino (obligatorio; reemplaza a la auth)' },
+          nombre: { type: 'string', description: 'Nombre del lead (obligatorio, min 1)' },
+          email: { type: 'string', format: 'email', nullable: true, description: 'Email o cadena vacía' },
+          telefono: { type: 'string', nullable: true },
+          peticion: { type: 'string', nullable: true, description: 'Texto libre de la petición' },
+          sector: { type: 'string', nullable: true },
+          direccion: { type: 'string', nullable: true },
+          numero: { type: 'string', nullable: true },
+          piso: { type: 'string', nullable: true },
+          codigoPostal: { type: 'string', nullable: true },
+          localidad: { type: 'string', nullable: true },
+        },
+        required: ['businessId', 'nombre'],
+      },
+      PublicBookingInput: {
+        type: 'object',
+        description: 'Reserva desde una landing externa. `businessId` sustituye al Bearer token. Se valida que locationId/employeeId pertenezcan al negocio.',
+        properties: {
+          businessId: { type: 'string', description: 'CUID del negocio destino (obligatorio; reemplaza a la auth)' },
+          locationId: { type: 'string', description: 'CUID de la sucursal (debe pertenecer al negocio)' },
+          serviceId: { type: 'string', description: 'CUID del servicio' },
+          employeeId: { type: 'string', nullable: true, description: 'CUID del empleado (opcional; si se envía debe pertenecer al negocio)' },
+          start: { type: 'string', format: 'date-time', description: 'Inicio de la cita en ISO 8601 (z.string().datetime())' },
+          notes: { type: 'string', nullable: true },
+          customer: {
+            type: 'object',
+            description: 'Datos del cliente. Upsert por email o teléfono dentro del negocio; si no existe, se crea.',
+            properties: {
+              nombre: { type: 'string', description: 'Nombre completo (obligatorio, min 1)' },
+              email: { type: 'string', format: 'email', nullable: true },
+              telefono: { type: 'string', nullable: true },
+            },
+            required: ['nombre'],
+          },
+        },
+        required: ['businessId', 'locationId', 'serviceId', 'start', 'customer'],
+      },
+      AvailabilitySlot: {
+        type: 'object',
+        description: 'Hueco horario de un día para el servicio/ubicación consultados.',
+        properties: {
+          hora: { type: 'string', description: 'Hora del hueco HH:MM' },
+          disponible: { type: 'boolean', description: 'true si el hueco admite reserva' },
+        },
+        required: ['hora', 'disponible'],
+      },
+      PublicCreatedResponse: {
+        type: 'object',
+        description: 'Respuesta de creación de los endpoints públicos.',
+        properties: {
+          id: { type: 'string' },
+          message: { type: 'string' },
+        },
+        required: ['id', 'message'],
+      },
+      // ─── Exportador de proyecto (job asíncrono en background) ────────────────────────────
+      PerFormatState: {
+        type: 'object',
+        description: 'Progreso de un formato concreto dentro del job.',
+        properties: {
+          status: { type: 'string', enum: ['pending', 'running', 'done', 'error'] },
+          pct: { type: 'integer', minimum: 0, maximum: 100, description: 'Progreso del formato (0-100)' },
+          outputPath: { type: 'string', nullable: true, description: 'Ruta del artefacto generado (server-side; disponible al terminar)' },
+          error: { type: 'string', nullable: true },
+        },
+        required: ['status', 'pct'],
+      },
+      ExportJob: {
+        type: 'object',
+        description: 'Estado de un job de exportación. Se consulta por polling tras arrancarlo (POST /exports).',
+        properties: {
+          id: { type: 'string', description: 'UUID del job (randomUUID)' },
+          projectId: { type: 'string', description: 'Negocio/proyecto exportado' },
+          formats: { type: 'array', items: { type: 'string', enum: ['web-zip'] }, description: 'Formatos solicitados' },
+          status: { type: 'string', enum: ['running', 'done', 'error'], description: 'Estado global del job' },
+          currentFormat: { type: 'string', enum: ['web-zip'], nullable: true, description: 'Formato en curso' },
+          step: { type: 'string', nullable: true, description: 'Texto del paso actual' },
+          pct: { type: 'integer', minimum: 0, maximum: 100, description: 'Progreso global ponderado por formato (0-100)' },
+          perFormat: {
+            type: 'object',
+            description: 'Progreso por formato, indexado por nombre de formato.',
+            additionalProperties: { $ref: '#/components/schemas/PerFormatState' },
+          },
+          error: { type: 'string', nullable: true },
+          createdAt: { type: 'integer', description: 'Epoch ms de creación' },
+          finishedAt: { type: 'integer', nullable: true, description: 'Epoch ms de finalización' },
+        },
+        required: ['id', 'projectId', 'formats', 'status', 'pct', 'perFormat', 'createdAt'],
       },
     },
   },
@@ -774,6 +877,156 @@ export const swaggerSpec = {
           '401': unauthorizedResponse,
           '404': notFoundResponse,
           '422': invalidResponse('Estado inválido'),
+        },
+      },
+    },
+    // ─── API pública headless (sin auth, scoped por businessId, rate-limited) ────────────
+    // Montada en /api/public (routes/index.ts). publicRateLimiter: 100 req/IP cada 15 min
+    // → 429. NO llevan security: bearerAuth; el negocio se identifica con businessId.
+    '/public/leads': {
+      post: {
+        tags: ['Public'],
+        summary: 'Crear lead desde una landing externa',
+        description: 'Sin auth: el negocio se identifica con `businessId` en el body. Código pc-NN autogenerado; geocodifica al alta si hay dirección (best-effort). Rate-limited (100 req/IP cada 15 min).',
+        requestBody: bodyRef('PublicLeadInput'),
+        responses: {
+          '201': { description: 'Lead creado', content: { 'application/json': { schema: { $ref: '#/components/schemas/PublicCreatedResponse' } } } },
+          '404': invalidResponse('Negocio no encontrado o inactivo'),
+          '422': invalidResponse('Datos no válidos'),
+          '429': tooManyRequestsResponse,
+        },
+      },
+    },
+    '/public/availability': {
+      get: {
+        tags: ['Public'],
+        summary: 'Consultar huecos disponibles de un día',
+        description: 'Sin auth: el negocio se identifica con `businessId` (query). Devuelve los huecos del día para el servicio/ubicación indicados. Rate-limited (100 req/IP cada 15 min).',
+        parameters: [
+          { name: 'businessId', in: 'query', required: true, schema: { type: 'string' }, description: 'CUID del negocio destino (reemplaza a la auth)' },
+          { name: 'date', in: 'query', required: true, schema: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' }, description: 'Día a consultar (YYYY-MM-DD)' },
+          { name: 'serviceId', in: 'query', required: true, schema: { type: 'string' }, description: 'CUID del servicio' },
+          { name: 'locationId', in: 'query', required: true, schema: { type: 'string' }, description: 'CUID de la sucursal (debe pertenecer al negocio y estar activa)' },
+          { name: 'employeeId', in: 'query', required: false, schema: { type: 'string' }, description: 'CUID del empleado (opcional)' },
+        ],
+        responses: {
+          '200': {
+            description: 'Lista de huecos del día',
+            content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/AvailabilitySlot' } } } },
+          },
+          '404': invalidResponse('Negocio o ubicación no encontrada/inactiva'),
+          '422': invalidResponse('Parámetros no válidos'),
+          '429': tooManyRequestsResponse,
+        },
+      },
+    },
+    '/public/bookings': {
+      post: {
+        tags: ['Public'],
+        summary: 'Crear reserva desde una landing externa',
+        description: 'Sin auth: el negocio se identifica con `businessId` en el body. `start` en ISO 8601. Valida que locationId/employeeId pertenezcan al negocio (400) y la disponibilidad real (409, evita double-booking). Upsert de cliente por email/teléfono. Rate-limited (100 req/IP cada 15 min).',
+        requestBody: bodyRef('PublicBookingInput'),
+        responses: {
+          '201': { description: 'Reserva creada', content: { 'application/json': { schema: { $ref: '#/components/schemas/PublicCreatedResponse' } } } },
+          '400': invalidResponse('location_not_found o employee_not_found: recurso no pertenece al negocio'),
+          '404': invalidResponse('Negocio no encontrado'),
+          '409': invalidResponse('No disponible (hueco ocupado / recurso inactivo)'),
+          '422': invalidResponse('Datos no válidos (incluye `start` no ISO 8601)'),
+          '429': tooManyRequestsResponse,
+        },
+      },
+    },
+    // ─── Exportador de proyecto (job asíncrono; Bearer auth heredado de staffOnly) ───────
+    // El build corre en background: POST devuelve 202 { jobId } y el front consulta el
+    // progreso por polling (GET /exports/{id}/status). Un solo build a la vez (lock → 409).
+    '/exports': {
+      post: {
+        tags: ['Exports'],
+        summary: 'Arrancar una exportación (job en background)',
+        description: 'Valida body/ownership/config, arranca el build en background y responde 202 { jobId }. El progreso se consulta por polling en GET /exports/{id}/status. 409 si ya hay un build en curso (lock ocupado, code build_in_progress).',
+        security: bearerAuth,
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  projectId: { type: 'string', description: 'CUID del negocio/proyecto a exportar (debe existir membership del usuario)' },
+                  formats: { type: 'array', minItems: 1, items: { type: 'string', enum: ['web-zip'] }, description: 'Formatos a generar (array no vacío; único válido: web-zip)' },
+                  outputDir: { type: 'string', nullable: true, description: 'Directorio de salida server-side (opcional; por defecto exports/<slug>)' },
+                },
+                required: ['projectId', 'formats'],
+              },
+            },
+          },
+        },
+        responses: {
+          '202': {
+            description: 'Job arrancado',
+            content: { 'application/json': { schema: { type: 'object', properties: { jobId: { type: 'string' } }, required: ['jobId'] } } },
+          },
+          '400': invalidResponse('Body inválido: missing_project_id, missing_formats o invalid_format'),
+          '401': unauthorizedResponse,
+          '404': invalidResponse('Proyecto no encontrado (sin membership del usuario)'),
+          '409': invalidResponse('Ya hay un build en curso (build_in_progress)'),
+          '422': invalidResponse('config_not_found: el proyecto no tiene configuración (completar onboarding)'),
+        },
+      },
+    },
+    '/exports/active': {
+      get: {
+        tags: ['Exports'],
+        summary: 'Job activo (en curso o último retenido)',
+        description: 'Devuelve el job en curso o el último terminado en ventana de retención. 204 (sin body) si no hay ninguno.',
+        security: bearerAuth,
+        responses: {
+          '200': { description: 'Job activo', ...entityResponse('ExportJob') },
+          '204': { description: 'No hay job activo' },
+          '401': unauthorizedResponse,
+        },
+      },
+    },
+    '/exports/{id}/status': {
+      get: {
+        tags: ['Exports'],
+        summary: 'Estado de un job por id (polling)',
+        description: 'Devuelve el ExportJob serializado (status/pct/perFormat). 404 (job_not_found) si el id no existe o el job ya expiró de la retención.',
+        security: bearerAuth,
+        parameters: [idParam],
+        responses: {
+          '200': { description: 'Estado del job', ...entityResponse('ExportJob') },
+          '401': unauthorizedResponse,
+          '404': invalidResponse('job_not_found: job no encontrado'),
+        },
+      },
+    },
+    '/exports/{id}/download': {
+      get: {
+        tags: ['Exports'],
+        summary: 'Descargar el ZIP generado por el job',
+        description: 'Devuelve el fichero ZIP (res.download) del job terminado. 400 (job_not_done) si aún no ha terminado; 404 (job_not_found / file_not_found) si el job o el fichero no existen.',
+        security: bearerAuth,
+        parameters: [idParam],
+        responses: {
+          '200': { description: 'Fichero ZIP', content: { 'application/zip': { schema: { type: 'string', format: 'binary' } } } },
+          '400': invalidResponse('job_not_done: la exportación aún no ha terminado'),
+          '401': unauthorizedResponse,
+          '404': invalidResponse('job_not_found o file_not_found'),
+        },
+      },
+    },
+    '/exports/{id}': {
+      delete: {
+        tags: ['Exports'],
+        summary: 'Cancelar un job en curso',
+        description: 'Aborta el job si está corriendo. 404 (job_not_cancellable) si no existe o ya finalizó.',
+        security: bearerAuth,
+        parameters: [idParam],
+        responses: {
+          '204': { description: 'Job cancelado' },
+          '401': unauthorizedResponse,
+          '404': invalidResponse('job_not_cancellable: job no encontrado o ya finalizado'),
         },
       },
     },
