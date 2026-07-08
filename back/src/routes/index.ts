@@ -13,6 +13,7 @@ import { brandingRouter } from './branding.js';
 import { usersRouter } from './users.js';
 import { customersRouter } from './customers.js';
 import { tenantsRouter } from './tenants.js';
+import { publicRouter } from './public/index.js';
 import { projectsRouter } from './projects.js';
 import { employeesRouter } from './employees.js';
 import { uploadRouter } from './upload.js';
@@ -36,6 +37,9 @@ import { telegramRouter } from './telegram.js';
 import { operatorChatRouter } from './operator-chat.js';
 
 export const api = Router();
+
+// Público (API Headless Universal sin auth de supabase, auth por businessId/apiKey)
+api.use('/public', publicRouter);
 
 // Público
 api.use('/auth', authRouter);

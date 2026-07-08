@@ -173,7 +173,7 @@ export function nextContactoCodigo(codigos: string[]): string {
   return `pc-${String(max + 1).padStart(2, '0')}`;
 }
 
-async function computeNextCodigo(businessId: string | undefined): Promise<string> {
+export async function computeNextCodigo(businessId: string | undefined): Promise<string> {
   const rows = await prisma.contacto.findMany({ where: { businessId }, select: { codigo: true } });
   return nextContactoCodigo(rows.map((r) => r.codigo));
 }

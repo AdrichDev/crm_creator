@@ -38,6 +38,12 @@ app.use('/api', api);
 app.use(notFound);
 app.use(errorHandler);
 
+// Defense-in-depth: log any future unguarded async rejection instead of crashing the process.
+// Individual handlers carry their own try/catch; this is the last line of defense.
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason);
+});
+
 app.listen(env.port, () => {
   console.log(`OperaOS backend escuchando en http://localhost:${env.port}`);
   startReminderDrainer();
