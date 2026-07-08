@@ -118,6 +118,9 @@ function OnboardingInner() {
   function db(patch: Partial<NonNullable<typeof draft.database>>) {
     setDraft({ ...draft, database: { ...draft.database, ...patch } });
   }
+  function api(patch: Partial<NonNullable<typeof draft.api>>) {
+    setDraft({ ...draft, api: { ...draft.api, ...patch } });
+  }
   // Persiste el horario de apertura en OpeningHour (PUT /config/horario) para que
   // la disponibilidad del calendario (chips de hora) refleje lo definido aquí.
   // Solo en modo API y solo si el usuario definió horario (cfg.horario): si nunca
@@ -288,6 +291,16 @@ function OnboardingInner() {
               <label className="text-xs font-medium text-gray-500">URL de conexión (si se prefiere a los campos sueltos)</label>
               <input value={draft.database?.url ?? ''} onChange={(e) => db({ url: e.target.value })}
                 placeholder="postgresql://usuario:password@host:puerto/basedatos"
+                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" />
+            </div>
+            
+            <div className="mt-6 pt-6 border-t border-gray-200">
+              <p className="text-sm font-semibold text-gray-900 mb-1">Backend API</p>
+              <p className="text-xs text-gray-500 mb-4">Dominio de la API (Producción). Las apps exportadas (.apk, .exe) se conectarán aquí. Si se deja vacío, las apps funcionarán en modo demo (offline).</p>
+              
+              <label className="text-xs font-medium text-gray-500">Dominio Backend</label>
+              <input value={draft.api?.url ?? ''} onChange={(e) => api({ url: e.target.value })}
+                placeholder="https://api.midominio.com"
                 className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" />
             </div>
           </CardBody></Card>

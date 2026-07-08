@@ -37,7 +37,7 @@ export function DashboardTabs({
   const [page, setPage] = useState(0);
   const dialog = useDialog();
 
-  const { isRunning: isExporting, start: startExport } = useExportJobContext();
+  const { job, isRunning: isExporting, start: startExport } = useExportJobContext();
 
   // crm-01, crm-02, … estable por fecha de creación
   const codeMap = useMemo(() => {
@@ -285,6 +285,7 @@ export function DashboardTabs({
               projects={projects}
               codeMap={codeMap}
               isRunning={isExporting}
+              exportingProjectId={isExporting ? job?.projectId : undefined}
               onExport={handleExport}
             />
           </div>

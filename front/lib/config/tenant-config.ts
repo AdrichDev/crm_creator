@@ -87,6 +87,11 @@ export interface TenantConfig {
     /** URL completa de conexión, si se prefiere a los campos sueltos. */
     url?: string;
   };
+  /** Endpoint público de la API del proyecto (manual, opcional; editable a futuro). */
+  api?: {
+    /** URL base de la API pública del negocio (NEXT_PUBLIC_API_URL del cliente). */
+    url?: string;
+  };
   /**
    * Landing del cliente importada por ZIP (UC-2). Bloque OPCIONAL: sin él, no hay
    * landing y el CRM funciona como hoy (no regresión). La INGESTA (validación +
