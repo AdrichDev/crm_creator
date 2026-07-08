@@ -1,0 +1,39 @@
+# Render Blueprint — CRM (OperaOS) back.
+# Docker build from repo root (Dockerfile copies whole monorepo, runs back/).
+# Secrets are set in the Render dashboard (sync:false), never committed here.
+services:
+  - type: web
+    name: crm-back
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    region: frankfurt
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # --- Required (server is fail-closed without these three) ---
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # --- Set after the front is live (front's public URL) ---
+      - key: CORS_ORIGIN
+        sync: false
+      # --- Optional features ---
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: AUTOMATION_WEBHOOK_URL
+        sync: false
+      - key: AUTOMATION_WEBHOOK_SECRET
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_OAUTH_SECRET
+        sync: false
+      - key: GOOGLE_OAUTH_REDIRECT_URI
+        sync: false
