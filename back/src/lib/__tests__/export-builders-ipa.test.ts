@@ -63,3 +63,51 @@ test('5.2 ipa: android/ y electron/ ausentes; capacitor.config.ts personalizado 
     'capacitor.config.ts debe hornear el appName con el nombre del negocio',
   );
 });
+
+// ── crm-export-delivery-profiles WU1.3/WU2.1: deliverable en ipa ────────────
+
+test('ipa: sin deliverable → manifest.json declara binary+source (default) y README cliente', async () => {
+  const fixture = buildFixtureTmp();
+  trash.push(fixture.rootDir);
+  const outputDir = path.join(os.tmpdir(), `ipa-deliv-default-${randomUUID()}`);
+  trash.push(outputDir);
+
+  const result = await buildIpa(config, '/fake/front', outputDir, () => {}, undefined, {
+    createTempCopy: async () => fixture,
+    cleanupTempCopy: () => {},
+  });
+  assert.ok(result.success);
+
+  const buf = fs.readFileSync((result as { outputPath: string }).outputPath);
+  const zip = await JSZip.loadAsync(buf);
+
+  const manifest = JSON.parse(await zip.file('manifest.json')!.async('string'));
+  assert.equal(manifest.deliverable, 'binary+source');
+  assert.equal(manifest.format, 'ipa');
+
+  const readme = await zip.file('README.md')!.async('string');
+  assert.ok(!readme.startsWith('PAQUETE INTERNO'), 'README default no debe llevar banner interno');
+});
+
+test('ipa: deliverable = binary → manifest.json lo declara y README lleva banner operador', async () => {
+  const fixture = buildFixtureTmp();
+  trash.push(fixture.rootDir);
+  const outputDir = path.join(os.tmpdir(), `ipa-deliv-binary-${randomUUID()}`);
+  trash.push(outputDir);
+
+  const result = await buildIpa(config, '/fake/front', outputDir, () => {}, undefined, {
+    createTempCopy: async () => fixture,
+    cleanupTempCopy: () => {},
+    deliverable: 'binary',
+  });
+  assert.ok(result.success);
+
+  const buf = fs.readFileSync((result as { outputPath: string }).outputPath);
+  const zip = await JSZip.loadAsync(buf);
+
+  const manifest = JSON.parse(await zip.file('manifest.json')!.async('string'));
+  assert.equal(manifest.deliverable, 'binary');
+
+  const readme = await zip.file('README.md')!.async('string');
+  assert.ok(readme.startsWith('PAQUETE INTERNO'), 'README operador debe empezar con el banner interno');
+});

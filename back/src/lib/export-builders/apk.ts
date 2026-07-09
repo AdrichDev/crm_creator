@@ -25,6 +25,7 @@ import {
   writeFreshEnvLocal,
   buildEnvExampleContent,
   writeFreshEnvExample,
+  buildMinimalManifest,
 } from './manifest-allowlist.js';
 import {
   buildRuntimeConfigEnvLines,
@@ -32,9 +33,9 @@ import {
   type RuntimeConfig,
 } from './runtime-config-env.js';
 import type { TenantConfig } from '../../../../shared/generate/tenant-types.js';
-import type { Emitter, BuildResult } from './web-zip.js';
+import type { Emitter, BuildResult, Deliverable } from './web-zip.js';
 
-export type { Emitter, BuildResult };
+export type { Emitter, BuildResult, Deliverable };
 
 const require = createRequire(import.meta.url);
 type Archiver = import('archiver').Archiver;
@@ -60,7 +61,8 @@ function toAppId(slug: string): string {
   return `com.operaos.${suffix}`;
 }
 
-function renderReadme(productName: string): string {
+/** README cara al cliente: compilacion Android generica, sin referencias internas. */
+function renderReadmeClient(productName: string): string {
   return `# ${productName} — Android (APK)
 
 ## Que es esto
@@ -190,6 +192,68 @@ Para instalar el APK directamente (sideload), sin pasar por Google Play:
 `;
 }
 
+/** README interno de operador: pipeline local real de firma/compilacion. NUNCA se entrega al cliente. */
+function renderReadmeOperator(productName: string): string {
+  return `PAQUETE INTERNO — no entregar al cliente
+
+# ${productName} — Android (APK, pipeline interno)
+
+## Que es esto
+
+Este ZIP es el paquete de trabajo del **operador** para compilar y firmar el
+APK de este tenant. El cliente final NUNCA recibe este ZIP: recibe unicamente
+el archivo \`.apk\` ya compilado.
+
+## Pipeline local del operador
+
+1. **Entrar en la carpeta del codigo:**
+   \`\`\`
+   cd mobile-src
+   \`\`\`
+
+2. **Instalar dependencias, compilar la web estatica y sincronizar Android:**
+   \`\`\`
+   npm install
+   npm run build:static
+   npx cap sync android
+   cd android
+   \`\`\`
+
+3. **SDK de Android (instalacion local del operador):** el SDK vive en
+   \`C:\\Android\\Sdk\` (\`ANDROID_HOME=C:\\Android\\Sdk\`). No requiere
+   \`android/local.properties\` porque la variable de entorno ya esta fijada en
+   la maquina del operador.
+
+4. **Firmar el release con el keystore de la organizacion:**
+   \`\`\`
+   .\\gradlew.bat assembleRelease \`
+     -PrelKeystore="D:\\Operaos\\keys\\operaos-release.jks" \`
+     -PrelStorePass=$env:OPERAOS_KEYSTORE_PASS \`
+     -PrelAlias="operaos" \`
+     -PrelKeyPass=$env:OPERAOS_KEY_PASS
+   \`\`\`
+   El keystore \`operaos-release.jks\` (alias \`operaos\`) es la identidad de
+   firma de la organizacion; las contrasenas viven en el gestor de secretos
+   del operador, nunca en este README.
+
+5. **Entregar al cliente** unicamente el artefacto resultante:
+   \`app\\build\\outputs\\apk\\release\\app-release.apk\`.
+
+## Nota
+
+El README que recibe el cliente (variante \`binary+source\`) es distinto: usa
+placeholders genericos de keystore/SDK, sin el nombre real del keystore de la
+organizacion ni rutas locales de esta maquina.
+`;
+}
+
+/** Lee la plantilla README y sustituye los placeholders del tenant. */
+function renderReadme(productName: string, deliverable: Deliverable): string {
+  return deliverable === 'binary'
+    ? renderReadmeOperator(productName)
+    : renderReadmeClient(productName);
+}
+
 function escapeXml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -252,7 +316,7 @@ async function assembleZip(
   frontDir: string,
   sharedDir: string,
   outputPath: string,
-  artifacts: { readme: string },
+  artifacts: { readme: string; manifest: string },
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const outStream = fs.createWriteStream(outputPath);
@@ -283,6 +347,7 @@ async function assembleZip(
     }
 
     archive.append(artifacts.readme, { name: 'README.md' });
+    archive.append(artifacts.manifest, { name: 'manifest.json' });
 
     void archive.finalize();
   });
@@ -296,6 +361,8 @@ export interface ApkDeps {
   platform?: NodeJS.Platform;
   /** crm-export-runtime-config: cableado runtime de plataforma para este ZIP. */
   runtimeConfig?: RuntimeConfig;
+  /** crm-export-delivery-profiles: destinatario del ZIP. Default 'binary+source'. */
+  deliverable?: Deliverable;
 }
 
 export async function buildApk(
@@ -309,6 +376,7 @@ export async function buildApk(
   const createTempCopy = deps.createTempCopy ?? defaultCreateTempCopy;
   const cleanupTempCopy = deps.cleanupTempCopy ?? defaultCleanupTempCopy;
   const applyExportCompat = deps.applyExportCompat ?? defaultApplyExportCompat;
+  const deliverable: Deliverable = deps.deliverable ?? 'binary+source';
 
   const productName = config.business.name;
   const slug = toSlug(productName);
@@ -368,9 +436,10 @@ export async function buildApk(
     emit({ type: 'progress', format: 'apk', step: 'Empaquetando codigo fuente en ZIP...', pct: 60 });
     fs.mkdirSync(outputDir, { recursive: true });
     const outputPath = path.join(outputDir, `${slug}-android-src.zip`);
-    const readme = renderReadme(productName);
+    const readme = renderReadme(productName, deliverable);
+    const manifest = buildMinimalManifest('apk', deliverable, config);
 
-    await assembleZip(tmpFrontDir, tmpSharedDir, outputPath, { readme });
+    await assembleZip(tmpFrontDir, tmpSharedDir, outputPath, { readme, manifest });
 
     emit({ type: 'progress', format: 'apk', step: 'Guardando archivo ZIP...', pct: 100, outputPath });
     return { success: true, outputPath };

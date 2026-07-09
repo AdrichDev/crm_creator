@@ -5,7 +5,7 @@ import type { Project } from '@/lib/tenant-config-context';
 import { VERTICAL_MAP } from '@/lib/config/verticals';
 import { apiFetch, isApiEnabled } from '@/lib/api/client';
 import type { ClientLite } from '@/lib/clients/picker';
-import type { BuildFormat } from '@/lib/export/types';
+import type { BuildFormat, Deliverable } from '@/lib/export/types';
 import { openSaveDialog, isAbortError, toSlug, type SaveFileHandle } from '@/lib/export/download';
 import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 
@@ -17,6 +17,13 @@ const FORMAT_LABEL: Record<BuildFormat, string> = {
 };
 
 const ALL_FORMATS: BuildFormat[] = ['web-zip', 'exe', 'apk', 'ipa'];
+
+const DELIVERABLE_LABEL: Record<Deliverable, string> = {
+  'binary+source': 'Cliente',
+  binary: 'Interno',
+};
+
+const ALL_DELIVERABLES: Deliverable[] = ['binary+source', 'binary'];
 
 // Sufijo del ZIP que produce cada builder en el back (espejo de export-builders/*).
 // Se usa para el nombre sugerido en el diálogo "Guardar como".
@@ -34,7 +41,12 @@ interface ExportTableProps {
   codeMap: Record<string, string>;
   isRunning: boolean;
   exportingProjectId?: string;
-  onExport: (projectId: string, formats: BuildFormat[], handle: SaveFileHandle | null) => void;
+  onExport: (
+    projectId: string,
+    formats: BuildFormat[],
+    handle: SaveFileHandle | null,
+    deliverable: Deliverable,
+  ) => void;
 }
 
 function AnimatingDots() {
@@ -51,6 +63,7 @@ function AnimatingDots() {
 export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, onExport }: ExportTableProps) {
   const [filter, setFilter] = useState('');
   const [selected, setSelected] = useState<Record<string, BuildFormat>>({});
+  const [selectedDeliverable, setSelectedDeliverable] = useState<Record<string, Deliverable>>({});
   const [tenantMap, setTenantMap] = useState<Record<string, string>>({});
   const [sortCol, setSortCol] = useState<SortCol | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -88,12 +101,26 @@ export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, 
     setSelected((prev) => ({ ...prev, [id]: fmt }));
   }
 
+  // Destinatario del ZIP (crm-export-delivery-profiles). Default: cliente.
+  function getDeliverable(id: string): Deliverable {
+    return selectedDeliverable[id] ?? 'binary+source';
+  }
+
+  function setDeliverableFor(id: string, deliverable: Deliverable) {
+    setSelectedDeliverable((prev) => ({ ...prev, [id]: deliverable }));
+  }
+
   function handleSort(col: SortCol) {
     if (sortCol === col) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     else { setSortCol(col); setSortDir('asc'); }
   }
 
-  async function handleExportRow(projectId: string, businessName: string, fmt: BuildFormat) {
+  async function handleExportRow(
+    projectId: string,
+    businessName: string,
+    fmt: BuildFormat,
+    deliverable: Deliverable,
+  ) {
     if (isRunning) return;
     // Flujo de un botón: abrimos el diálogo nativo "Guardar como" AQUÍ (en el gesto
     // del clic) y guardamos el handle. Al terminar el job se escribe el ZIP en él
@@ -108,7 +135,7 @@ export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, 
       if (isAbortError(err)) return; // Cancelado → abortar sin exportar.
       handle = null; // Otro fallo del diálogo: seguimos con descarga por anchor.
     }
-    onExport(projectId, [fmt], handle);
+    onExport(projectId, [fmt], handle, deliverable);
   }
 
   const filtered = projects.filter((p) => {
@@ -187,6 +214,7 @@ export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, 
                     Tipo <SortIcon col="vertical" />
                   </th>
                   <th>Formato</th>
+                  <th>Destino</th>
                   <th>Exportar</th>
                 </tr>
               </thead>
@@ -195,6 +223,7 @@ export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, 
                   const v = VERTICAL_MAP[p.config.business.vertical];
                   const clientName = tenantMap[p.config.business.clienteId ?? ''] ?? '—';
                   const selectedFmt = getFormat(p.id);
+                  const selectedDeliv = getDeliverable(p.id);
                   const isThisExporting = exportingProjectId === p.id;
                   const canExport = !isRunning;
 
@@ -240,10 +269,36 @@ export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, 
                       </td>
 
                       <td>
+                        <div className="flex flex-wrap gap-2">
+                          {ALL_DELIVERABLES.map((deliv) => (
+                            <label
+                              key={deliv}
+                              className="flex items-center gap-1.5 text-xs select-none"
+                              style={{
+                                color: selectedDeliv === deliv ? 'var(--gold)' : 'var(--panel-muted)',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <input
+                                type="radio"
+                                name={`deliverable-${p.id}`}
+                                checked={selectedDeliv === deliv}
+                                onChange={() => setDeliverableFor(p.id, deliv)}
+                                className="accent-[#c5a028]"
+                              />
+                              {DELIVERABLE_LABEL[deliv]}
+                            </label>
+                          ))}
+                        </div>
+                      </td>
+
+                      <td>
                         <button
                           type="button"
                           disabled={!canExport || isThisExporting}
-                          onClick={() => void handleExportRow(p.id, p.config.business.name, selectedFmt)}
+                          onClick={() =>
+                            void handleExportRow(p.id, p.config.business.name, selectedFmt, selectedDeliv)
+                          }
                           className={
                             isThisExporting
                               ? 'rounded-lg border border-[var(--gold)] bg-[#c5a0281a] px-3 py-1.5 text-xs font-medium text-[var(--gold)] cursor-default transition'

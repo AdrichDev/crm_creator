@@ -31,6 +31,7 @@ import {
   cancelJob as cancelJobDefault,
   LockBusyError,
   type BuildFormat,
+  type Deliverable,
   type ExportJob,
   type StartJobParams,
 } from "../lib/export-job-manager.js";
@@ -48,6 +49,12 @@ const VALID_FORMATS: ReadonlySet<string> = new Set<BuildFormat>([
   "exe",
   "apk",
   "ipa",
+]);
+
+/** crm-export-delivery-profiles: destinatario del ZIP. Default 'binary+source'. */
+const VALID_DELIVERABLES: ReadonlySet<string> = new Set<Deliverable>([
+  "binary",
+  "binary+source",
 ]);
 
 /** Subconjunto de Prisma que consumen los handlers. */
@@ -169,10 +176,12 @@ export function createExportHandler(deps: ExportsDeps) {
       projectId,
       formats,
       outputDir: rawOutputDir,
+      deliverable: rawDeliverable,
     } = req.body as {
       projectId?: string;
       formats?: unknown[];
       outputDir?: string;
+      deliverable?: unknown;
     };
 
     if (!projectId) {
@@ -204,6 +213,18 @@ export function createExportHandler(deps: ExportsDeps) {
     }
 
     const requestedFormats = formats as BuildFormat[];
+
+    // --- Validar deliverable (crm-export-delivery-profiles) ---
+    const deliverable: Deliverable =
+      rawDeliverable === undefined ? "binary+source" : (rawDeliverable as Deliverable);
+    if (!VALID_DELIVERABLES.has(String(deliverable))) {
+      return res.status(400).json({
+        error: {
+          code: "invalid_deliverable",
+          message: `deliverable no válido: ${String(rawDeliverable)}. Válidos: binary, binary+source`,
+        },
+      });
+    }
 
     // --- Verificar ownership ---
     const membership = await deps.db.membership.findFirst({
@@ -276,6 +297,7 @@ export function createExportHandler(deps: ExportsDeps) {
         outputDir,
         frontDir,
         runtimeConfig,
+        deliverable,
       });
       return res.status(202).json({ jobId: job.id });
     } catch (err) {

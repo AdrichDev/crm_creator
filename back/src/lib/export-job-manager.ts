@@ -17,7 +17,7 @@ import { buildWebZip } from './export-builders/web-zip.js';
 import { buildIpa } from './export-builders/ipa.js';
 import { buildExe } from './export-builders/exe.js';
 import { buildApk } from './export-builders/apk.js';
-import type { Emitter, BuildResult } from './export-builders/web-zip.js';
+import type { Emitter, BuildResult, Deliverable } from './export-builders/web-zip.js';
 import type { RuntimeConfig } from './export-builders/runtime-config-env.js';
 import type { TenantConfig } from '../../../shared/generate/tenant-types.js';
 
@@ -26,6 +26,16 @@ import type { TenantConfig } from '../../../shared/generate/tenant-types.js';
 // ---------------------------------------------------------------------------
 
 export type BuildFormat = 'web-zip' | 'exe' | 'apk' | 'ipa';
+
+/**
+ * crm-export-delivery-profiles: destinatario del ZIP generado.
+ * - 'binary': paquete INTERNO de operador (el ZIP nunca llega al cliente).
+ * - 'binary+source' (default): paquete cara al cliente, fuente + self-host.
+ * Definido en web-zip.ts (tipo compartido entre builders) y re-exportado aqui
+ * para que routes/exports.ts y los tests del job manager lo consuman sin
+ * depender directamente de los builders.
+ */
+export type { Deliverable };
 
 export type PerFormatStatus = 'pending' | 'running' | 'done' | 'error';
 
@@ -48,6 +58,8 @@ export interface ExportJob {
   error?: string;
   createdAt: number;
   finishedAt?: number;
+  /** crm-export-delivery-profiles: trazabilidad del perfil de entrega del job. */
+  deliverable: Deliverable;
 }
 
 /** Contexto que necesita cada builder para ejecutar. */
@@ -57,6 +69,8 @@ export interface JobBuildContext {
   frontDir: string;
   /** crm-export-runtime-config: cableado runtime de plataforma (opcional para no romper tests directos). */
   runtimeConfig?: RuntimeConfig;
+  /** crm-export-delivery-profiles: destinatario del ZIP para este job. */
+  deliverable: Deliverable;
 }
 
 /** Firma unificada de un builder inyectable (permite fakes en test). */
@@ -83,6 +97,8 @@ export interface StartJobParams {
   frontDir: string;
   /** crm-export-runtime-config: cableado runtime de plataforma para este job. */
   runtimeConfig?: RuntimeConfig;
+  /** crm-export-delivery-profiles: destinatario del ZIP (route valida y aplica el default). */
+  deliverable: Deliverable;
 }
 
 export interface JobDeps {
@@ -109,13 +125,25 @@ const RETENTION_MS = 30 * 60 * 1000; // 30 minutos
 
 const defaultBuilders: BuilderMap = {
   'web-zip': (ctx, emit, signal) =>
-    buildWebZip(ctx.config, ctx.frontDir, ctx.outputDir, emit, signal, { runtimeConfig: ctx.runtimeConfig }),
+    buildWebZip(ctx.config, ctx.frontDir, ctx.outputDir, emit, signal, {
+      runtimeConfig: ctx.runtimeConfig,
+      deliverable: ctx.deliverable,
+    }),
   ipa: (ctx, emit, signal) =>
-    buildIpa(ctx.config, ctx.frontDir, ctx.outputDir, emit, signal, { runtimeConfig: ctx.runtimeConfig }),
+    buildIpa(ctx.config, ctx.frontDir, ctx.outputDir, emit, signal, {
+      runtimeConfig: ctx.runtimeConfig,
+      deliverable: ctx.deliverable,
+    }),
   exe: (ctx, emit, signal) =>
-    buildExe(ctx.config, ctx.frontDir, ctx.outputDir, emit, signal, { runtimeConfig: ctx.runtimeConfig }),
+    buildExe(ctx.config, ctx.frontDir, ctx.outputDir, emit, signal, {
+      runtimeConfig: ctx.runtimeConfig,
+      deliverable: ctx.deliverable,
+    }),
   apk: (ctx, emit, signal) =>
-    buildApk(ctx.config, ctx.frontDir, ctx.outputDir, emit, signal, { runtimeConfig: ctx.runtimeConfig }),
+    buildApk(ctx.config, ctx.frontDir, ctx.outputDir, emit, signal, {
+      runtimeConfig: ctx.runtimeConfig,
+      deliverable: ctx.deliverable,
+    }),
 };
 
 const defaultLock: LockApi = { acquireLock, releaseLock, startWatchdog };
@@ -173,6 +201,7 @@ export function startJob(params: StartJobParams, deps: JobDeps = {}): ExportJob 
     pct: 0,
     perFormat,
     createdAt: Date.now(),
+    deliverable: params.deliverable,
   };
 
   currentJob = job;
@@ -215,6 +244,7 @@ async function runJob(
     outputDir: params.outputDir,
     frontDir: params.frontDir,
     runtimeConfig: params.runtimeConfig,
+    deliverable: params.deliverable,
   };
   const total = params.formats.length;
 

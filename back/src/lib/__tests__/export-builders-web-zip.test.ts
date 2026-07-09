@@ -81,3 +81,50 @@ test('3.2 web-zip: allowlist excluye openspec/android/electron/e2e; core sin reg
   assert.ok(names.includes('manifest.json'), 'manifest.json');
   assert.ok(names.includes('README.md'), 'README.md');
 });
+
+// ── crm-export-delivery-profiles WU1.3/WU2.1: deliverable en web-zip ────────
+
+test('web-zip: sin deliverable → manifest.json declara binary+source (default) y README cliente', async () => {
+  const fixture = buildFixtureTmp();
+  trash.push(fixture.rootDir);
+  const outputDir = path.join(os.tmpdir(), `webzip-deliv-default-${randomUUID()}`);
+  trash.push(outputDir);
+
+  const result = await buildWebZip(config, '/fake/front', outputDir, () => {}, undefined, {
+    createTempCopy: async () => fixture,
+    cleanupTempCopy: () => {},
+  });
+  assert.ok(result.success);
+
+  const buf = fs.readFileSync((result as { outputPath: string }).outputPath);
+  const zip = await JSZip.loadAsync(buf);
+
+  const manifest = JSON.parse(await zip.file('manifest.json')!.async('string'));
+  assert.equal(manifest.deliverable, 'binary+source');
+
+  const readme = await zip.file('README.md')!.async('string');
+  assert.ok(!readme.startsWith('PAQUETE INTERNO'), 'README default no debe llevar banner interno');
+});
+
+test('web-zip: deliverable = binary → manifest.json lo declara y README lleva banner operador', async () => {
+  const fixture = buildFixtureTmp();
+  trash.push(fixture.rootDir);
+  const outputDir = path.join(os.tmpdir(), `webzip-deliv-binary-${randomUUID()}`);
+  trash.push(outputDir);
+
+  const result = await buildWebZip(config, '/fake/front', outputDir, () => {}, undefined, {
+    createTempCopy: async () => fixture,
+    cleanupTempCopy: () => {},
+    deliverable: 'binary',
+  });
+  assert.ok(result.success);
+
+  const buf = fs.readFileSync((result as { outputPath: string }).outputPath);
+  const zip = await JSZip.loadAsync(buf);
+
+  const manifest = JSON.parse(await zip.file('manifest.json')!.async('string'));
+  assert.equal(manifest.deliverable, 'binary');
+
+  const readme = await zip.file('README.md')!.async('string');
+  assert.ok(readme.startsWith('PAQUETE INTERNO'), 'README operador debe empezar con el banner interno');
+});

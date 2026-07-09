@@ -24,6 +24,7 @@ import {
   writeFreshEnvLocal,
   buildEnvExampleContent,
   writeFreshEnvExample,
+  buildMinimalManifest,
 } from './manifest-allowlist.js';
 import {
   buildRuntimeConfigEnvLines,
@@ -31,9 +32,9 @@ import {
   type RuntimeConfig,
 } from './runtime-config-env.js';
 import type { TenantConfig } from '../../../../shared/generate/tenant-types.js';
-import type { Emitter, BuildResult } from './web-zip.js';
+import type { Emitter, BuildResult, Deliverable } from './web-zip.js';
 
-export type { Emitter, BuildResult };
+export type { Emitter, BuildResult, Deliverable };
 
 const require = createRequire(import.meta.url);
 type Archiver = import('archiver').Archiver;
@@ -60,7 +61,8 @@ function toSlug(name: string): string {
   return name.toLowerCase().replace(/\s+/g, '-');
 }
 
-function renderReadme(productName: string): string {
+/** README cara al cliente: compilacion electron-builder generica, sin referencias internas. */
+function renderReadmeClient(productName: string): string {
   return `# ${productName} — Windows (.exe)
 
 ## Que es esto
@@ -120,11 +122,58 @@ aplicacion, pero mejora la confianza del usuario final.
 `;
 }
 
+/** README interno de operador: pipeline local real de firma/empaquetado. NUNCA se entrega al cliente. */
+function renderReadmeOperator(productName: string): string {
+  return `PAQUETE INTERNO — no entregar al cliente
+
+# ${productName} — Windows (.exe, pipeline interno)
+
+## Que es esto
+
+Este ZIP es el paquete de trabajo del **operador** para generar el
+instalador de Windows de este tenant. El cliente final NUNCA recibe este
+ZIP: recibe unicamente el \`.exe\` ya compilado.
+
+## Pipeline local del operador (Windows)
+
+1. **Entrar en la carpeta del codigo, instalar dependencias y compilar la
+   web estatica:**
+   \`\`\`
+   cd desktop-src
+   npm install
+   npm run build:static
+   \`\`\`
+
+2. **Empaquetar con electron-builder, firmando con el certificado de la
+   organizacion:**
+   \`\`\`
+   npx electron-builder --win --config.win.certificateFile="D:\\Operaos\\certs\\operaos-codesign.pfx" --config.win.certificatePassword=$env:OPERAOS_CODESIGN_PASS
+   \`\`\`
+   El certificado \`operaos-codesign.pfx\` es propiedad de la organizacion; la
+   contrasena vive en el gestor de secretos del operador, nunca en este
+   README.
+
+3. **Entregar al cliente** unicamente los artefactos de \`dist-electron/\`.
+
+## Nota
+
+El README que recibe el cliente (variante \`binary+source\`) es distinto: no
+menciona firma con certificado propio ni rutas locales de esta maquina.
+`;
+}
+
+/** Lee la plantilla README y sustituye los placeholders del tenant. */
+function renderReadme(productName: string, deliverable: Deliverable): string {
+  return deliverable === 'binary'
+    ? renderReadmeOperator(productName)
+    : renderReadmeClient(productName);
+}
+
 async function assembleZip(
   frontDir: string,
   sharedDir: string,
   outputPath: string,
-  artifacts: { readme: string },
+  artifacts: { readme: string; manifest: string },
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const outStream = fs.createWriteStream(outputPath);
@@ -155,6 +204,7 @@ async function assembleZip(
     }
 
     archive.append(artifacts.readme, { name: 'README.md' });
+    archive.append(artifacts.manifest, { name: 'manifest.json' });
 
     void archive.finalize();
   });
@@ -168,6 +218,8 @@ export interface ExeDeps {
   platform?: NodeJS.Platform;
   /** crm-export-runtime-config: cableado runtime de plataforma para este ZIP. */
   runtimeConfig?: RuntimeConfig;
+  /** crm-export-delivery-profiles: destinatario del ZIP. Default 'binary+source'. */
+  deliverable?: Deliverable;
 }
 
 export async function buildExe(
@@ -181,6 +233,7 @@ export async function buildExe(
   const createTempCopy = deps.createTempCopy ?? defaultCreateTempCopy;
   const cleanupTempCopy = deps.cleanupTempCopy ?? defaultCleanupTempCopy;
   const applyExportCompat = deps.applyExportCompat ?? defaultApplyExportCompat;
+  const deliverable: Deliverable = deps.deliverable ?? 'binary+source';
 
   const productName = config.business.name;
   const slug = toSlug(productName);
@@ -231,9 +284,10 @@ export async function buildExe(
     emit({ type: 'progress', format: 'exe', step: 'Empaquetando codigo fuente en ZIP...', pct: 60 });
     fs.mkdirSync(outputDir, { recursive: true });
     const outputPath = path.join(outputDir, `${slug}-desktop-src.zip`);
-    const readme = renderReadme(productName);
+    const readme = renderReadme(productName, deliverable);
+    const manifest = buildMinimalManifest('exe', deliverable, config);
 
-    await assembleZip(tmpFrontDir, tmpSharedDir, outputPath, { readme });
+    await assembleZip(tmpFrontDir, tmpSharedDir, outputPath, { readme, manifest });
 
     emit({ type: 'progress', format: 'exe', step: 'Guardando archivo ZIP...', pct: 100, outputPath });
     return { success: true, outputPath };

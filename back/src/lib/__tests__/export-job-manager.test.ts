@@ -51,6 +51,7 @@ const baseParams = (formats: StartJobParams['formats']): StartJobParams => ({
   config: { business: { name: 'Demo' } } as unknown as StartJobParams['config'],
   outputDir: '/tmp/out',
   frontDir: '/tmp/front',
+  deliverable: 'binary+source',
 });
 
 /** Espera a que el job en curso termine (done|error). */

@@ -64,6 +64,17 @@ export type BuildResult =
 
 export type Emitter = (event: ProgressEvent) => void;
 
+/**
+ * crm-export-delivery-profiles: destinatario del ZIP generado.
+ * - 'binary': paquete INTERNO de operador (pipeline de compilacion/deploy);
+ *   el ZIP nunca llega al cliente.
+ * - 'binary+source' (default): paquete cara al cliente, codigo fuente +
+ *   instrucciones de compilacion/self-host, sin referencias internas.
+ * Definido aqui (junto a Emitter/BuildResult) porque es el modulo que ya
+ * centraliza los tipos compartidos entre los 4 builders.
+ */
+export type Deliverable = 'binary' | 'binary+source';
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -80,8 +91,8 @@ function toSlug(name: string): string {
   return name.toLowerCase().replace(/\s+/g, '-');
 }
 
-/** Lee la plantilla README y sustituye los placeholders del tenant. */
-function renderReadme(productName: string): string {
+/** README cara al cliente: fuente + self-host, sin referencias internas. */
+function renderReadmeClient(productName: string): string {
   return `# ${productName} — Web
 
 ## Que es esto
@@ -143,6 +154,62 @@ Tienes dos caminos habituales:
 `;
 }
 
+/**
+ * README interno de operador: pipeline de deploy/hosting propio. NUNCA se entrega al cliente.
+ *
+ * Nota (crm-export-delivery-profiles, fuera de alcance actual): estos pasos son manuales; una
+ * fase futura podría automatizar la compilación server-side (deploy directo sin ZIP intermedio).
+ */
+function renderReadmeOperator(productName: string): string {
+  return `PAQUETE INTERNO — no entregar al cliente
+
+# ${productName} — Web (deploy interno)
+
+## Que es esto
+
+Este ZIP es el paquete de trabajo del **operador** para alojar la web de este
+tenant. El cliente final NUNCA recibe este ZIP: recibe unicamente la URL del
+sitio ya publicado.
+
+## Pipeline de deploy interno
+
+1. **Entrar en la carpeta del codigo:**
+   \`\`\`
+   cd app
+   \`\`\`
+
+2. **Instalar dependencias y compilar:**
+   \`\`\`
+   npm install
+   npm run build
+   \`\`\`
+
+3. **Desplegar en el proyecto interno de hosting (Vercel, scope operaos):**
+   \`\`\`
+   vercel deploy --prod --scope operaos-hosting --yes
+   \`\`\`
+   Usa el token de la cuenta de organizacion \`operaos-hosting\` (gestionado por
+   el operador, no del tenant). El dashboard interno de deploys esta en
+   https://ops.operaos.internal/deploys.
+
+4. **Registrar el alta en el panel interno** (\`ops.operaos.internal\`) con el
+   slug del tenant para que quede enlazado al proyecto correspondiente.
+
+## Nota
+
+El README que recibe el cliente (variante \`binary+source\`) es distinto: solo
+contiene instrucciones genericas de self-host, sin el scope ni las URLs
+internas de este documento.
+`;
+}
+
+/** Lee la plantilla README y sustituye los placeholders del tenant. */
+function renderReadme(productName: string, deliverable: Deliverable): string {
+  return deliverable === 'binary'
+    ? renderReadmeOperator(productName)
+    : renderReadmeClient(productName);
+}
+
 // ---------------------------------------------------------------------------
 // Dependencias inyectables (para test)
 // ---------------------------------------------------------------------------
@@ -154,6 +221,8 @@ export interface WebZipDeps {
   runNpmCi?: any;
   /** crm-export-runtime-config: cableado runtime de plataforma para este ZIP. */
   runtimeConfig?: RuntimeConfig;
+  /** crm-export-delivery-profiles: destinatario del ZIP. Default 'binary+source'. */
+  deliverable?: Deliverable;
 }
 
 /**
@@ -220,6 +289,7 @@ export async function buildWebZip(
 ): Promise<BuildResult> {
   const createTempCopy = deps.createTempCopy ?? defaultCreateTempCopy;
   const cleanupTempCopy = deps.cleanupTempCopy ?? defaultCleanupTempCopy;
+  const deliverable: Deliverable = deps.deliverable ?? 'binary+source';
 
   let rootDir: string | undefined;
 
@@ -246,8 +316,8 @@ export async function buildWebZip(
     emit({ type: 'progress', format: 'web-zip', step: 'Generando esquema y manifest...', pct: 40 });
     const sql = buildSql(config);
     const prisma = buildPrisma(config);
-    const manifest = JSON.stringify(buildManifest(config), null, 2);
-    const readme = renderReadme(config.business.name);
+    const manifest = JSON.stringify({ ...buildManifest(config), deliverable }, null, 2);
+    const readme = renderReadme(config.business.name, deliverable);
 
     emit({ type: 'progress', format: 'web-zip', step: 'Empaquetando codigo fuente en ZIP...', pct: 70 });
     fs.mkdirSync(outputDir, { recursive: true });

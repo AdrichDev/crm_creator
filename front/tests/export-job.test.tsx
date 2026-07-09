@@ -65,7 +65,7 @@ describe('Fase 2 · exportador polling', () => {
 
     const { result } = renderHook(() => useExportJob());
     await act(async () => {
-      await result.current.start({ projectId: 'p1', formats: ['web-zip'] });
+      await result.current.start({ projectId: 'p1', formats: ['web-zip'], deliverable: 'binary+source' });
     });
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
 
@@ -180,8 +180,38 @@ describe('Fase 2 · exportador polling', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Exportar' }));
 
     // jsdom no expone showSaveFilePicker → handle=null; el job arranca igual.
-    await waitFor(() => expect(onExport).toHaveBeenCalledWith('p1', ['web-zip'], null));
+    // deliverable por defecto (crm-export-delivery-profiles): 'binary+source'.
+    await waitFor(() =>
+      expect(onExport).toHaveBeenCalledWith('p1', ['web-zip'], null, 'binary+source'),
+    );
     // Ya no se llama al endpoint inexistente pick-folder.
     expect(mockApiFetch.mock.calls.some((c) => c[0] === '/exports/pick-folder')).toBe(false);
+  });
+
+  // crm-export-delivery-profiles WU3.3: selector de 2 radios (Cliente/Interno)
+  it('3.3 selector Destino: por defecto Cliente (binary+source); elegir Interno propaga binary', async () => {
+    const project = {
+      id: 'p1',
+      createdAt: new Date().toISOString(),
+      config: { business: { name: 'Test', vertical: 'otro', clienteId: null } },
+    } as never;
+
+    const onExport = vi.fn();
+    mockApiFetch.mockImplementation(async (path: string) => {
+      if (path === '/tenants') return [] as never;
+      return undefined as never;
+    });
+    render(
+      <ExportTable projects={[project]} codeMap={{ p1: 'crm-01' }} isRunning={false} onExport={onExport} />,
+    );
+
+    // Radio 'Cliente' marcado por defecto.
+    expect(screen.getByRole('radio', { name: 'Cliente' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Interno' })).not.toBeChecked();
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Interno' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Exportar' }));
+
+    await waitFor(() => expect(onExport).toHaveBeenCalledWith('p1', ['web-zip'], null, 'binary'));
   });
 });

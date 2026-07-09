@@ -24,6 +24,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import type { TenantConfig } from '../../../../shared/generate/tenant-types.js';
+import type { Deliverable } from './web-zip.js';
 
 // ---------------------------------------------------------------------------
 // Allowlists por formato (design.md #1)
@@ -243,4 +244,32 @@ export function buildEnvExampleContent(options: BuildEnvOptions = {}): string[] 
 /** Emisor unico de `.env.example` en la copia temporal. */
 export function writeFreshEnvExample(tmpFrontDir: string, lines: string[]): void {
   fs.writeFileSync(path.join(tmpFrontDir, '.env.example'), lines.join('\n') + '\n', 'utf8');
+}
+
+// ---------------------------------------------------------------------------
+// crm-export-delivery-profiles: manifest.json minimo (apk/exe/ipa)
+// ---------------------------------------------------------------------------
+
+/**
+ * Manifest minimo para los formatos que solo empaquetaban README hasta ahora
+ * (apk/exe/ipa; web-zip ya tiene su propio manifest completo via
+ * `buildManifest` de shared/generate). Da trazabilidad al ZIP suelto
+ * (design.md §4) sin depender del `ExportJob` en memoria, que expira a los
+ * ~30 min (`RETENTION_MS` de `export-job-manager.ts`).
+ */
+export function buildMinimalManifest(
+  format: string,
+  deliverable: Deliverable,
+  config: TenantConfig,
+): string {
+  return JSON.stringify(
+    {
+      format,
+      deliverable,
+      generatedAt: new Date().toISOString(),
+      business: { name: config.business.name },
+    },
+    null,
+    2,
+  );
 }
