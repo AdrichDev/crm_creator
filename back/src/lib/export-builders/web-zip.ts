@@ -68,19 +68,62 @@ function toSlug(name: string): string {
 function renderReadme(productName: string): string {
   return `# ${productName} — Web
 
-## Compilar y ejecutar (CLI)
+## Que es esto
 
-1. Entrar en la carpeta del codigo e instalar dependencias:
-   \`cd app\`
-   \`npm install\`
+Este ZIP contiene el **codigo fuente completo** de tu aplicacion web, construida
+con Next.js. Es una aplicacion estandar de Node.js: puedes ejecutarla en tu
+propia maquina para probarla, o alojarla en cualquier proveedor de hosting
+(Vercel, Netlify, un servidor propio, etc.).
 
-2. Compilar para produccion:
-   \`npm run build\`
+## Requisitos previos
 
-3. Ejecutar (sirve en http://localhost:3002):
-   \`npm start\`
+- **Node.js 22** (version LTS). Comprueba tu version con \`node --version\`.
+  Si no lo tienes, descargalo desde https://nodejs.org y elige la version 22 LTS.
 
-*Nota: tambien puedes alojar el codigo fuente en Vercel conectando un repositorio de Git.*
+## Compilar y ejecutar en local (paso a paso)
+
+1. **Entrar en la carpeta del codigo.** Todo el proyecto vive dentro de \`app/\`,
+   asi que lo primero es situarte ahi:
+   \`\`\`
+   cd app
+   \`\`\`
+
+2. **Instalar las dependencias.** Descarga las librerias que la aplicacion
+   necesita (se guardan en \`node_modules/\`). Solo hace falta hacerlo la primera
+   vez o cuando cambien las dependencias:
+   \`\`\`
+   npm install
+   \`\`\`
+
+3. **Compilar para produccion.** Genera la version optimizada de la aplicacion.
+   Este paso valida el codigo y prepara los archivos que se serviran:
+   \`\`\`
+   npm run build
+   \`\`\`
+
+4. **Arrancar la aplicacion.** Levanta el servidor web ya compilado:
+   \`\`\`
+   npm start
+   \`\`\`
+   La aplicacion queda disponible en **http://localhost:3002**. Abre esa
+   direccion en tu navegador.
+
+## Publicar en produccion
+
+Tienes dos caminos habituales:
+
+- **Vercel (lo mas sencillo).** Sube esta carpeta a un repositorio de Git
+  (GitHub, GitLab, etc.), entra en https://vercel.com, elige *Import Project*
+  y selecciona el repositorio. Vercel detecta Next.js automaticamente, ejecuta
+  el \`build\` y publica la web con una URL propia.
+
+- **Servidor Node propio.** En cualquier servidor con Node 22, repite los pasos
+  \`npm install\` -> \`npm run build\` -> \`npm start\`. Se recomienda usar un gestor
+  de procesos (por ejemplo PM2) para mantener la aplicacion siempre encendida.
+
+> Nota: si tu aplicacion se conecta a una API, configura la URL en un archivo
+> \`.env.local\` (por ejemplo \`NEXT_PUBLIC_API_URL=<url-de-tu-api>\`) antes de
+> compilar.
 `;
 }
 

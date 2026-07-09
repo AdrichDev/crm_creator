@@ -46,26 +46,132 @@ function toAppId(slug: string): string {
 }
 
 function renderReadme(productName: string): string {
-  return `# ${productName} — Android
+  return `# ${productName} — Android (APK)
 
-## Compilar APK (CLI, sin Android Studio)
+## Que es esto
 
-1. Entrar en la carpeta del codigo e instalar dependencias:
-   \`cd mobile-src\`
-   \`npm install\`
+Este ZIP contiene el codigo fuente para generar la **app de Android (APK)**. Por
+dentro es tu misma aplicacion web, empaquetada con Capacitor dentro de un
+proyecto nativo de Android que se compila con Gradle. El resultado es un archivo
+\`.apk\` que se instala en cualquier telefono Android.
 
-2. Compilar la web estatica de Next.js (salida en \`out/\`):
-   \`npm run build:static\`
+## Requisitos previos (explicados)
 
-3. Sincronizar la web con el proyecto Android de Capacitor:
-   \`npx cap sync android\`
+- **Node.js 22.** Motor de JavaScript que ejecuta las herramientas de compilacion
+  de la parte web. Comprueba con \`node --version\`.
 
-4. Compilar el APK con Gradle:
-   \`cd android && ./gradlew assembleRelease\`
-   (En Windows: \`cd android\` y luego \`gradlew.bat assembleRelease\`)
+- **Java JDK 17 o superior** (JDK 21 tambien funciona). Gradle y el compilador de
+  Android estan escritos en Java, asi que necesitas un JDK instalado. Comprueba
+  con \`java -version\`. Recomendado: Temurin/OpenJDK 17 o 21.
 
-El APK queda en:
-\`android/app/build/outputs/apk/release/app-release.apk\`
+- **Android SDK** con la plataforma **android-35** y las **build-tools 35**. Es el
+  conjunto de librerias y herramientas de Android que compilan el APK.
+  No hace falta instalar Android Studio completo: basta con los *command line
+  tools* (que incluyen \`sdkmanager\`). Desde ahi puedes instalar lo necesario:
+  \`\`\`
+  sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+  \`\`\`
+  Despues, indica al proyecto donde esta el SDK de una de estas dos formas:
+  - Definiendo la variable de entorno \`ANDROID_HOME=<ruta-al-sdk>\`, **o**
+  - Creando el archivo \`android/local.properties\` con una linea:
+    \`sdk.dir=<ruta-al-sdk>\`
+
+## Compilar el APK (paso a paso)
+
+1. **Entrar en la carpeta del codigo:**
+   \`\`\`
+   cd mobile-src
+   \`\`\`
+
+2. **Instalar las dependencias** (solo la primera vez):
+   \`\`\`
+   npm install
+   \`\`\`
+
+3. **Compilar la web estatica.** Genera la carpeta \`out/\`, que es la web que
+   Capacitor empaqueta dentro de la app:
+   \`\`\`
+   npm run build:static
+   \`\`\`
+
+4. **Sincronizar con el proyecto Android.** Copia \`out/\` dentro del proyecto
+   nativo de Android:
+   \`\`\`
+   npx cap sync android
+   \`\`\`
+
+5. **Entrar en el proyecto Android:**
+   \`\`\`
+   cd android
+   \`\`\`
+
+6. **Elegir una variante de compilacion.** Hay dos:
+
+   - **Debug (para probar rapido, sin tu firma).** Genera un APK firmado con la
+     clave de depuracion automatica de Android. Sirve para instalar y probar en
+     tu movil, pero **no** para entregar actualizaciones (la clave debug no es
+     estable ni tuya):
+     \`\`\`
+     .\\gradlew.bat assembleDebug
+     \`\`\`
+     Resultado: \`app\\build\\outputs\\apk\\debug\\app-debug.apk\`
+
+   - **Release firmado (para ENTREGAR a usuarios).** Firma el APK con **tu**
+     keystore (ver la seccion siguiente). Pasa las rutas y contrasenas como
+     parametros \`-P\` (usa marcadores como placeholders, sustituyelos por tus
+     valores reales):
+     \`\`\`
+     .\\gradlew.bat assembleRelease \`
+       -PrelKeystore="<ruta-a-tu-keystore.jks>" \`
+       -PrelStorePass=<contraseña-del-keystore> \`
+       -PrelAlias=<alias> \`
+       -PrelKeyPass=<contraseña-de-la-clave>
+     \`\`\`
+     Resultado: \`app\\build\\outputs\\apk\\release\\app-release.apk\`
+
+## Firma (keystore)
+
+- El **keystore** (archivo \`.jks\`) es tu **identidad de firma**. Demuestra que
+  una app es tuya. Se genera **una sola vez** y se **reutiliza** para todas tus
+  apps y todas sus futuras versiones.
+
+- **Guardalo con copia de seguridad.** Si lo pierdes, **no podras publicar
+  actualizaciones** de una app ya entregada: Android las rechazara por no
+  coincidir la firma.
+
+- Generarlo (una vez):
+  \`\`\`
+  keytool -genkeypair -v -keystore mi-release.jks -alias mi-alias -keyalg RSA -keysize 2048 -validity 10000
+  \`\`\`
+  El comando te pedira las contrasenas y algunos datos (nombre, organizacion...).
+
+- **Es TUYO y no viaja en este ZIP.** Lo mantienes aparte y lo pasas al compilar
+  con los parametros \`-P...\` mostrados arriba.
+
+## Actualizaciones
+
+Android instala un APK **como actualizacion** de una app ya instalada
+(conservando sus datos) solo si se cumplen las tres condiciones:
+
+1. **Mismo \`applicationId\`** (ya viene fijado por la app, no debes tocarlo).
+2. **Misma keystore** que la version anterior.
+3. **\`versionCode\` MAYOR** que el de la version instalada.
+
+El \`versionCode\` de este proyecto se genera **automaticamente** (minutos
+transcurridos desde una fecha base, siempre creciente), asi que cada compilacion
+posterior se instala como actualizacion sin que tengas que gestionar numeros.
+Si quieres fijar el **nombre de version visible** al usuario, añade:
+\`-PappVersionName="1.1"\`.
+
+## Instalacion en el movil
+
+Para instalar el APK directamente (sideload), sin pasar por Google Play:
+
+1. Copia el archivo \`.apk\` al telefono (cable, correo, nube...).
+2. Abrelo desde el gestor de archivos del movil.
+3. Android mostrara un aviso de "origenes desconocidos" o "no verificada por
+   Play Protect". Es **normal** para apps instaladas fuera de la Play Store:
+   acepta para continuar con la instalacion.
 `;
 }
 

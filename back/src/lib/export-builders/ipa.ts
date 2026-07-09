@@ -46,38 +46,91 @@ function toAppId(slug: string): string {
 }
 
 function renderReadme(productName: string): string {
-  return `# ${productName} — iOS
+  return `# ${productName} — iOS (.ipa)
 
-> **Requisito:** iOS solo se compila en macOS con Xcode (politica de Apple).
-> Este ZIP contiene el codigo fuente; el proyecto Xcode (\`ios/\`) se genera en tu Mac.
+> **Requisito imprescindible:** iOS **solo** se puede compilar en **macOS con
+> Xcode**. Es una politica de Apple: no existe forma soportada de generar un
+> \`.ipa\` en Windows o Linux. Este ZIP contiene el codigo fuente; el proyecto
+> Xcode (\`ios/\`) se genera en tu Mac durante los pasos de abajo.
 
-## Proceso completo de compilacion (macOS)
+## Que es esto
 
-1. Entrar en la carpeta del codigo e instalar dependencias:
-   \`cd mobile-src\`
-   \`npm install\`
+Este ZIP contiene el codigo fuente para generar la **app de iOS**. Por dentro es
+tu misma aplicacion web, empaquetada con Capacitor dentro de un proyecto nativo
+de iOS que se compila y firma con Xcode.
 
-2. Anadir el plugin de iOS de Capacitor (no viene preinstalado):
-   \`npm install @capacitor/ios\`
+## Requisitos previos
 
-3. Compilar la web estatica de Next.js (salida en \`out/\`):
-   \`npm run build:static\`
+- **macOS** con **Xcode** instalado (desde la Mac App Store).
+- **CocoaPods** (gestor de dependencias nativas). Se instala con
+  \`sudo gem install cocoapods\`.
+- **Node.js 22** (comprueba con \`node --version\`).
+- Una **cuenta de Apple Developer**, necesaria para firmar y distribuir la app
+  (tanto para pruebas en dispositivo real como para la App Store).
 
-4. Crear el proyecto Xcode de iOS (requiere CocoaPods):
-   \`npx cap add ios\`
+## Proceso completo de compilacion (en tu Mac)
 
-5. Sincronizar la web compilada con el proyecto iOS:
-   \`npx cap sync ios\`
+1. **Entrar en la carpeta del codigo:**
+   \`\`\`
+   cd mobile-src
+   \`\`\`
 
-6. Compilar el .ipa:
+2. **Instalar las dependencias** del proyecto (solo la primera vez):
+   \`\`\`
+   npm install
+   \`\`\`
 
-   **Opcion A — Xcode (recomendada):**
-   \`npx cap open ios\` y luego Product > Archive > Distribute App
+3. **Anadir el plugin de iOS de Capacitor.** No viene preinstalado para no
+   arrastrar dependencias de Apple en entornos que no son Mac:
+   \`\`\`
+   npm install @capacitor/ios
+   \`\`\`
 
-   **Opcion B — CLI (con firma ya configurada):**
-   \`cd ios/App\`
-   \`xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -archivePath build/App.xcarchive archive\`
-   \`xcodebuild -exportArchive -archivePath build/App.xcarchive -exportPath build -exportOptionsPlist ExportOptions.plist\`
+4. **Compilar la web estatica.** Genera la carpeta \`out/\` que Capacitor
+   empaqueta dentro de la app:
+   \`\`\`
+   npm run build:static
+   \`\`\`
+
+5. **Crear el proyecto Xcode de iOS.** Genera la carpeta \`ios/\` con el proyecto
+   nativo (aqui se ejecutan tambien las tareas de CocoaPods):
+   \`\`\`
+   npx cap add ios
+   \`\`\`
+
+6. **Sincronizar la web compilada con el proyecto iOS.** Copia el contenido de
+   \`out/\` al proyecto nativo:
+   \`\`\`
+   npx cap sync ios
+   \`\`\`
+
+7. **Compilar y firmar el \`.ipa\`.** Tienes dos opciones:
+
+   **Opcion A — Xcode (recomendada).** Abre el proyecto en Xcode:
+   \`\`\`
+   npx cap open ios
+   \`\`\`
+   Dentro de Xcode:
+   - En **Signing & Capabilities**, selecciona tu **equipo de firma** (tu
+     cuenta de Apple Developer).
+   - Menu **Product > Archive** para compilar el archivo de distribucion.
+   - Pulsa **Distribute App** y sigue el asistente para exportar el \`.ipa\`
+     (o subirlo directamente a la App Store / TestFlight).
+
+   **Opcion B — Linea de comandos** (solo si ya tienes la firma configurada y un
+   archivo \`ExportOptions.plist\` preparado):
+   \`\`\`
+   cd ios/App
+   xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -archivePath build/App.xcarchive archive
+   xcodebuild -exportArchive -archivePath build/App.xcarchive -exportPath build -exportOptionsPlist ExportOptions.plist
+   \`\`\`
+
+## Nota sobre la firma en iOS
+
+A diferencia de Android (que usa un *keystore*), iOS firma con tu **certificado
+de desarrollador** mas un **provisioning profile**, ambos gestionados desde tu
+cuenta de Apple Developer. Xcode puede gestionarlos automaticamente si activas
+"Automatically manage signing" en Signing & Capabilities.
 `;
 }
 

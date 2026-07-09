@@ -40,21 +40,62 @@ function toSlug(name: string): string {
 }
 
 function renderReadme(productName: string): string {
-  return `# ${productName} — Windows
+  return `# ${productName} — Windows (.exe)
 
-## Compilar .exe (CLI)
+## Que es esto
 
-1. Entrar en la carpeta del codigo e instalar dependencias:
-   \`cd desktop-src\`
-   \`npm install\`
+Este ZIP contiene el codigo fuente para generar una **aplicacion de escritorio
+para Windows**. Por dentro es tu misma aplicacion web, empaquetada con Electron:
+Electron es un contenedor que muestra la web dentro de una ventana propia, con
+su icono y su ejecutable, de modo que el usuario final la abre como cualquier
+programa de escritorio (sin navegador a la vista).
 
-2. Compilar la web estatica de Next.js (salida en \`out/\`):
-   \`npm run build:static\`
+## Requisitos previos
 
-3. Generar el ejecutable con electron-builder:
-   \`npx electron-builder --win -c.productName="${productName}"\`
+- **Node.js 22** (version LTS). Comprueba con \`node --version\`; si no lo tienes,
+  descargalo desde https://nodejs.org.
+- **Windows.** La generacion del \`.exe\` para Windows se hace desde Windows.
 
-Los ejecutables (.exe portable e instalador) quedan en \`dist-electron/\`.
+## Compilar el ejecutable (paso a paso)
+
+1. **Entrar en la carpeta del codigo.** El proyecto de escritorio vive en
+   \`desktop-src/\`:
+   \`\`\`
+   cd desktop-src
+   \`\`\`
+
+2. **Instalar las dependencias** (solo la primera vez):
+   \`\`\`
+   npm install
+   \`\`\`
+
+3. **Compilar la web estatica.** Genera la version estatica de la aplicacion en
+   la carpeta \`out/\`. Ese contenido es lo que Electron mostrara dentro de la
+   ventana:
+   \`\`\`
+   npm run build:static
+   \`\`\`
+
+4. **Empaquetar el ejecutable con electron-builder.** Este paso crea el \`.exe\`
+   a partir de \`out/\`:
+   \`\`\`
+   npx electron-builder --win
+   \`\`\`
+
+## Resultado
+
+Los archivos generados quedan en la carpeta **\`dist-electron/\`**:
+
+- Un **instalador NSIS** (\`.exe\` que instala la aplicacion en el equipo).
+- Una version **portable** (\`.exe\` que se ejecuta sin instalar).
+
+## Nota sobre la firma del ejecutable (opcional)
+
+Al abrir un \`.exe\` sin firmar, Windows SmartScreen puede mostrar un aviso de
+"editor desconocido". Es normal y el usuario puede continuar igualmente. Para
+evitar ese aviso hace falta un **certificado de firma de codigo (code signing)**
+emitido por una autoridad reconocida. No es imprescindible para distribuir la
+aplicacion, pero mejora la confianza del usuario final.
 `;
 }
 
