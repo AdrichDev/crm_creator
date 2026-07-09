@@ -7,8 +7,12 @@ android {
         applicationId "com.operaos.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // versionCode automatico = minutos desde epoch (siempre creciente, entra en
+        // el int de Android ~2.1e9). Cada build posterior de la MISMA app (mismo
+        // applicationId) se reconoce como actualizacion sin gestionar numeros a mano.
+        // Override: -PappVersionCode=N ; nombre visible al usuario: -PappVersionName=x.
+        versionCode project.hasProperty('appVersionCode') ? project.property('appVersionCode').toInteger() : (int)(System.currentTimeMillis() / 60000L)
+        versionName project.hasProperty('appVersionName') ? project.property('appVersionName') : "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
