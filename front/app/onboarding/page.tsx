@@ -22,10 +22,11 @@ import { ModuleToggleGrid } from '@/components/config/module-toggle-grid';
 import { BrandingForm } from '@/components/config/branding-form';
 import { AiBrandingSuggest } from '@/components/config/ai-branding-suggest';
 import { Button, Card, CardBody } from '@/components/ui/primitives';
+import { TenantKeysPanel } from '@/components/config/tenant-keys-panel';
 import { Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const STEPS = ['Tipo de negocio', 'Módulos', 'Marca', 'Base de datos', 'Datos'];
+const STEPS = ['Tipo de negocio', 'Módulos', 'Marca', 'BD, API y Keys', 'Datos'];
 
 function OnboardingInner() {
   const { createProject, updateProject, openProject, projects } = useProjects();
@@ -114,9 +115,6 @@ function OnboardingInner() {
   }
   function brand(patch: Partial<{ primary: string; secondary: string; logoText: string; logoImage: string; logoImage2: string; designSource: string; tokens: DesignTokens }>) {
     setDraft({ ...draft, branding: { ...draft.branding, ...patch } });
-  }
-  function db(patch: Partial<NonNullable<typeof draft.database>>) {
-    setDraft({ ...draft, database: { ...draft.database, ...patch } });
   }
   function api(patch: Partial<NonNullable<typeof draft.api>>) {
     setDraft({ ...draft, api: { ...draft.api, ...patch } });
@@ -268,42 +266,52 @@ function OnboardingInner() {
         )}
 
         {step === 3 && (
-          <Card><CardBody className="space-y-4">
-            <div>
-              <p className="text-sm font-semibold text-gray-900">Base de datos</p>
-              <p className="text-xs text-gray-500">Conexión a la BD del proyecto. Todo manual y opcional: si lo dejas vacío, no pasa nada — se puede configurar más adelante.</p>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {([['host', 'Host'], ['port', 'Puerto'], ['name', 'Base de datos'], ['user', 'Usuario']] as const).map(([k, label]) => (
-                <div key={k}>
-                  <label className="text-xs font-medium text-gray-500">{label}</label>
-                  <input autoComplete="off" value={draft.database?.[k] ?? ''} onChange={(e) => db({ [k]: e.target.value } as Partial<NonNullable<typeof draft.database>>)}
-                    className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" />
-                </div>
-              ))}
+          <div className="space-y-4">
+            <Card><CardBody className="space-y-4">
               <div>
-                <label className="text-xs font-medium text-gray-500">Contraseña</label>
-                <input type="password" autoComplete="new-password" value={draft.database?.password ?? ''} onChange={(e) => db({ password: e.target.value })}
+                <p className="text-sm font-semibold text-gray-900">Base de datos</p>
+                <p className="text-xs text-gray-500">URL de conexión del proyecto. Se guarda cifrada; opcional — si se deja vacía, se puede configurar más adelante.</p>
+              </div>
+              {isEdit && editing ? (
+                <TenantKeysPanel businessId={editing.id} groups={['database']} />
+              ) : (
+                // crm-onboarding-tenant-keys (WU5.3): en alta NUEVA no existe `businessId` hasta
+                // `finish()` (createProject se llama al final del wizard) — el store cifrado
+                // exige un TenantSecret ligado a un Business ya creado. Se deshabilita el panel
+                // con un aviso claro en vez de bloquear el wizard o crear el proyecto a medias.
+                <p className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-3 text-xs text-gray-500">
+                  Podrás configurar la URL de la base de datos justo después de crear el proyecto, desde Configuración.
+                </p>
+              )}
+            </CardBody></Card>
+
+            <Card><CardBody className="space-y-4">
+              <div>
+                <p className="text-sm font-semibold text-gray-900">Backend API</p>
+                <p className="text-xs text-gray-500">Dominio de la API (Producción). Las apps exportadas (.apk, .exe) se conectarán aquí. Si se deja vacío, las apps funcionarán en modo demo (offline).</p>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500">Dominio Backend</label>
+                <input value={draft.api?.url ?? ''} onChange={(e) => api({ url: e.target.value })}
+                  placeholder="https://api.midominio.com"
                   className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" />
               </div>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-500">URL de conexión (si se prefiere a los campos sueltos)</label>
-              <input value={draft.database?.url ?? ''} onChange={(e) => db({ url: e.target.value })}
-                placeholder="postgresql://usuario:password@host:puerto/basedatos"
-                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" />
-            </div>
-            
-            <div className="mt-6 pt-6 border-t border-gray-200">
-              <p className="text-sm font-semibold text-gray-900 mb-1">Backend API</p>
-              <p className="text-xs text-gray-500 mb-4">Dominio de la API (Producción). Las apps exportadas (.apk, .exe) se conectarán aquí. Si se deja vacío, las apps funcionarán en modo demo (offline).</p>
-              
-              <label className="text-xs font-medium text-gray-500">Dominio Backend</label>
-              <input value={draft.api?.url ?? ''} onChange={(e) => api({ url: e.target.value })}
-                placeholder="https://api.midominio.com"
-                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm" />
-            </div>
-          </CardBody></Card>
+            </CardBody></Card>
+
+            <Card><CardBody className="space-y-4">
+              <div>
+                <p className="text-sm font-semibold text-gray-900">API Keys</p>
+                <p className="text-xs text-gray-500">Claves de IA (OpenAI/Gemini/Anthropic) y Google Maps del proyecto. Opcional — todo funciona sin ellas hasta que se necesiten.</p>
+              </div>
+              {isEdit && editing ? (
+                <TenantKeysPanel businessId={editing.id} groups={['ai', 'maps']} />
+              ) : (
+                <p className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-3 text-xs text-gray-500">
+                  Podrás configurar las claves de API justo después de crear el proyecto, desde Configuración.
+                </p>
+              )}
+            </CardBody></Card>
+          </div>
         )}
 
         {step === 4 && (

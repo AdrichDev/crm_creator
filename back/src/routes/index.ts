@@ -36,6 +36,7 @@ import { contactosRouter } from './contactos.js';
 import { telegramRouter } from './telegram.js';
 import { operatorChatRouter } from './operator-chat.js';
 import { tenantConfigRouter } from './tenant-config.js';
+import { tenantKeysRouter } from './tenant-keys.js';
 
 export const api = Router();
 
@@ -64,6 +65,10 @@ api.use(authenticate);
 
 // Endpoints client-scoped (CLIENT solo ve SUS datos). ANTES del guard staffOnly.
 api.use('/me', meRouter);
+// crm-onboarding-tenant-keys: gate de rol PROPIO por handler (Membership del :businessId
+// del path, no req.role/staffOnly — el :businessId editado puede diferir del negocio
+// activo de la sesión en onboarding). Ver requireMemberAdmin en tenant-keys.ts.
+api.use('/tenant-keys', tenantKeysRouter);
 
 // Catálogo: lectura para cualquier miembro (incl. CLIENT, para reservar); escritura solo staff.
 api.use('/locations', staffOrClient, crudRouter('location', { fields: ['nombre', 'direccion', 'zonaHoraria', 'moneda', 'telefono', 'email', 'reservaOnline', 'activo'], searchFields: ['nombre'] }));
