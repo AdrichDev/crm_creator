@@ -60,6 +60,7 @@ Los ejecutables (.exe portable e instalador) quedan en \`dist-electron/\`.
 
 async function assembleZip(
   frontDir: string,
+  sharedDir: string,
   outputPath: string,
   artifacts: { readme: string },
 ): Promise<void> {
@@ -80,6 +81,17 @@ async function assembleZip(
       const segs = entry.name.split(/[\\/]/);
       return segs.some((s) => DESKTOP_EXCLUDED.has(s)) ? false : entry;
     });
+
+    // shared/ en la raiz del ZIP: front importa `../../../shared/generate/*`
+    // (desde desktop-src/lib/generate/*), que resuelve a la raiz de extraccion.
+    // Sin esta carpeta el `next build` del proyecto exportado falla con
+    // "Cannot find module '../../../shared/generate/build-sql'".
+    if (fs.existsSync(sharedDir)) {
+      archive.directory(sharedDir, 'shared', (entry: EntryData) => {
+        const segs = entry.name.split(/[\\/]/);
+        return segs.some((s) => DESKTOP_EXCLUDED.has(s)) ? false : entry;
+      });
+    }
 
     archive.append(artifacts.readme, { name: 'README.md' });
 
@@ -117,6 +129,7 @@ export async function buildExe(
     const copy = await createTempCopy(frontDir, config);
     rootDir = copy.rootDir;
     const tmpFrontDir = copy.frontDir;
+    const tmpSharedDir = path.join(copy.rootDir, 'shared');
 
     const removed = applyExportCompat(tmpFrontDir);
     emit({
@@ -148,7 +161,7 @@ export async function buildExe(
     const outputPath = path.join(outputDir, `${slug}-desktop-src.zip`);
     const readme = renderReadme(productName);
 
-    await assembleZip(tmpFrontDir, outputPath, { readme });
+    await assembleZip(tmpFrontDir, tmpSharedDir, outputPath, { readme });
 
     emit({ type: 'progress', format: 'exe', step: 'Guardando archivo ZIP...', pct: 100, outputPath });
     return { success: true, outputPath };

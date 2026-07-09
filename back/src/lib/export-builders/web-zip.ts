@@ -100,6 +100,7 @@ export interface WebZipDeps {
  */
 async function assembleZip(
   tmpDir: string,
+  sharedDir: string,
   outputPath: string,
   artifacts: { sql: string; prisma: string; manifest: string; readme: string },
 ): Promise<void> {
@@ -121,6 +122,17 @@ async function assembleZip(
       const top = entry.name.split(/[\\/]/)[0];
       return APP_EXCLUDED.has(top) ? false : entry;
     });
+
+    // shared/ en la raiz del ZIP: front importa `../../../shared/generate/*`
+    // (desde app/lib/generate/*), que resuelve a la raiz de extraccion. Sin
+    // esta carpeta el `next build` del proyecto exportado falla con
+    // "Cannot find module '../../../shared/generate/build-sql'".
+    if (fs.existsSync(sharedDir)) {
+      archive.directory(sharedDir, 'shared', (entry: EntryData) => {
+        const top = entry.name.split(/[\\/]/)[0];
+        return APP_EXCLUDED.has(top) ? false : entry;
+      });
+    }
 
     // Artefactos generados en la raiz del ZIP.
     archive.append(artifacts.sql, { name: 'schema.sql' });
@@ -157,6 +169,7 @@ export async function buildWebZip(
     const copy = await createTempCopy(frontDir, config);
     rootDir = copy.rootDir;
     const tmpFrontDir = copy.frontDir;
+    const tmpSharedDir = path.join(copy.rootDir, 'shared');
 
     if (config.api?.url) {
       fs.writeFileSync(path.join(tmpFrontDir, '.env.local'), `NEXT_PUBLIC_API_URL=${config.api.url}\n`, 'utf8');
@@ -173,7 +186,7 @@ export async function buildWebZip(
     const slug = toSlug(config.business.name);
     const outputPath = path.join(outputDir, `${slug}-web-src.zip`);
 
-    await assembleZip(tmpFrontDir, outputPath, { sql, prisma, manifest, readme });
+    await assembleZip(tmpFrontDir, tmpSharedDir, outputPath, { sql, prisma, manifest, readme });
 
     emit({ type: 'progress', format: 'web-zip', step: 'Guardando archivo ZIP...', pct: 100, outputPath });
     return { success: true, outputPath };

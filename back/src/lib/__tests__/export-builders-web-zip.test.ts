@@ -21,21 +21,30 @@ afterEach(() => {
   for (const d of trash.splice(0)) fs.rmSync(d, { recursive: true, force: true });
 });
 
-function buildFixtureTmp(): string {
-  const tmp = path.join(os.tmpdir(), `webzip-tmp-${randomUUID()}`);
-  fs.mkdirSync(path.join(tmp, 'app'), { recursive: true });
-  fs.writeFileSync(path.join(tmp, 'app', 'page.tsx'), '// page');
-  return tmp;
+/**
+ * Fixture que replica el layout del tmp real: rootDir contiene `front/` (codigo
+ * fuente) y `shared/` (funciones puras que front importa via `../../../shared`).
+ * Devuelve las rutas para simular createTempCopy → { rootDir, frontDir }.
+ */
+function buildFixtureTmp(): { rootDir: string; frontDir: string } {
+  const rootDir = path.join(os.tmpdir(), `webzip-tmp-${randomUUID()}`);
+  const frontDir = path.join(rootDir, 'front');
+  fs.mkdirSync(frontDir, { recursive: true });
+  fs.writeFileSync(path.join(frontDir, 'page.tsx'), '// page');
+  // shared/ al lado de front/ (raiz del tmp), tal como lo deja createTempCopy.
+  fs.mkdirSync(path.join(rootDir, 'shared', 'generate'), { recursive: true });
+  fs.writeFileSync(path.join(rootDir, 'shared', 'generate', 'build-sql.ts'), '// build-sql');
+  return { rootDir, frontDir };
 }
 
 test('3.3 web-zip: empaqueta codigo fuente en ZIP', async () => {
-  const tmp = buildFixtureTmp();
-  trash.push(tmp);
+  const { rootDir, frontDir } = buildFixtureTmp();
+  trash.push(rootDir);
   const outputDir = path.join(os.tmpdir(), `webzip-out-${randomUUID()}`);
   trash.push(outputDir);
 
   const result = await buildWebZip(config, '/fake/front', outputDir, () => {}, undefined, {
-    createTempCopy: async () => ({ rootDir: tmp, frontDir: tmp }),
+    createTempCopy: async () => ({ rootDir, frontDir }),
     cleanupTempCopy: () => {},
   });
 
@@ -55,4 +64,7 @@ test('3.3 web-zip: empaqueta codigo fuente en ZIP', async () => {
   assert.ok(has('manifest.json'), 'manifest.json');
   assert.ok(has('README.md'), 'README.md');
   assert.ok(hasPrefix('app/'), 'fuente en app/');
+  // shared/ debe estar en la raiz del ZIP para que `../../../shared` resuelva
+  // tras extraer (regresion: "Cannot find module '../../../shared/generate/...'").
+  assert.ok(hasPrefix('shared/'), 'shared/ en la raiz del ZIP');
 });
