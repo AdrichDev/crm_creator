@@ -18,6 +18,7 @@ import { buildIpa } from './export-builders/ipa.js';
 import { buildExe } from './export-builders/exe.js';
 import { buildApk } from './export-builders/apk.js';
 import type { Emitter, BuildResult } from './export-builders/web-zip.js';
+import type { RuntimeConfig } from './export-builders/runtime-config-env.js';
 import type { TenantConfig } from '../../../shared/generate/tenant-types.js';
 
 // ---------------------------------------------------------------------------
@@ -54,6 +55,8 @@ export interface JobBuildContext {
   config: TenantConfig;
   outputDir: string;
   frontDir: string;
+  /** crm-export-runtime-config: cableado runtime de plataforma (opcional para no romper tests directos). */
+  runtimeConfig?: RuntimeConfig;
 }
 
 /** Firma unificada de un builder inyectable (permite fakes en test). */
@@ -78,6 +81,8 @@ export interface StartJobParams {
   config: TenantConfig;
   outputDir: string;
   frontDir: string;
+  /** crm-export-runtime-config: cableado runtime de plataforma para este job. */
+  runtimeConfig?: RuntimeConfig;
 }
 
 export interface JobDeps {
@@ -103,10 +108,14 @@ const RETENTION_MS = 30 * 60 * 1000; // 30 minutos
 // ---------------------------------------------------------------------------
 
 const defaultBuilders: BuilderMap = {
-  'web-zip': (ctx, emit, signal) => buildWebZip(ctx.config, ctx.frontDir, ctx.outputDir, emit, signal),
-  ipa: (ctx, emit, signal) => buildIpa(ctx.config, ctx.frontDir, ctx.outputDir, emit, signal),
-  exe: (ctx, emit, signal) => buildExe(ctx.config, ctx.frontDir, ctx.outputDir, emit, signal),
-  apk: (ctx, emit, signal) => buildApk(ctx.config, ctx.frontDir, ctx.outputDir, emit, signal),
+  'web-zip': (ctx, emit, signal) =>
+    buildWebZip(ctx.config, ctx.frontDir, ctx.outputDir, emit, signal, { runtimeConfig: ctx.runtimeConfig }),
+  ipa: (ctx, emit, signal) =>
+    buildIpa(ctx.config, ctx.frontDir, ctx.outputDir, emit, signal, { runtimeConfig: ctx.runtimeConfig }),
+  exe: (ctx, emit, signal) =>
+    buildExe(ctx.config, ctx.frontDir, ctx.outputDir, emit, signal, { runtimeConfig: ctx.runtimeConfig }),
+  apk: (ctx, emit, signal) =>
+    buildApk(ctx.config, ctx.frontDir, ctx.outputDir, emit, signal, { runtimeConfig: ctx.runtimeConfig }),
 };
 
 const defaultLock: LockApi = { acquireLock, releaseLock, startWatchdog };
@@ -205,6 +214,7 @@ async function runJob(
     config: params.config,
     outputDir: params.outputDir,
     frontDir: params.frontDir,
+    runtimeConfig: params.runtimeConfig,
   };
   const total = params.formats.length;
 

@@ -26,6 +26,11 @@ import {
   buildEnvExampleContent,
   writeFreshEnvExample,
 } from './manifest-allowlist.js';
+import {
+  buildRuntimeConfigEnvLines,
+  RUNTIME_CONFIG_ENV_EXAMPLE_LINES,
+  type RuntimeConfig,
+} from './runtime-config-env.js';
 import type { TenantConfig } from '../../../../shared/generate/tenant-types.js';
 import type { Emitter, BuildResult } from './web-zip.js';
 
@@ -289,6 +294,8 @@ export interface ApkDeps {
   cleanupTempCopy?: typeof defaultCleanupTempCopy;
   applyExportCompat?: typeof defaultApplyExportCompat;
   platform?: NodeJS.Platform;
+  /** crm-export-runtime-config: cableado runtime de plataforma para este ZIP. */
+  runtimeConfig?: RuntimeConfig;
 }
 
 export async function buildApk(
@@ -318,8 +325,16 @@ export async function buildApk(
 
     // .env.local/.env.example siempre frescos (nunca copiados del operador,
     // design.md §3 — writeFreshEnvLocal es el unico escritor del pipeline).
-    writeFreshEnvLocal(tmpFrontDir, buildEnvContent(config));
-    writeFreshEnvExample(tmpFrontDir, buildEnvExampleContent());
+    // crm-export-runtime-config aporta PLATFORM_API_URL/TENANT_ID/TENANT_API_KEY
+    // via el punto de extension `extraLines` (sin escritura directa aqui).
+    writeFreshEnvLocal(
+      tmpFrontDir,
+      buildEnvContent(config, { extraLines: buildRuntimeConfigEnvLines(deps.runtimeConfig) }),
+    );
+    writeFreshEnvExample(
+      tmpFrontDir,
+      buildEnvExampleContent({ extraLines: [...RUNTIME_CONFIG_ENV_EXAMPLE_LINES] }),
+    );
 
     const removed = applyExportCompat(tmpFrontDir);
     emit({

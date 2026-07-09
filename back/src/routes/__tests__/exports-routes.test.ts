@@ -19,7 +19,7 @@ import {
   downloadHandler,
   type ExportsDeps,
 } from '../exports.js';
-import { LockBusyError, type ExportJob } from '../../lib/export-job-manager.js';
+import { LockBusyError, type ExportJob, type StartJobParams } from '../../lib/export-job-manager.js';
 import type { AuthedRequest } from '../../middleware/types.js';
 
 // ── Helpers req/res ──────────────────────────────────────────────────────────
@@ -198,6 +198,99 @@ describe('POST /api/exports', () => {
     await createExportHandler(deps)(req, res);
     assert.equal(res.statusCode, 400);
     assert.equal((res.body as { error: { code: string } }).error.code, 'invalid_format');
+  });
+});
+
+// ── crm-export-runtime-config WU1: resolución de runtimeConfig ──────────────
+
+describe('POST /api/exports — runtimeConfig (crm-export-runtime-config)', () => {
+  test('1.3 runtimeConfig presente y correcto en el job arrancado', async () => {
+    let captured: StartJobParams | undefined;
+    const deps: ExportsDeps = {
+      db: okDb,
+      jobs: {
+        startJob: (params) => {
+          captured = params;
+          return fakeJob('job-runtime');
+        },
+        getJob: () => undefined,
+        getActiveJob: () => undefined,
+        cancelJob: () => false,
+      },
+      tenantKeys: { issueKey: async () => ({ token: 'tk_test_plaintext' }) },
+    };
+    const req = {
+      userId: 'u-1',
+      body: { projectId: 'proj-1', formats: ['web-zip'] },
+    } as unknown as AuthedRequest;
+    const res = mockRes();
+
+    await createExportHandler(deps)(req, res);
+
+    assert.equal(res.statusCode, 202);
+    assert.ok(captured?.runtimeConfig, 'runtimeConfig debe propagarse a startJob');
+    assert.equal(captured?.runtimeConfig?.tenantId, 'proj-1', 'tenantId = businessId del negocio');
+    assert.equal(captured?.runtimeConfig?.tenantApiKey, 'tk_test_plaintext');
+    assert.equal(typeof captured?.runtimeConfig?.platformApiUrl, 'string');
+  });
+
+  test('1.3 sin deps.tenantKeys: runtimeConfig igual presente, tenantApiKey vacío (sin tocar BD real)', async () => {
+    let captured: StartJobParams | undefined;
+    const deps: ExportsDeps = {
+      db: okDb,
+      jobs: {
+        startJob: (params) => {
+          captured = params;
+          return fakeJob('job-runtime-2');
+        },
+        getJob: () => undefined,
+        getActiveJob: () => undefined,
+        cancelJob: () => false,
+      },
+    };
+    const req = {
+      userId: 'u-1',
+      body: { projectId: 'proj-1', formats: ['web-zip'] },
+    } as unknown as AuthedRequest;
+    const res = mockRes();
+
+    await createExportHandler(deps)(req, res);
+
+    assert.equal(res.statusCode, 202);
+    assert.ok(captured?.runtimeConfig);
+    assert.equal(captured?.runtimeConfig?.tenantId, 'proj-1');
+    assert.equal(captured?.runtimeConfig?.tenantApiKey, '');
+  });
+
+  test('1.3 fallo al emitir la clave no bloquea el export (fail-open)', async () => {
+    let captured: StartJobParams | undefined;
+    const deps: ExportsDeps = {
+      db: okDb,
+      jobs: {
+        startJob: (params) => {
+          captured = params;
+          return fakeJob('job-runtime-3');
+        },
+        getJob: () => undefined,
+        getActiveJob: () => undefined,
+        cancelJob: () => false,
+      },
+      tenantKeys: {
+        issueKey: async () => {
+          throw new Error('db down');
+        },
+      },
+    };
+    const req = {
+      userId: 'u-1',
+      body: { projectId: 'proj-1', formats: ['web-zip'] },
+    } as unknown as AuthedRequest;
+    const res = mockRes();
+
+    await createExportHandler(deps)(req, res);
+
+    assert.equal(res.statusCode, 202);
+    assert.equal(captured?.runtimeConfig?.tenantApiKey, '');
   });
 });
 

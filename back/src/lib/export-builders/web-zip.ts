@@ -38,6 +38,11 @@ import {
   buildEnvExampleContent,
   writeFreshEnvExample,
 } from './manifest-allowlist.js';
+import {
+  buildRuntimeConfigEnvLines,
+  RUNTIME_CONFIG_ENV_EXAMPLE_LINES,
+  type RuntimeConfig,
+} from './runtime-config-env.js';
 
 // ---------------------------------------------------------------------------
 // Exported types (shared across all builders)
@@ -147,6 +152,8 @@ export interface WebZipDeps {
   createTempCopy?: typeof defaultCreateTempCopy;
   cleanupTempCopy?: typeof defaultCleanupTempCopy;
   runNpmCi?: any;
+  /** crm-export-runtime-config: cableado runtime de plataforma para este ZIP. */
+  runtimeConfig?: RuntimeConfig;
 }
 
 /**
@@ -225,8 +232,16 @@ export async function buildWebZip(
 
     // .env.local/.env.example siempre frescos (nunca copiados del operador,
     // design.md §3 — writeFreshEnvLocal es el unico escritor del pipeline).
-    writeFreshEnvLocal(tmpFrontDir, buildEnvContent(config));
-    writeFreshEnvExample(tmpFrontDir, buildEnvExampleContent());
+    // crm-export-runtime-config aporta PLATFORM_API_URL/TENANT_ID/TENANT_API_KEY
+    // via el punto de extension `extraLines` (sin escritura directa aqui).
+    writeFreshEnvLocal(
+      tmpFrontDir,
+      buildEnvContent(config, { extraLines: buildRuntimeConfigEnvLines(deps.runtimeConfig) }),
+    );
+    writeFreshEnvExample(
+      tmpFrontDir,
+      buildEnvExampleContent({ extraLines: [...RUNTIME_CONFIG_ENV_EXAMPLE_LINES] }),
+    );
 
     emit({ type: 'progress', format: 'web-zip', step: 'Generando esquema y manifest...', pct: 40 });
     const sql = buildSql(config);

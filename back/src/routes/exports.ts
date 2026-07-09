@@ -34,6 +34,8 @@ import {
   type ExportJob,
   type StartJobParams,
 } from "../lib/export-job-manager.js";
+import type { RuntimeConfig } from "../lib/export-builders/runtime-config-env.js";
+import { generateApiKeyToken } from "../middleware/tenant-api-key.js";
 import type { TenantConfig } from "../../../shared/generate/tenant-types.js";
 import type { AuthedRequest } from "../middleware/types.js";
 
@@ -66,9 +68,38 @@ export interface ExportsJobsApi {
   cancelJob(id: string): boolean;
 }
 
+/**
+ * crm-export-runtime-config: emisión server-side de una TenantApiKey fresca en
+ * el momento de exportar (WU1). Deliberadamente NO se reutiliza una clave
+ * existente del negocio: no hay endpoint de lectura de plaintext (solo se
+ * persiste `tokenHash`, ver `middleware/tenant-api-key.ts`), así que este
+ * change mintea una clave nueva por export y la hornea SOLO en el `.env.local`
+ * de ese ZIP — nunca se persiste en claro ni se loguea.
+ */
+export interface ExportsTenantKeys {
+  issueKey(businessId: string): Promise<{ token: string }>;
+}
+
+const defaultTenantKeys: ExportsTenantKeys = {
+  async issueKey(businessId) {
+    const { token, prefix, tokenHash } = generateApiKeyToken();
+    await prisma.tenantApiKey.create({
+      data: { businessId, tokenHash, prefix, label: "export" },
+    });
+    return { token };
+  },
+};
+
 export interface ExportsDeps {
   db: ExportsDb;
   jobs: ExportsJobsApi;
+  /**
+   * Emisor de TenantApiKey (crm-export-runtime-config). Opcional: si no se
+   * inyecta (p. ej. tests unitarios existentes que no lo necesitan), el
+   * handler NO toca BD y resuelve `tenantApiKey` como cadena vacía — evita
+   * llamadas involuntarias a Prisma real desde deps no relacionados con esto.
+   */
+  tenantKeys?: ExportsTenantKeys;
 }
 
 const defaultDeps: ExportsDeps = {
@@ -79,6 +110,7 @@ const defaultDeps: ExportsDeps = {
     getActiveJob: getActiveJobDefault,
     cancelJob: cancelJobDefault,
   },
+  tenantKeys: defaultTenantKeys,
 };
 
 // ---------------------------------------------------------------------------
@@ -208,6 +240,33 @@ export function createExportHandler(deps: ExportsDeps) {
     // front/ vive un nivel por encima de back/ (directorio hermano).
     const frontDir = path.resolve(process.cwd(), "..", "front");
 
+    // --- Resolver runtimeConfig (crm-export-runtime-config, design.md §2) ---
+    // platformApiUrl: env del propio backend de plataforma (NO del tenant).
+    // tenantId: businessId del negocio (identificador real de tenant en este
+    // backend; distinto de `config.business.clienteId`, que enlaza con
+    // `crm_project.id_cliente` en agents-agency y no es un id de plataforma).
+    // tenantApiKey: clave fresca minteada server-side para ESTE export.
+    const runtimeConfig: RuntimeConfig = {
+      platformApiUrl: process.env.PLATFORM_API_URL ?? "",
+      tenantId: projectId,
+      tenantApiKey: "",
+    };
+    if (deps.tenantKeys) {
+      try {
+        const issued = await deps.tenantKeys.issueKey(projectId);
+        runtimeConfig.tenantApiKey = issued.token;
+      } catch (e) {
+        // Fail-open: un fallo al mintear la clave no bloquea la exportación —
+        // el ZIP sale sin TENANT_API_KEY operativa (reemitible después vía el
+        // endpoint de operador). Nunca se loguea un valor de clave (aquí no
+        // llega a existir ninguno).
+        console.error(
+          "[exports] no se pudo emitir TenantApiKey para el export:",
+          e instanceof Error ? e.message : e,
+        );
+      }
+    }
+
     // --- Arrancar job (202) o 409 si el lock esta ocupado ---
     try {
       const job = deps.jobs.startJob({
@@ -216,6 +275,7 @@ export function createExportHandler(deps: ExportsDeps) {
         config,
         outputDir,
         frontDir,
+        runtimeConfig,
       });
       return res.status(202).json({ jobId: job.id });
     } catch (err) {
