@@ -19,6 +19,7 @@ import { buildExe } from './export-builders/exe.js';
 import { buildApk } from './export-builders/apk.js';
 import type { Emitter, BuildResult, Deliverable } from './export-builders/web-zip.js';
 import type { RuntimeConfig } from './export-builders/runtime-config-env.js';
+import type { PublicEnvSecret } from './export-builders/public-env-secrets.js';
 import type { TenantConfig } from '../../../shared/generate/tenant-types.js';
 
 // ---------------------------------------------------------------------------
@@ -71,6 +72,11 @@ export interface JobBuildContext {
   runtimeConfig?: RuntimeConfig;
   /** crm-export-delivery-profiles: destinatario del ZIP para este job. */
   deliverable: Deliverable;
+  /**
+   * crm-env-contract-tiers (WU3.4): secretos `FRONTEND_PUBLIC` con `envVarName`
+   * del negocio, ya descifrados. Opcional para no romper tests directos.
+   */
+  publicEnvSecrets?: PublicEnvSecret[];
 }
 
 /** Firma unificada de un builder inyectable (permite fakes en test). */
@@ -99,6 +105,11 @@ export interface StartJobParams {
   runtimeConfig?: RuntimeConfig;
   /** crm-export-delivery-profiles: destinatario del ZIP (route valida y aplica el default). */
   deliverable: Deliverable;
+  /**
+   * crm-env-contract-tiers (WU3.4): secretos `FRONTEND_PUBLIC` con `envVarName`
+   * del negocio, ya descifrados (`readBakeableSecrets`, resuelto en la route).
+   */
+  publicEnvSecrets?: PublicEnvSecret[];
 }
 
 export interface JobDeps {
@@ -128,21 +139,25 @@ const defaultBuilders: BuilderMap = {
     buildWebZip(ctx.config, ctx.frontDir, ctx.outputDir, emit, signal, {
       runtimeConfig: ctx.runtimeConfig,
       deliverable: ctx.deliverable,
+      publicEnvSecrets: ctx.publicEnvSecrets,
     }),
   ipa: (ctx, emit, signal) =>
     buildIpa(ctx.config, ctx.frontDir, ctx.outputDir, emit, signal, {
       runtimeConfig: ctx.runtimeConfig,
       deliverable: ctx.deliverable,
+      publicEnvSecrets: ctx.publicEnvSecrets,
     }),
   exe: (ctx, emit, signal) =>
     buildExe(ctx.config, ctx.frontDir, ctx.outputDir, emit, signal, {
       runtimeConfig: ctx.runtimeConfig,
       deliverable: ctx.deliverable,
+      publicEnvSecrets: ctx.publicEnvSecrets,
     }),
   apk: (ctx, emit, signal) =>
     buildApk(ctx.config, ctx.frontDir, ctx.outputDir, emit, signal, {
       runtimeConfig: ctx.runtimeConfig,
       deliverable: ctx.deliverable,
+      publicEnvSecrets: ctx.publicEnvSecrets,
     }),
 };
 
@@ -245,6 +260,7 @@ async function runJob(
     frontDir: params.frontDir,
     runtimeConfig: params.runtimeConfig,
     deliverable: params.deliverable,
+    publicEnvSecrets: params.publicEnvSecrets,
   };
   const total = params.formats.length;
 

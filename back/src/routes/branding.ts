@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { env } from '../env.js';
+import { getTenantSecret } from '../lib/tenant-secrets/store.js';
 
 export const brandingRouter = Router();
 
@@ -31,6 +32,15 @@ interface ExtractBody {
   files?: { name: string; content: string }[];
   /** Texto plano ya concatenado (alternativa a files). */
   text?: string;
+  /**
+   * crm-env-contract-tiers (WU2.2, adopción de referencia): negocio para
+   * resolver su propia clave Anthropic vía `getTenantSecret` antes de caer a
+   * la del operador. OPCIONAL — este endpoint también se usa durante el
+   * onboarding, ANTES de que exista un negocio (ver montaje público en
+   * routes/index.ts); sin `businessId` el comportamiento es idéntico al
+   * anterior a este change (clave del operador, sin regresión).
+   */
+  businessId?: string;
 }
 
 /** Une el contenido relevante (css/html) y lo recorta para no pasarnos de contexto. */
@@ -44,13 +54,13 @@ function gatherSource(body: ExtractBody): string {
   return relevant.slice(0, 60_000);
 }
 
-/** Llama a la API de Anthropic y devuelve el JSON de tokens. */
-async function extractWithAnthropic(source: string): Promise<DesignTokens> {
+/** Llama a la API de Anthropic (con una clave YA resuelta) y devuelve el JSON de tokens. */
+async function extractWithAnthropic(source: string, apiKey: string): Promise<DesignTokens> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-api-key': env.anthropicApiKey,
+      'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
@@ -72,26 +82,59 @@ async function extractWithAnthropic(source: string): Promise<DesignTokens> {
   return JSON.parse(match[0]) as DesignTokens;
 }
 
+/** Dependencias inyectables (patrón DI del repo, ver routes/tenant-config.ts). */
+export interface BrandingExtractDeps {
+  getTenantSecret: typeof getTenantSecret;
+  extractWithAnthropic: typeof extractWithAnthropic;
+}
+
+const defaultDeps: BrandingExtractDeps = { getTenantSecret, extractWithAnthropic };
+
 /**
- * POST /api/branding/extract
- * Body: { files: [{ name, content }] }  ó  { text }
- * Respuesta: { source: 'ai' | 'none', tokens: DesignTokens | null, message? }
- * Público (se usa al configurar un proyecto, antes de tener tenant).
+ * Resuelve la clave Anthropic a usar en esta petición:
+ * - Con `businessId` → `getTenantSecret` (clave propia del negocio, con
+ *   fallback a `ANTHROPIC_API_KEY` del operador). `source` distingue cuál se usó.
+ * - Sin `businessId` (onboarding, sin tenant todavía) → directamente la clave
+ *   del operador — comportamiento IDÉNTICO al anterior a este change.
  */
-brandingRouter.post('/extract', async (req: Request, res: Response) => {
-  const source = gatherSource(req.body ?? {});
+async function resolveAnthropicKey(
+  deps: BrandingExtractDeps,
+  businessId: string | undefined,
+): Promise<{ value: string; source: 'tenant' | 'operator' } | null> {
+  if (businessId) {
+    return deps.getTenantSecret(businessId, 'ANTHROPIC_API_KEY', { fallbackEnv: 'ANTHROPIC_API_KEY' });
+  }
+  return env.anthropicApiKey ? { value: env.anthropicApiKey, source: 'operator' } : null;
+}
+
+/**
+ * Handler de `POST /api/branding/extract`.
+ * Body: { files: [{ name, content }] }  ó  { text }, + `businessId` opcional.
+ * Respuesta: { source: 'ai' | 'none', tokens: DesignTokens | null, message? }
+ * Público (se usa al configurar un proyecto, antes de tener tenant, y también
+ * desde ajustes de un negocio ya existente si el caller aporta `businessId`).
+ */
+export async function extractHandler(deps: BrandingExtractDeps, req: Request, res: Response) {
+  const body = (req.body ?? {}) as ExtractBody;
+  const source = gatherSource(body);
   if (!source) {
     return res.status(422).json({ error: { code: 'validation', message: 'Envía files (css/html) o text.' } });
   }
-  if (!env.anthropicApiKey) {
+
+  const businessId = typeof body.businessId === 'string' && body.businessId.trim() ? body.businessId.trim() : undefined;
+  const resolved = await resolveAnthropicKey(deps, businessId);
+  if (!resolved) {
     // Sin key: el front cae a su heurística local. No es un error duro.
     return res.json({ source: 'none', tokens: null, message: 'IA no configurada (falta ANTHROPIC_API_KEY).' });
   }
+
   try {
-    const tokens = await extractWithAnthropic(source);
+    const tokens = await deps.extractWithAnthropic(source, resolved.value);
     res.json({ source: 'ai', tokens });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Error desconocido';
     res.status(502).json({ error: { code: 'ai_failed', message } });
   }
-});
+}
+
+brandingRouter.post('/extract', (req: Request, res: Response) => extractHandler(defaultDeps, req, res));

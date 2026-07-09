@@ -1141,6 +1141,11 @@ model TenantSecret {
   iv              String            @map("iv") // hex, 12 bytes
   authTag         String            @map("auth_tag") // hex, 16 bytes
   keyVersion      Int               @default(1) @map("clave_version")
+  // crm-env-contract-tiers (WU3): mapeo secreto→variable de build, SOLO con
+  // sentido para scope=FRONTEND_PUBLIC (^NEXT_PUBLIC_[A-Z0-9_]+$, validado en
+  // el alta). Nullable: un FRONTEND_PUBLIC sin envVarName se sirve por
+  // /tenant-config pero no se hornea; un BACKEND_SECRET nunca lo lleva.
+  envVarName      String?           @map("env_var")
   updatedAt       DateTime          @updatedAt @map("actualizado_en")
   createdAt       DateTime          @default(now()) @map("creado_en")
 

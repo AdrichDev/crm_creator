@@ -36,6 +36,8 @@ import {
   type StartJobParams,
 } from "../lib/export-job-manager.js";
 import type { RuntimeConfig } from "../lib/export-builders/runtime-config-env.js";
+import type { PublicEnvSecret } from "../lib/export-builders/public-env-secrets.js";
+import { readBakeableSecrets } from "../lib/tenant-secrets/store.js";
 import { generateApiKeyToken } from "../middleware/tenant-api-key.js";
 import type { TenantConfig } from "../../../shared/generate/tenant-types.js";
 import type { AuthedRequest } from "../middleware/types.js";
@@ -97,6 +99,20 @@ const defaultTenantKeys: ExportsTenantKeys = {
   },
 };
 
+/**
+ * crm-env-contract-tiers (WU3.4): lectura+descifrado de los secretos
+ * `FRONTEND_PUBLIC` con `envVarName` del negocio para hornear en el
+ * `.env.local` del ZIP. Opcional (mismo motivo que `tenantKeys`): tests
+ * unitarios existentes que no lo necesitan no tocan Prisma real.
+ */
+export interface ExportsPublicEnvSecrets {
+  read(businessId: string): Promise<PublicEnvSecret[]>;
+}
+
+const defaultPublicEnvSecrets: ExportsPublicEnvSecrets = {
+  read: (businessId) => readBakeableSecrets(businessId),
+};
+
 export interface ExportsDeps {
   db: ExportsDb;
   jobs: ExportsJobsApi;
@@ -107,6 +123,12 @@ export interface ExportsDeps {
    * llamadas involuntarias a Prisma real desde deps no relacionados con esto.
    */
   tenantKeys?: ExportsTenantKeys;
+  /**
+   * crm-env-contract-tiers (WU3.4): fuente de secretos `FRONTEND_PUBLIC` a
+   * hornear. Opcional, mismo motivo que `tenantKeys` (aislar Prisma real de
+   * tests unitarios que no lo necesitan).
+   */
+  publicEnvSecrets?: ExportsPublicEnvSecrets;
 }
 
 const defaultDeps: ExportsDeps = {
@@ -118,6 +140,7 @@ const defaultDeps: ExportsDeps = {
     cancelJob: cancelJobDefault,
   },
   tenantKeys: defaultTenantKeys,
+  publicEnvSecrets: defaultPublicEnvSecrets,
 };
 
 // ---------------------------------------------------------------------------
@@ -288,6 +311,22 @@ export function createExportHandler(deps: ExportsDeps) {
       }
     }
 
+    // --- crm-env-contract-tiers (WU3.4): resolver secretos FRONTEND_PUBLIC a hornear ---
+    let publicEnvSecrets: PublicEnvSecret[] = [];
+    if (deps.publicEnvSecrets) {
+      try {
+        publicEnvSecrets = await deps.publicEnvSecrets.read(projectId);
+      } catch (e) {
+        // Fail-open: un fallo al leer/descifrar secretos no bloquea la
+        // exportación — el ZIP sale sin esas NEXT_PUBLIC_* horneadas (el
+        // negocio las sigue viendo vía /tenant-config). Nunca se loguea valor.
+        console.error(
+          "[exports] no se pudieron resolver los secretos públicos del tenant para el export:",
+          e instanceof Error ? e.message : e,
+        );
+      }
+    }
+
     // --- Arrancar job (202) o 409 si el lock esta ocupado ---
     try {
       const job = deps.jobs.startJob({
@@ -298,6 +337,7 @@ export function createExportHandler(deps: ExportsDeps) {
         frontDir,
         runtimeConfig,
         deliverable,
+        publicEnvSecrets,
       });
       return res.status(202).json({ jobId: job.id });
     } catch (err) {

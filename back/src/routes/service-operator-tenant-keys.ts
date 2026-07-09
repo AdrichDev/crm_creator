@@ -25,7 +25,12 @@ type SecretMetaRow = {
   scope: 'FRONTEND_PUBLIC' | 'BACKEND_SECRET';
   keyVersion: number;
   updatedAt: Date;
+  envVarName?: string | null;
 };
+
+// crm-env-contract-tiers (WU3.2): mapeo secreto→variable de build, solo válido
+// para scope=FRONTEND_PUBLIC. Se re-valida al hornear (manifest-allowlist.ts).
+const ENV_VAR_NAME_PATTERN = /^NEXT_PUBLIC_[A-Z0-9_]+$/;
 
 /** Dependencias de BD (patrón DI del repo, ver service-operator.ts OperatorDb). */
 export interface TenantKeysOperatorDb {
@@ -46,10 +51,12 @@ export interface TenantKeysOperatorDb {
       create: {
         businessId: string; name: string; scope: 'FRONTEND_PUBLIC' | 'BACKEND_SECRET';
         valueCiphertext: string; iv: string; authTag: string; keyVersion: number;
+        envVarName?: string | null;
       };
       update: {
         scope: 'FRONTEND_PUBLIC' | 'BACKEND_SECRET';
         valueCiphertext: string; iv: string; authTag: string; keyVersion: number;
+        envVarName?: string | null;
       };
     }): Promise<SecretMetaRow>;
     findMany(args: { where: { businessId: string } }): Promise<SecretMetaRow[]>;
@@ -179,7 +186,7 @@ export async function upsertSecretHandler(db: TenantKeysOperatorDb, req: Request
     const businessId = req.params.id;
     if (!(await businessActive(db, businessId))) return res.status(404).json(BUSINESS_NOT_FOUND);
 
-    const body = (req.body ?? {}) as { name?: unknown; scope?: unknown; value?: unknown };
+    const body = (req.body ?? {}) as { name?: unknown; scope?: unknown; value?: unknown; envVarName?: unknown };
     if (typeof body.name !== 'string' || !body.name.trim()) {
       return res.status(422).json({ error: { code: 'invalid', message: 'Falta name' } });
     }
@@ -189,19 +196,38 @@ export async function upsertSecretHandler(db: TenantKeysOperatorDb, req: Request
     if (typeof body.value !== 'string' || !body.value) {
       return res.status(422).json({ error: { code: 'invalid', message: 'Falta value' } });
     }
+    // crm-env-contract-tiers (WU3.2): value nunca lleva saltos de línea — se hornea
+    // literal en .env.local y una línea rota inyectaría variables no deseadas.
+    if (/[\r\n]/.test(body.value)) {
+      return res.status(422).json({ error: { code: 'invalid', message: 'value no puede contener saltos de línea' } });
+    }
 
     const name = body.name.trim();
     const scope = body.scope as 'FRONTEND_PUBLIC' | 'BACKEND_SECRET';
+
+    // crm-env-contract-tiers (WU3.2): envVarName solo tiene sentido para un
+    // secreto horneable en el export (FRONTEND_PUBLIC); regex de variable NEXT_PUBLIC_*.
+    let envVarName: string | null = null;
+    if (typeof body.envVarName === 'string' && body.envVarName.trim()) {
+      envVarName = body.envVarName.trim();
+      if (scope !== 'FRONTEND_PUBLIC') {
+        return res.status(422).json({ error: { code: 'invalid', message: 'envVarName solo es válido con scope FRONTEND_PUBLIC' } });
+      }
+      if (!ENV_VAR_NAME_PATTERN.test(envVarName)) {
+        return res.status(422).json({ error: { code: 'invalid', message: 'envVarName debe cumplir ^NEXT_PUBLIC_[A-Z0-9_]+$' } });
+      }
+    }
+
     const enc = encryptSecret(body.value);
 
     const row = await db.tenantSecret.upsert({
       where: { businessId_name: { businessId, name } },
-      create: { businessId, name, scope, valueCiphertext: enc.ciphertext, iv: enc.iv, authTag: enc.authTag, keyVersion: enc.keyVersion },
-      update: { scope, valueCiphertext: enc.ciphertext, iv: enc.iv, authTag: enc.authTag, keyVersion: enc.keyVersion },
+      create: { businessId, name, scope, valueCiphertext: enc.ciphertext, iv: enc.iv, authTag: enc.authTag, keyVersion: enc.keyVersion, envVarName },
+      update: { scope, valueCiphertext: enc.ciphertext, iv: enc.iv, authTag: enc.authTag, keyVersion: enc.keyVersion, envVarName },
     });
 
     // Nunca se devuelve el valor (ni cifrado ni en claro) — solo metadatos.
-    res.status(200).json({ name: row.name, scope: row.scope, keyVersion: row.keyVersion, updatedAt: row.updatedAt });
+    res.status(200).json({ name: row.name, scope: row.scope, keyVersion: row.keyVersion, updatedAt: row.updatedAt, envVarName: row.envVarName ?? null });
   } catch (e) {
     console.error('[service-operator] error dando de alta secreto:', e);
     res.status(500).json({ error: { code: 'server_error', message: 'No se pudo guardar el secreto' } });

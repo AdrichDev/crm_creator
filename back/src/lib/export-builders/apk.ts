@@ -32,6 +32,7 @@ import {
   RUNTIME_CONFIG_ENV_EXAMPLE_LINES,
   type RuntimeConfig,
 } from './runtime-config-env.js';
+import { buildPublicEnvSecretsLines, type PublicEnvSecret } from './public-env-secrets.js';
 import type { TenantConfig } from '../../../../shared/generate/tenant-types.js';
 import type { Emitter, BuildResult, Deliverable } from './web-zip.js';
 
@@ -363,6 +364,12 @@ export interface ApkDeps {
   runtimeConfig?: RuntimeConfig;
   /** crm-export-delivery-profiles: destinatario del ZIP. Default 'binary+source'. */
   deliverable?: Deliverable;
+  /**
+   * crm-env-contract-tiers (WU3.4): secretos `FRONTEND_PUBLIC` del negocio
+   * con `envVarName` asignado, ya descifrados (`readBakeableSecrets`).
+   * Solo hornean `.env.local`, NUNCA `.env.example`.
+   */
+  publicEnvSecrets?: PublicEnvSecret[];
 }
 
 export async function buildApk(
@@ -397,7 +404,12 @@ export async function buildApk(
     // via el punto de extension `extraLines` (sin escritura directa aqui).
     writeFreshEnvLocal(
       tmpFrontDir,
-      buildEnvContent(config, { extraLines: buildRuntimeConfigEnvLines(deps.runtimeConfig) }),
+      buildEnvContent(config, {
+        extraLines: [
+          ...buildRuntimeConfigEnvLines(deps.runtimeConfig),
+          ...buildPublicEnvSecretsLines(deps.publicEnvSecrets ?? []),
+        ],
+      }),
     );
     writeFreshEnvExample(
       tmpFrontDir,

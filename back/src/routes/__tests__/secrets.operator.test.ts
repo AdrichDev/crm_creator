@@ -39,6 +39,7 @@ const ACTIVE_BUSINESS = 'biz-1';
 type Row = {
   businessId: string; name: string; scope: 'FRONTEND_PUBLIC' | 'BACKEND_SECRET';
   valueCiphertext: string; iv: string; authTag: string; keyVersion: number; updatedAt: Date;
+  envVarName?: string | null;
 };
 
 function fakeDb(seed: Row[] = []): TenantKeysOperatorDb & { rows: Row[] } {
@@ -96,8 +97,10 @@ describe('POST /businesses/:id/secrets (alta)', () => {
     await upsertSecretHandler(db, mockReq({ params: { id: ACTIVE_BUSINESS }, body: { name: 'mapaPublicKey', scope: 'FRONTEND_PUBLIC', value: 'pk_live_abc123' } }), res);
 
     assert.equal(res.statusCode, 200);
-    const body = res.body as { name: string; scope: string; keyVersion: number; updatedAt: Date };
-    assert.deepEqual(Object.keys(body).sort(), ['keyVersion', 'name', 'scope', 'updatedAt']);
+    const body = res.body as { name: string; scope: string; keyVersion: number; updatedAt: Date; envVarName: string | null };
+    // envVarName añadido en crm-env-contract-tiers WU3.2 (puente build-time, null si no se envía).
+    assert.deepEqual(Object.keys(body).sort(), ['envVarName', 'keyVersion', 'name', 'scope', 'updatedAt']);
+    assert.equal(body.envVarName, null);
     assert.ok(!JSON.stringify(body).includes('pk_live_abc123'));
 
     const stored = db.rows[0];
