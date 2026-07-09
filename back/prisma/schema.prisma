@@ -153,6 +153,14 @@ enum DeporteType {
   OTRO
 }
 
+// Scope de un TenantSecret (crm-tenant-api-keys): qué puede servirse por HTTP a
+// la superficie tenant-facing (FRONTEND_PUBLIC) frente a lo que solo lee el
+// propio back server-side (BACKEND_SECRET, nunca sale por /tenant-config).
+enum TenantSecretScope {
+  FRONTEND_PUBLIC
+  BACKEND_SECRET
+}
+
 // ----------------------------- Núcleo -----------------------------
 model Business {
   id              String   @id @default(cuid())
@@ -204,6 +212,8 @@ model Business {
   oauthCredentials OAuthCredential[]
   contactos    Contacto[]
   telegramMessages TelegramMessage[]
+  tenantApiKeys TenantApiKey[]
+  tenantSecrets TenantSecret[]
 
   @@map("negocio")
 }
@@ -1098,4 +1108,43 @@ model TelegramMessage {
   @@unique([businessId, clientMessageId], map: "telegram_msg_client_uq")
   @@index([businessId, conversationId, createdAt])
   @@map("mensaje_telegram")
+}
+
+// ----------------------------- Tenant API keys + secrets -----------------------------
+// crm-tenant-api-keys: fundación de superficie tenant-facing. Credencial portador por
+// negocio (TenantApiKey) + almacén de secretos cifrados por negocio (TenantSecret), con
+// separación estricta entre lo servible a frontend (FRONTEND_PUBLIC) y lo que nunca sale
+// del servidor (BACKEND_SECRET). Ver openspec/changes/crm-tenant-api-keys/design.md.
+
+model TenantApiKey {
+  id         String    @id @default(cuid())
+  businessId String    @map("negocio_id")
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique @map("token_hash") // SHA-256 hex del token en claro; el token nunca se persiste.
+  prefix     String    @map("prefijo") // 8 chars visibles, NO secreto — solo para listados/logs.
+  label      String?   @map("etiqueta")
+  lastUsedAt DateTime? @map("ultimo_uso_en")
+  revokedAt  DateTime? @map("revocado_en") // null = activa
+  createdAt  DateTime  @default(now()) @map("creado_en")
+
+  @@index([businessId])
+  @@map("tenant_api_key")
+}
+
+model TenantSecret {
+  id              String            @id @default(cuid())
+  businessId      String            @map("negocio_id")
+  business        Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name            String            @map("nombre")
+  scope           TenantSecretScope @default(BACKEND_SECRET) @map("scope")
+  valueCiphertext String            @map("valor_cifrado") // hex, ciphertext AES-256-GCM
+  iv              String            @map("iv") // hex, 12 bytes
+  authTag         String            @map("auth_tag") // hex, 16 bytes
+  keyVersion      Int               @default(1) @map("clave_version")
+  updatedAt       DateTime          @updatedAt @map("actualizado_en")
+  createdAt       DateTime          @default(now()) @map("creado_en")
+
+  @@unique([businessId, name])
+  @@index([businessId, scope])
+  @@map("tenant_secret")
 }

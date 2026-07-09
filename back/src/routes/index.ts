@@ -35,6 +35,7 @@ import { integrationsRouter } from './integrations.js';
 import { contactosRouter } from './contactos.js';
 import { telegramRouter } from './telegram.js';
 import { operatorChatRouter } from './operator-chat.js';
+import { tenantConfigRouter } from './tenant-config.js';
 
 export const api = Router();
 
@@ -53,6 +54,9 @@ api.use('/calendar', calendarRouter);
 // sin Bearer, identidad en el `state` nonce); connect/revoke exigen sesión de staff
 // vía middleware propio dentro del router (mismo patrón mixto que /calendar).
 api.use('/integrations', integrationsRouter);
+// crm-tenant-api-keys: superficie tenant-facing SIN sesión de usuario — auth propia
+// por TenantApiKey portadora (resolveTenantApiKey), dentro del propio router.
+api.use('/tenant-config', tenantConfigRouter);
 
 // A partir de aquí, todo requiere token (y resuelve el tenant activo)
 api.use(authenticate);

@@ -3,6 +3,7 @@ import { Prisma } from '../lib/generated/prisma/client.js';
 import { prisma } from '../prisma.js';
 import { requireOperatorToken } from '../middleware/operator-token.js';
 import { splitNombre, joinNombre } from '../lib/nombre.js';
+import { buildTenantKeysOperatorRouter, type TenantKeysOperatorDb } from './service-operator-tenant-keys.js';
 import {
   createProjectService,
   mirrorColumns,
@@ -641,3 +642,64 @@ serviceOperatorRouter.get('/invoices', (req, res) => invoicesListHandler(operato
 serviceOperatorRouter.post('/invoices', (req, res) => invoicesCreateHandler(operatorWriteDb, req, res));
 serviceOperatorRouter.get('/sales', (req, res) => salesListHandler(operatorWriteDb, req, res));
 serviceOperatorRouter.post('/sales', (req, res) => salesCreateHandler(operatorWriteDb, req, res));
+
+// crm-tenant-api-keys: gestión de operador de TenantApiKey/TenantSecret, montada bajo
+// /businesses/:id/{api-keys,secrets}. Prisma satisface TenantKeysOperatorDb
+// estructuralmente vía selects explícitos (nunca se sobre-fetchea tokenHash / cifrado
+// más allá de lo que cada handler necesita, mismo cuidado que operatorWriteDb).
+const tenantKeysOperatorDb: TenantKeysOperatorDb = {
+  business: {
+    findFirst: (args) => prisma.business.findFirst({ where: args.where, select: { id: true } }),
+  },
+  tenantApiKey: {
+    create: (args) =>
+      prisma.tenantApiKey.create({
+        data: args.data,
+        select: { id: true, prefix: true, label: true, lastUsedAt: true, revokedAt: true, createdAt: true },
+      }),
+    findMany: (args) =>
+      prisma.tenantApiKey.findMany({
+        where: args.where,
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, prefix: true, label: true, lastUsedAt: true, revokedAt: true, createdAt: true },
+      }),
+    findFirst: (args) =>
+      prisma.tenantApiKey.findFirst({
+        where: args.where,
+        select: { id: true, prefix: true, label: true, lastUsedAt: true, revokedAt: true, createdAt: true },
+      }),
+    update: (args) =>
+      prisma.tenantApiKey.update({
+        where: args.where,
+        data: args.data,
+        select: { id: true, prefix: true, label: true, lastUsedAt: true, revokedAt: true, createdAt: true },
+      }),
+  },
+  tenantSecret: {
+    upsert: (args) =>
+      prisma.tenantSecret.upsert({
+        where: args.where,
+        create: args.create,
+        update: args.update,
+        select: { name: true, scope: true, keyVersion: true, updatedAt: true },
+      }),
+    findMany: (args) =>
+      prisma.tenantSecret.findMany({
+        where: args.where,
+        orderBy: { name: 'asc' },
+        select: { name: true, scope: true, keyVersion: true, updatedAt: true },
+      }),
+    findFirst: (args) =>
+      prisma.tenantSecret.findFirst({
+        where: args.where,
+        select: { name: true, scope: true, keyVersion: true, updatedAt: true },
+      }),
+    update: (args) =>
+      prisma.tenantSecret.update({
+        where: args.where,
+        data: args.data,
+        select: { name: true, scope: true, keyVersion: true, updatedAt: true },
+      }),
+  },
+};
+serviceOperatorRouter.use(buildTenantKeysOperatorRouter(tenantKeysOperatorDb));

@@ -33,6 +33,7 @@ No se toca `archive/` ni el código; `archive/2026-07-02-crm-castellano-supabase
 | crm-sectorial-ia | ✓ | ✓ | ✓ (nuevo) | ✓ | `spec.md` (suelto) | Verificación final PENDIENTE MANUAL (npm test/e2e por usuario); tarea (b) ledger `tokensUsed` BLOQUEADA (no cableada en AA, repo aparte). `spec.md` suelto conservado, referenciado desde validation. |
 | crm-sidebar-usuario-real | ✓ | ✓ | ✓ | ✗ | ✗ | V.1/V.2 = PENDIENTE VERIFICACIÓN MANUAL DEL USUARIO (código + tests verde; CSS presente). |
 | crm-tema-claro-oscuro | ✓ | ✓ | ✓ | ✗ | ✗ | V.1/V.2 = PENDIENTE VERIFICACIÓN MANUAL DEL USUARIO (cubierto por test; falta visual). |
+| crm-tenant-api-keys | ✓ | ✓ | ✓ | ✓ | ✓ | WU1-WU3 HECHAS y verdes (back 645/0, tsc limpio). Z.2 Agentic Runtime review → delegado a sdd-verify. Z.3 migración `20260709000000_tenant_api_keys` sin aplicar (la aplica el usuario). |
 | crm-trabajador-chips | ✓ | ✓ | ✓ (nuevo) | ✗ | ✗ | Ninguna. DISCREPANCIA RESUELTA 2026-07-02: implementado de verdad (worker-chips-grid.tsx + workerChips en tenant-config + tab trabajador); proposal actualizado. |
 | front-ui-paleta-dorada | ✓ | ✓ (nuevo) | ✓ | ✗ | ✗ | TODAS: las 8 tareas de verificación del validation están sin marcar → nada verificado. Checklist derivada; pendiente revisión visual. |
 
