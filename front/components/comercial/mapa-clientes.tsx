@@ -3,7 +3,12 @@ import { useEffect, useRef, useState } from 'react';
 import type { ComercialCustomer, ComercialContacto } from '@/lib/comercial/types';
 import { markerColor, type ColorMode } from '@/lib/comercial/marker-color';
 import { CONTACT_COLOR, CONTACT_STROKE, buildBoundsKey, isMappable } from '@/lib/comercial/map-point';
-import { googleMapsApiKey, loadGoogleMaps } from '@/lib/maps/loader';
+import { loadGoogleMaps, GOOGLE_MAPS_KEY_MISSING_MESSAGE } from '@/lib/maps/loader';
+
+/** Mensaje mostrado al usuario del panel — estable independientemente de la causa real
+ * (secreto ausente en BD, fetch de red fallido, 401/500 del back): todas significan lo
+ * mismo desde su perspectiva, "no hay mapa disponible ahora mismo". */
+const MAPA_NO_DISPONIBLE = 'Mapa no disponible: falta NEXT_PUBLIC_GOOGLE_MAPS_API_KEY.';
 
 // Mapa comercial con Google Maps JS API. Imperativo (useRef) para reusar el mismo estilo
 // que el resto del módulo. Pinta DOS capas de puntos con geoEstado=OK:
@@ -27,7 +32,10 @@ export default function MapaClientes({ customers, contacts = [], selectedId, onS
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
-  const [ready, setReady] = useState(false);
+  // crm-tenant-secrets-runtime-maps: la clave se resuelve async (fetch a /tenant-config),
+  // así que hay un hueco temporal ('loading') antes de decidir entre 'ready' y 'error' —
+  // que antes no existía por ser una lectura síncrona de process.env.
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [error, setError] = useState<string | null>(null);
   // Clave del último conjunto de clientes sobre el que se hizo fitBounds: al
   // repintar por selectedId/modo (seleccionar en el mapa, cambiar color) NO hay
@@ -38,10 +46,7 @@ export default function MapaClientes({ customers, contacts = [], selectedId, onS
   // Inicializa el mapa una vez.
   useEffect(() => {
     let cancelled = false;
-    if (!googleMapsApiKey()) {
-      setError('Mapa no disponible: falta NEXT_PUBLIC_GOOGLE_MAPS_API_KEY.');
-      return;
-    }
+    setStatus('loading');
     loadGoogleMaps()
       .then(() => {
         if (cancelled || !containerRef.current || mapRef.current) return;
@@ -52,10 +57,16 @@ export default function MapaClientes({ customers, contacts = [], selectedId, onS
           streetViewControl: false,
           fullscreenControl: false,
         });
-        setReady(true);
+        setStatus('ready');
       })
       .catch((e: unknown) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'No se pudo cargar Google Maps.');
+        if (cancelled) return;
+        const message = e instanceof Error ? e.message : undefined;
+        // Fallo de resolución de clave (loader.ts) → texto fijo del panel, sin distinguir
+        // causa. Cualquier OTRO fallo (p. ej. el SDK de Maps no carga) conserva su propio
+        // mensaje, como antes.
+        setError(message === GOOGLE_MAPS_KEY_MISSING_MESSAGE ? MAPA_NO_DISPONIBLE : message ?? 'No se pudo cargar Google Maps.');
+        setStatus('error');
       });
     return () => {
       cancelled = true;
@@ -67,10 +78,10 @@ export default function MapaClientes({ customers, contacts = [], selectedId, onS
 
   // Re-pinta marcadores cuando el mapa está listo o cambian clientes, contactos, selección o modo.
   useEffect(() => {
-    if (!ready) return;
+    if (status !== 'ready') return;
     renderMarkers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, customers, contacts, selectedId, modo]);
+  }, [status, customers, contacts, selectedId, modo]);
 
   function clearMarkers() {
     for (const m of markersRef.current) m.setMap(null);
@@ -146,13 +157,17 @@ export default function MapaClientes({ customers, contacts = [], selectedId, onS
     }
   }
 
-  if (error) {
-    return (
-      <div className={`${BOX_CLASS} flex items-center justify-center bg-black/20 px-4 text-center text-sm text-[var(--panel-muted)]`}>
-        {error}
-      </div>
-    );
-  }
-
-  return <div ref={containerRef} className={BOX_CLASS} />;
+  // El div del mapa se mantiene SIEMPRE montado (containerRef.current debe existir cuando
+  // `loadGoogleMaps()` resuelve, igual que antes con la lectura síncrona) — loading/error se
+  // pintan como overlay encima, no en su lugar.
+  return (
+    <div className="relative">
+      <div ref={containerRef} className={BOX_CLASS} />
+      {status !== 'ready' && (
+        <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/20 px-4 text-center text-sm text-[var(--panel-muted)]">
+          {status === 'loading' ? 'Cargando mapa…' : error}
+        </div>
+      )}
+    </div>
+  );
 }

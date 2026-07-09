@@ -3,15 +3,18 @@ import { render, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import type { ComercialCustomer, ComercialContacto } from '@/lib/comercial/types';
 import { CONTACT_COLOR } from '@/lib/comercial/map-point';
 
-// Controla el loader sin cargar la API real (imposible en jsdom).
-const { mockKey, mockLoad } = vi.hoisted(() => ({
-  mockKey: vi.fn<() => string | undefined>(() => 'test-key'),
+// Controla el loader sin cargar la API real (imposible en jsdom). crm-tenant-secrets-runtime-maps:
+// la resolución de la clave pasó a ser async (fetch a /tenant-config dentro de loadGoogleMaps),
+// así que el mock ya no expone `googleMapsApiKey` síncrona — solo `loadGoogleMaps` (Promise) y
+// el mensaje que usa para señalar "sin clave resoluble" (mismo string real de loader.ts).
+const { mockLoad, KEY_MISSING_MESSAGE } = vi.hoisted(() => ({
   mockLoad: vi.fn<() => Promise<void>>(() => Promise.resolve()),
+  KEY_MISSING_MESSAGE: 'Falta NEXT_PUBLIC_GOOGLE_MAPS_API_KEY en la configuración del front',
 }));
 
 vi.mock('@/lib/maps/loader', () => ({
-  googleMapsApiKey: mockKey,
   loadGoogleMaps: mockLoad,
+  GOOGLE_MAPS_KEY_MISSING_MESSAGE: KEY_MISSING_MESSAGE,
 }));
 
 import MapaClientes from '@/components/comercial/mapa-clientes';
@@ -91,9 +94,7 @@ function contacto(over: Partial<ComercialContacto>): ComercialContacto {
 
 beforeEach(() => {
   createdMarkers.length = 0;
-  mockKey.mockClear();
   mockLoad.mockClear();
-  mockKey.mockReturnValue('test-key');
   mockLoad.mockResolvedValue(undefined);
   installGoogleStub();
 });
@@ -169,10 +170,22 @@ describe('MapaClientes — Google Maps JS API', () => {
     await waitFor(() => expect(createdMarkers.length).toBe(1));
   });
 
-  it('sin API key muestra el aviso y no intenta cargar el mapa', async () => {
-    mockKey.mockReturnValue(undefined);
+  it('muestra el placeholder de carga mientras se resuelve la clave, sin pintar el mapa (WU4.4)', async () => {
+    let resolveLoad: () => void = () => {};
+    mockLoad.mockImplementationOnce(() => new Promise<void>((resolve) => { resolveLoad = resolve; }));
+    const { getByText, queryByText } = render(<MapaClientes customers={[]} modo="estado" />);
+
+    expect(getByText(/Cargando mapa/)).toBeInTheDocument();
+    expect(createdMarkers.length).toBe(0);
+
+    resolveLoad();
+    await waitFor(() => expect(queryByText(/Cargando mapa/)).not.toBeInTheDocument());
+  });
+
+  it('sin clave resoluble (BD ausente o fetch fallido, mismo mensaje desde loader.ts) muestra el aviso y no pinta marcadores (WU4.4)', async () => {
+    mockLoad.mockRejectedValueOnce(new Error(KEY_MISSING_MESSAGE));
     const { getByText } = render(<MapaClientes customers={[]} modo="estado" />);
-    expect(getByText(/NEXT_PUBLIC_GOOGLE_MAPS_API_KEY/)).toBeInTheDocument();
-    expect(mockLoad).not.toHaveBeenCalled();
+    await waitFor(() => expect(getByText(/Mapa no disponible: falta NEXT_PUBLIC_GOOGLE_MAPS_API_KEY\./)).toBeInTheDocument());
+    expect(createdMarkers.length).toBe(0);
   });
 });
