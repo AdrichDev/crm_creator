@@ -160,7 +160,7 @@ export function Sidebar() {
       </button>
 
       {/* Identidad del negocio */}
-      <div className={cn('flex items-center gap-3', collapsed ? 'justify-center px-2 pt-16 pb-3' : 'px-5 pt-5')}>
+      <div className={cn('flex items-center gap-3', collapsed ? 'justify-center px-2 pt-16 pb-2' : 'px-5 pt-5')}>
         <div className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-xl text-sm font-bold text-white shadow-lg"
           style={config.branding.logoImage ? undefined : { background: 'linear-gradient(135deg, var(--brand-secondary), var(--brand-primary))' }}>
           {config.branding.logoImage
