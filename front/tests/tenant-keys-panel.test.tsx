@@ -80,6 +80,28 @@ describe('TenantKeysPanel', () => {
     expect(screen.getByText('Quitar')).toBeInTheDocument();
   });
 
+  it('configurado: campo lleno de puntos de longitud FIJA (no el valor), readOnly hasta el foco', async () => {
+    apiFetch.mockImplementation(async (path: string) => {
+      if (path === `/tenant-keys/${BIZ}/secrets`) return { secrets: [seed('OPENAI_API_KEY', true)] };
+      return undefined;
+    });
+    render(<TenantKeysPanel businessId={BIZ} groups={['ai']} />);
+    await flush();
+
+    const masked = screen.getByLabelText('OpenAI (guardado, oculto)') as HTMLInputElement;
+    expect(masked.readOnly).toBe(true);
+    // Longitud FIJA (20), no la real: el back nunca devuelve el valor ni su longitud.
+    expect(masked.value).toBe('•'.repeat(20));
+    expect(masked.value).not.toMatch(/sk-|OPENAI/i);
+
+    // Al hacer foco se convierte en un input editable VACÍO para sustituir.
+    fireEvent.focus(masked);
+    await flush();
+    const editable = screen.getByLabelText('Valor de OpenAI') as HTMLInputElement;
+    expect(editable.readOnly).toBe(false);
+    expect(editable.value).toBe('');
+  });
+
   it('guardar: llama PUT con el valor tecleado, limpia el input tras guardar y el valor nunca queda en el DOM', async () => {
     let putBody = '';
     apiFetch.mockImplementation(async (path: string, init?: RequestInit) => {

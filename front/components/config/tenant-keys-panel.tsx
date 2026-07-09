@@ -27,6 +27,11 @@ const CATALOG: Array<{ name: TenantSecretName; label: string; group: SlotGroup; 
   { name: 'DATABASE_URL', label: 'URL (BD)', group: 'database', kind: 'database' },
 ];
 
+// Máscara de longitud FIJA para un slot ya configurado: el back nunca devuelve el
+// valor ni su longitud, así que estos puntos NO reflejan la clave real — solo indican
+// "hay un secreto guardado, oculto". No filtra nada del secreto.
+const SAVED_MASK = '•'.repeat(20);
+
 type CardStatus = 'idle' | 'saving' | 'testing' | 'deleting';
 type TestOutcome = { tone: 'ok' | 'error'; texto: string } | null;
 
@@ -70,7 +75,13 @@ export function TenantKeysPanel({ businessId, groups }: TenantKeysPanelProps) {
     setTestResult((prev) => ({ ...prev, [name]: null }));
     try {
       await upsertSecret(businessId, name, value);
-      setInputs((prev) => ({ ...prev, [name]: '' }));
+      // Se BORRA la clave del estado (undefined, no ''): tras recargar, el slot pasa a
+      // `configured` y el campo vuelve a mostrar la máscara de puntos, no un input vacío.
+      setInputs((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
       await load();
     } catch {
       setTestResult((prev) => ({ ...prev, [name]: { tone: 'error', texto: 'No se pudo guardar. Inténtalo de nuevo.' } }));
@@ -160,21 +171,30 @@ export function TenantKeysPanel({ businessId, groups }: TenantKeysPanelProps) {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="password"
-                  aria-label={`Valor de ${label}`}
-                  placeholder={
-                    configured
-                      ? '••••••••••••  ·  oculto — pega uno nuevo para sustituir'
-                      : kind === 'database'
-                        ? 'postgresql://usuario:password@host:puerto/basedatos'
-                        : 'Pegar valor…'
-                  }
-                  value={inputs[name] ?? ''}
-                  onChange={(e) => setInputs((prev) => ({ ...prev, [name]: e.target.value }))}
-                  className="min-w-[220px] flex-1 rounded-[8px] border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
-                  autoComplete="new-password"
-                />
+                {configured && inputs[name] === undefined ? (
+                  // Slot ya configurado y sin tocar: campo lleno de puntos de longitud
+                  // FIJA (no la real). Al hacer foco/clic se limpia para escribir uno nuevo.
+                  <input
+                    readOnly
+                    type="text"
+                    aria-label={`${label} (guardado, oculto)`}
+                    value={SAVED_MASK}
+                    onFocus={() => setInputs((prev) => ({ ...prev, [name]: '' }))}
+                    onMouseDown={(e) => { e.preventDefault(); setInputs((prev) => ({ ...prev, [name]: '' })); }}
+                    className="min-w-[220px] flex-1 cursor-text rounded-[8px] border border-white/10 bg-black/20 px-3 py-2 text-sm tracking-widest text-white/60"
+                  />
+                ) : (
+                  <input
+                    type="password"
+                    aria-label={`Valor de ${label}`}
+                    placeholder={kind === 'database' ? 'postgresql://usuario:password@host:puerto/basedatos' : 'Pegar valor…'}
+                    value={inputs[name] ?? ''}
+                    onChange={(e) => setInputs((prev) => ({ ...prev, [name]: e.target.value }))}
+                    className="min-w-[220px] flex-1 rounded-[8px] border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+                    autoComplete="new-password"
+                    autoFocus={configured}
+                  />
+                )}
                 <Button onClick={() => void guardar(name)} disabled={st !== 'idle' || !(inputs[name]?.trim())}>
                   {st === 'saving' ? 'Guardando…' : 'Guardar'}
                 </Button>
