@@ -43,6 +43,9 @@ next-env.d.ts
 back/backups/
 front/test-results/
 
+# Output de exportación (ZIPs generados en runtime, no fuente)
+back/exports/
+
 # Output del generador (no fuente)
 generated/
 vitaldent/

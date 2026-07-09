@@ -16,6 +16,7 @@
  */
 
 import * as path from "node:path";
+import * as fs from "node:fs";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { Router } from "express";
@@ -252,6 +253,36 @@ export function activeHandler(deps: ExportsDeps) {
   };
 }
 
+/** GET /:id/download — descarga el ZIP de un job terminado (res.download). */
+export function downloadHandler(deps: ExportsDeps) {
+  return function download(req: Request, res: Response): void {
+    const job = deps.jobs.getJob(req.params.id);
+    if (!job) {
+      res.status(404).json({
+        error: { code: "job_not_found", message: "Job no encontrado" },
+      });
+      return;
+    }
+    if (job.status !== "done") {
+      res.status(400).json({
+        error: { code: "job_not_done", message: "La exportación aún no ha terminado" },
+      });
+      return;
+    }
+    // El ZIP producido queda en perFormat[*].outputPath; tomamos el primero disponible.
+    const outputPath = Object.values(job.perFormat)
+      .map((f) => f.outputPath)
+      .find((p): p is string => Boolean(p));
+    if (!outputPath || !fs.existsSync(outputPath)) {
+      res.status(404).json({
+        error: { code: "file_not_found", message: "Archivo de exportación no encontrado" },
+      });
+      return;
+    }
+    res.download(outputPath);
+  };
+}
+
 /** DELETE /:id — cancela el job si esta corriendo. */
 export function cancelHandler(deps: ExportsDeps) {
   return function cancel(req: Request, res: Response): Response {
@@ -275,6 +306,7 @@ export function makeExportsRouter(deps: ExportsDeps = defaultDeps): Router {
   router.get("/pick-folder", pickFolderHandler);
   router.get("/active", activeHandler(deps));
   router.get("/:id/status", statusHandler(deps));
+  router.get("/:id/download", downloadHandler(deps));
   router.delete("/:id", cancelHandler(deps));
   router.post("/", createExportHandler(deps));
   return router;

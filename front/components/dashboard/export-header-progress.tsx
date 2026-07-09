@@ -19,7 +19,7 @@ const FORMAT_LABEL: Record<BuildFormat, string> = {
 };
 
 export function ExportHeaderProgress() {
-  const { job, error: globalError, dismiss, cancel } = useExportJobContext();
+  const { job, error: globalError, downloading, downloadError, dismiss, cancel } = useExportJobContext();
   const [open, setOpen] = useState(false);
 
   if (!job && !globalError) return null;
@@ -38,7 +38,9 @@ export function ExportHeaderProgress() {
   const label = isRunning
     ? `${job?.currentFormat ? FORMAT_LABEL[job.currentFormat] : 'Exportando'}${job?.step ? ` · ${job.step}` : ''}`
     : isDone
-      ? 'Exportación completada'
+      ? downloading
+        ? 'Descargando ZIP…'
+        : 'Exportación completada'
       : 'Exportación fallida';
 
   return (
@@ -103,6 +105,11 @@ export function ExportHeaderProgress() {
           {isError && (job?.error || globalError) && (
             <p className="mb-2 break-words" style={{ color: '#f87171' }}>
               {job?.error || globalError}
+            </p>
+          )}
+          {downloadError && (
+            <p className="mb-2 break-words" style={{ color: '#f87171' }}>
+              {downloadError}
             </p>
           )}
           <div className="space-y-1.5">

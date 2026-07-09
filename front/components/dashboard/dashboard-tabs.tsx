@@ -7,6 +7,7 @@ import { VERTICAL_MAP } from '@/lib/config/verticals';
 import { useDialog } from '@/components/ui/dialog-provider';
 import { useExportJobContext } from '@/lib/export/export-job-context';
 import type { BuildFormat } from '@/lib/export/types';
+import type { SaveFileHandle } from '@/lib/export/download';
 import { ExportTable } from './export-table';
 import { ExportHeaderProgress } from './export-header-progress';
 import { Plus, Pencil, Trash2, FolderOpen } from 'lucide-react';
@@ -60,8 +61,8 @@ export function DashboardTabs({
     setPage(0);
   }
 
-  function handleExport(projectId: string, formats: BuildFormat[], outputDir: string) {
-    void startExport({ projectId, formats, outputDir });
+  function handleExport(projectId: string, formats: BuildFormat[], handle: SaveFileHandle | null) {
+    void startExport({ projectId, formats }, handle);
   }
 
   function handleDelete(id: string) {

@@ -16,6 +16,7 @@ import {
   createExportHandler,
   statusHandler,
   activeHandler,
+  downloadHandler,
   type ExportsDeps,
 } from '../exports.js';
 import { LockBusyError, type ExportJob } from '../../lib/export-job-manager.js';
@@ -63,6 +64,52 @@ const okDb: ExportsDeps['db'] = {
   membership: { findFirst: async () => ({ id: 'm-1' }) },
   businessSetting: { findFirst: async () => ({ datos: { business: { name: 'Demo' } } }) },
 };
+
+// ── GET /:id/download — guardas (404/400) ───────────────────────────────────
+
+describe('GET /api/exports/:id/download', () => {
+  function depsWithJob(job: ExportJob | undefined): ExportsDeps {
+    return {
+      db: okDb,
+      jobs: {
+        startJob: () => fakeJob('x'),
+        getJob: () => job,
+        getActiveJob: () => undefined,
+        cancelJob: () => false,
+      },
+    };
+  }
+
+  test('404 job_not_found si el job no existe', () => {
+    const req = { params: { id: 'nope' } } as unknown as AuthedRequest;
+    const res = mockRes();
+    downloadHandler(depsWithJob(undefined))(req, res);
+    assert.equal(res.statusCode, 404);
+    assert.deepEqual(res.body, { error: { code: 'job_not_found', message: 'Job no encontrado' } });
+  });
+
+  test('400 job_not_done si el job aun corre', () => {
+    const req = { params: { id: 'job-1' } } as unknown as AuthedRequest;
+    const res = mockRes();
+    downloadHandler(depsWithJob(fakeJob('job-1')))(req, res); // fakeJob → status 'running'
+    assert.equal(res.statusCode, 400);
+    assert.deepEqual(res.body, { error: { code: 'job_not_done', message: 'La exportación aún no ha terminado' } });
+  });
+
+  test('404 file_not_found si el ZIP no esta en disco', () => {
+    const done: ExportJob = {
+      ...fakeJob('job-2'),
+      status: 'done',
+      pct: 100,
+      perFormat: { 'web-zip': { status: 'done', pct: 100, outputPath: '/ruta/inexistente/x.zip' } },
+    };
+    const req = { params: { id: 'job-2' } } as unknown as AuthedRequest;
+    const res = mockRes();
+    downloadHandler(depsWithJob(done))(req, res);
+    assert.equal(res.statusCode, 404);
+    assert.deepEqual(res.body, { error: { code: 'file_not_found', message: 'Archivo de exportación no encontrado' } });
+  });
+});
 
 // ── POST / → 202 ─────────────────────────────────────────────────────────────
 

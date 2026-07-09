@@ -49,6 +49,29 @@ export async function apiFetch<T = unknown>(path: string, init: RequestInit = {}
   return res.json() as Promise<T>;
 }
 
+// Descarga binaria (Blob). Reutiliza base URL + Authorization + x-business-id de
+// apiFetch, pero lee la respuesta como Blob en vez de JSON (apiFetch parsea JSON).
+// Se usa para bajar el ZIP de exportación con el Bearer, que un <a href> no lleva.
+export async function apiFetchBlob(path: string, init: RequestInit = {}): Promise<Blob> {
+  const base = apiBaseUrl();
+  if (!base) throw new Error('API no configurada');
+
+  const headers: Record<string, string> = {
+    ...(init.headers as Record<string, string>),
+  };
+  const t = await getAccessToken();
+  if (t) headers.Authorization = `Bearer ${t}`;
+  const b = getActiveBusinessId();
+  if (b) headers['x-business-id'] = b;
+
+  const res = await fetch(`${base}/api${path}`, { ...init, headers });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(body?.error?.message ?? `Error ${res.status}`, res.status, body?.error?.code);
+  }
+  return res.blob();
+}
+
 // Subida multipart (FormData). No fija Content-Type: el navegador añade el
 // boundary correcto. Mantiene Authorization + x-business-id como apiFetch.
 export async function apiUpload<T = unknown>(path: string, formData: FormData): Promise<T> {

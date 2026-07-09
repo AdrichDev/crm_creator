@@ -7,13 +7,16 @@
 import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react';
 import { apiFetch, isApiEnabled } from '@/lib/api/client';
 import { useExportJob } from './use-export-job';
+import type { SaveFileHandle } from './download';
 import type { ExportJob, StartExportParams } from './types';
 
 interface ExportJobContextValue {
   job: ExportJob | null;
   isRunning: boolean;
   error: string | null;
-  start: (params: StartExportParams) => Promise<void>;
+  downloading: boolean;
+  downloadError: string | null;
+  start: (params: StartExportParams, handle?: SaveFileHandle | null) => Promise<void>;
   cancel: () => Promise<void>;
   dismiss: () => void;
 }
@@ -21,7 +24,7 @@ interface ExportJobContextValue {
 const ExportJobContext = createContext<ExportJobContextValue | null>(null);
 
 export function ExportJobProvider({ children }: { children: ReactNode }) {
-  const { job, isRunning, error, start, resume, cancel, dismiss } = useExportJob();
+  const { job, isRunning, error, downloading, downloadError, start, resume, cancel, dismiss } = useExportJob();
   const rehydrated = useRef(false);
 
   useEffect(() => {
@@ -39,7 +42,7 @@ export function ExportJobProvider({ children }: { children: ReactNode }) {
   }, [resume]);
 
   return (
-    <ExportJobContext.Provider value={{ job, isRunning, error, start, cancel, dismiss }}>
+    <ExportJobContext.Provider value={{ job, isRunning, error, downloading, downloadError, start, cancel, dismiss }}>
       {children}
     </ExportJobContext.Provider>
   );

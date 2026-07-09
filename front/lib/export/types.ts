@@ -30,5 +30,4 @@ export interface ExportJob {
 export interface StartExportParams {
   projectId: string;
   formats: BuildFormat[];
-  outputDir: string;
 }

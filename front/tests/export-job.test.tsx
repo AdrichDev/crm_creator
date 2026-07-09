@@ -7,12 +7,13 @@ vi.mock('@/lib/api/client', async () => {
   return {
     ...actual,
     apiFetch: vi.fn(),
+    apiFetchBlob: vi.fn(),
     isApiEnabled: () => true,
     apiBaseUrl: () => 'http://localhost:4000',
   };
 });
 
-import { apiFetch } from '@/lib/api/client';
+import { apiFetch, apiFetchBlob } from '@/lib/api/client';
 import { useExportJob } from '@/lib/export/use-export-job';
 import { ExportJobProvider, useExportJobContext } from '@/lib/export/export-job-context';
 import { ExportHeaderProgress } from '@/components/dashboard/export-header-progress';
@@ -41,10 +42,20 @@ afterEach(() => {
 
 describe('Fase 2 · exportador polling', () => {
   // 2.1 — hook use-export-job
-  it('2.1 start() hace POST y arranca polling; para al recibir done', async () => {
+  it('2.1 start() hace POST, arranca polling y auto-descarga al recibir done', async () => {
     vi.useFakeTimers();
+    // Sin handle (jsdom no soporta showSaveFilePicker) → descarga por anchor.
+    (URL as unknown as { createObjectURL: unknown }).createObjectURL = vi.fn(() => 'blob:x');
+    (URL as unknown as { revokeObjectURL: unknown }).revokeObjectURL = vi.fn();
+    // jsdom no implementa la navegación del anchor.click(); lo stubeamos.
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    vi.mocked(apiFetchBlob).mockResolvedValue(new Blob(['zip']));
     const running = mkJob({ status: 'running', pct: 40 });
-    const done = mkJob({ status: 'done', pct: 100 });
+    const done = mkJob({
+      status: 'done',
+      pct: 100,
+      perFormat: { 'web-zip': { status: 'done', pct: 100, outputPath: '/out/test-web-src.zip' } },
+    });
     let statusCall = 0;
     mockApiFetch.mockImplementation(async (path: string, init?: RequestInit) => {
       if (path === '/exports' && init?.method === 'POST') return { jobId: 'j1' } as never;
@@ -54,7 +65,7 @@ describe('Fase 2 · exportador polling', () => {
 
     const { result } = renderHook(() => useExportJob());
     await act(async () => {
-      await result.current.start({ projectId: 'p1', formats: ['web-zip'], outputDir: '/out' });
+      await result.current.start({ projectId: 'p1', formats: ['web-zip'] });
     });
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
 
@@ -63,8 +74,13 @@ describe('Fase 2 · exportador polling', () => {
     expect(result.current.isRunning).toBe(true);
 
     await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+    await act(async () => { await Promise.resolve(); });
     expect(result.current.job?.status).toBe('done');
     expect(result.current.isRunning).toBe(false);
+    // Al terminar el job se dispara la descarga del ZIP (sin gesto adicional).
+    expect(vi.mocked(apiFetchBlob)).toHaveBeenCalledWith('/exports/j1/download');
+    expect(clickSpy).toHaveBeenCalled();
+    clickSpy.mockRestore();
 
     const before = mockApiFetch.mock.calls.length;
     await act(async () => { await vi.advanceTimersByTimeAsync(4500); });
@@ -124,6 +140,8 @@ describe('Fase 2 · exportador polling', () => {
     const r2 = render(<ExportJobProvider><ExportHeaderProgress /></ExportJobProvider>);
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     expect(screen.getByText('Exportación completada')).toBeInTheDocument();
+    // Flujo de un botón: la descarga es automática, NO hay botón "Descargar".
+    expect(screen.queryByRole('button', { name: 'Descargar' })).toBeNull();
     fireEvent.click(screen.getByText('Exportación completada'));
     expect(screen.getByText('/out/app.zip')).toBeInTheDocument();
     r2.unmount();
@@ -142,44 +160,28 @@ describe('Fase 2 · exportador polling', () => {
     expect(screen.getByText('Fallo del build')).toBeInTheDocument();
   });
 
-  // 2.4 — picker obligatorio
-  it('2.4 Exportar sin carpeta invoca pick-folder; si cancela no hace POST', async () => {
+  // 2.4 — un botón: Exportar arranca el job (handle=null en jsdom, sin picker)
+  it('2.4 Exportar llama onExport con (projectId, formats, handle) y no invoca pick-folder', async () => {
     const project = {
       id: 'p1',
       createdAt: new Date().toISOString(),
       config: { business: { name: 'Test', vertical: 'otro', clienteId: null } },
     } as never;
 
-    // Caso cancelado: pick-folder rechaza → onExport NO se llama.
-    const onExportCancel = vi.fn();
+    const onExport = vi.fn();
     mockApiFetch.mockImplementation(async (path: string) => {
       if (path === '/tenants') return [] as never;
-      if (path === '/exports/pick-folder') throw new Error('cancelado');
-      return undefined as never;
-    });
-    const c1 = render(
-      <ExportTable projects={[project]} codeMap={{ p1: 'crm-01' }} isRunning={false} onExport={onExportCancel} />,
-    );
-    fireEvent.click(screen.getAllByRole('checkbox')[0]);
-    fireEvent.click(screen.getByRole('button', { name: 'Exportar' }));
-    await waitFor(() =>
-      expect(mockApiFetch.mock.calls.some((c) => c[0] === '/exports/pick-folder')).toBe(true),
-    );
-    expect(onExportCancel).not.toHaveBeenCalled();
-    c1.unmount();
-
-    // Caso elegido: pick-folder devuelve path → onExport con esa carpeta.
-    const onExportOk = vi.fn();
-    mockApiFetch.mockImplementation(async (path: string) => {
-      if (path === '/tenants') return [] as never;
-      if (path === '/exports/pick-folder') return { path: '/chosen' } as never;
       return undefined as never;
     });
     render(
-      <ExportTable projects={[project]} codeMap={{ p1: 'crm-01' }} isRunning={false} onExport={onExportOk} />,
+      <ExportTable projects={[project]} codeMap={{ p1: 'crm-01' }} isRunning={false} onExport={onExport} />,
     );
     fireEvent.click(screen.getAllByRole('checkbox')[0]);
     fireEvent.click(screen.getByRole('button', { name: 'Exportar' }));
-    await waitFor(() => expect(onExportOk).toHaveBeenCalledWith('p1', ['web-zip'], '/chosen'));
+
+    // jsdom no expone showSaveFilePicker → handle=null; el job arranca igual.
+    await waitFor(() => expect(onExport).toHaveBeenCalledWith('p1', ['web-zip'], null));
+    // Ya no se llama al endpoint inexistente pick-folder.
+    expect(mockApiFetch.mock.calls.some((c) => c[0] === '/exports/pick-folder')).toBe(false);
   });
 });

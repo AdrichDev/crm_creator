@@ -6,6 +6,7 @@ import { VERTICAL_MAP } from '@/lib/config/verticals';
 import { apiFetch, isApiEnabled } from '@/lib/api/client';
 import type { ClientLite } from '@/lib/clients/picker';
 import type { BuildFormat } from '@/lib/export/types';
+import { openSaveDialog, isAbortError, toSlug, type SaveFileHandle } from '@/lib/export/download';
 import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 
 const FORMAT_LABEL: Record<BuildFormat, string> = {
@@ -24,7 +25,7 @@ interface ExportTableProps {
   codeMap: Record<string, string>;
   isRunning: boolean;
   exportingProjectId?: string;
-  onExport: (projectId: string, formats: BuildFormat[], outputDir: string) => void;
+  onExport: (projectId: string, formats: BuildFormat[], handle: SaveFileHandle | null) => void;
 }
 
 function AnimatingDots() {
@@ -44,7 +45,6 @@ export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, 
   const [tenantMap, setTenantMap] = useState<Record<string, string>>({});
   const [sortCol, setSortCol] = useState<SortCol | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
-  const [pickingFor, setPickingFor] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isApiEnabled()) return;
@@ -87,33 +87,20 @@ export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, 
     else { setSortCol(col); setSortDir('asc'); }
   }
 
-  async function handleExportRow(projectId: string, fmts: Set<BuildFormat>) {
-    if (fmts.size === 0 || isRunning || pickingFor) return;
-    let dir: string | null = null;
-    if (isApiEnabled()) {
-      setPickingFor(projectId);
-      try {
-        const res = await apiFetch<{ path?: string }>('/exports/pick-folder');
-        dir = res?.path ?? null;
-      } catch {
-        // Cancelado o sin GUI
-        dir = null;
-      } finally {
-        setPickingFor(null);
-      }
-
-      // FALLBACK: Si falla el popup nativo (o el usuario canceló sin querer), le damos la opción de pegar la ruta
-      if (!dir) {
-        dir = window.prompt(
-          'No se pudo obtener la ruta automáticamente o cancelaste. Pega la ruta absoluta donde quieres guardar la exportación (ej: C:\\Users\\Adrian\\Desktop):'
-        );
-        if (!dir) return; // Si vuelve a cancelar, abortamos.
-      }
-    } else {
-      // Modo dev sin API: directorio por defecto.
-      dir = './exports';
+  async function handleExportRow(projectId: string, businessName: string, fmts: Set<BuildFormat>) {
+    if (fmts.size === 0 || isRunning) return;
+    // Flujo de un botón: abrimos el diálogo nativo "Guardar como" AQUÍ (en el gesto
+    // del clic) y guardamos el handle. Al terminar el job se escribe el ZIP en él
+    // sin nuevo gesto. Si el navegador no soporta la API, handle=null → descarga por
+    // anchor al terminar. Si el usuario cancela el diálogo, NO se arranca el job.
+    let handle: SaveFileHandle | null = null;
+    try {
+      handle = await openSaveDialog(`${toSlug(businessName)}-web-src.zip`);
+    } catch (err) {
+      if (isAbortError(err)) return; // Cancelado → abortar sin exportar.
+      handle = null; // Otro fallo del diálogo: seguimos con descarga por anchor.
     }
-    onExport(projectId, Array.from(fmts), dir);
+    onExport(projectId, Array.from(fmts), handle);
   }
 
   const filtered = projects.filter((p) => {
@@ -200,9 +187,8 @@ export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, 
                   const v = VERTICAL_MAP[p.config.business.vertical];
                   const clientName = tenantMap[p.config.business.clienteId ?? ''] ?? '—';
                   const fmts = getFormats(p.id);
-                  const isPicking = pickingFor === p.id;
                   const isThisExporting = exportingProjectId === p.id;
-                  const canExport = fmts.size > 0 && !isRunning && !pickingFor;
+                  const canExport = fmts.size > 0 && !isRunning;
 
                   return (
                     <tr key={p.id}>
@@ -253,13 +239,11 @@ export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, 
                       <td>
                         <button
                           type="button"
-                          disabled={(!canExport && !isPicking) || isThisExporting}
-                          onClick={() => void handleExportRow(p.id, fmts)}
+                          disabled={!canExport || isThisExporting}
+                          onClick={() => void handleExportRow(p.id, p.config.business.name, fmts)}
                           className={
                             isThisExporting
                               ? 'rounded-lg border border-[var(--gold)] bg-[#c5a0281a] px-3 py-1.5 text-xs font-medium text-[var(--gold)] cursor-default transition'
-                              : isPicking
-                              ? 'rounded-lg border border-[var(--line)] px-3 py-1.5 text-xs font-medium text-[var(--panel-muted)] cursor-wait transition'
                               : canExport
                               ? 'rounded-lg border border-[var(--panel-muted)] px-3 py-1.5 text-xs font-medium text-[var(--panel-muted)] transition hover:border-[var(--gold)] hover:text-[var(--gold)]'
                               : 'rounded-lg border border-transparent px-3 py-1.5 text-xs font-medium text-[var(--panel-muted)] opacity-25 cursor-not-allowed'
@@ -269,8 +253,6 @@ export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, 
                             <span className="flex items-center">
                               Exportando<AnimatingDots />
                             </span>
-                          ) : isPicking ? (
-                            'Eligiendo…'
                           ) : (
                             'Exportar'
                           )}
