@@ -16,12 +16,15 @@ import { ChangePasswordForm } from '@/components/config/change-password-form';
 import { MyAccountPanel } from '@/components/config/my-account-panel';
 import { NotificacionesPanel } from '@/components/config/notificaciones-panel';
 import { IntegracionesPanel } from '@/components/config/integraciones-panel';
+import { TenantKeysPanel } from '@/components/config/tenant-keys-panel';
 import { PageHeader, Card, CardBody, Button, Badge, Toggle } from '@/components/ui/primitives';
 import { isApiEnabled } from '@/lib/api/client';
+import { getAuthProfile } from '@/lib/api/profile';
+import { getActiveBusinessId } from '@/lib/auth/session';
 import { cn } from '@/lib/utils';
 
-type Tab = 'estado' | 'modulos' | 'trabajador' | 'inicio' | 'usuarios' | 'notificaciones' | 'integraciones' | 'marca' | 'negocio' | 'cuenta';
-const TAB_LABEL: Record<Tab, string> = { estado: 'Estado', modulos: 'Módulos', trabajador: 'Trabajador', inicio: 'Widgets del inicio', usuarios: 'Usuarios', notificaciones: 'Notificaciones', integraciones: 'Integraciones', marca: 'Marca', negocio: 'Negocio', cuenta: 'Mi Cuenta' };
+type Tab = 'estado' | 'modulos' | 'trabajador' | 'inicio' | 'usuarios' | 'notificaciones' | 'integraciones' | 'claves-api' | 'marca' | 'negocio' | 'cuenta';
+const TAB_LABEL: Record<Tab, string> = { estado: 'Estado', modulos: 'Módulos', trabajador: 'Trabajador', inicio: 'Widgets del inicio', usuarios: 'Usuarios', notificaciones: 'Notificaciones', integraciones: 'Integraciones', 'claves-api': 'Claves API', marca: 'Marca', negocio: 'Negocio', cuenta: 'Mi Cuenta' };
 const BASE_TABS: Tab[] = ['estado', 'modulos', 'trabajador', 'inicio', 'marca', 'negocio', 'cuenta'];
 
 export default function ConfiguracionPage() {
@@ -31,13 +34,43 @@ export default function ConfiguracionPage() {
   const apiEnabled = isApiEnabled();
   const dialog = useDialog();
 
+  // "Claves API" (autoservicio de secretos del tenant) se gatea por el MemberRole CRUDO
+  // (ADMIN/MANAGER) de GET /auth/me — NO por el `Role` colapsado de useRole() (que funde
+  // MANAGER y EMPLOYEE en 'trabajador'). El backend compartido es la autoridad final (403
+  // para EMPLOYEE/CLIENT); este gate solo evita mostrar una pestaña que daría 403.
+  // Fail-closed: mientras el rol no se resuelve, `memberRole` es null y la pestaña se oculta.
+  const [memberRole, setMemberRole] = useState<string | null>(null);
+  // businessId de la sesión ACTIVA (el mismo que `apiFetch` envía como x-business-id).
+  // Nunca proviene de input del usuario; se resuelve de la sesión.
+  const [activeBusinessId, setActiveBusinessId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setActiveBusinessId(getActiveBusinessId());
+    if (!apiEnabled) return;
+    let cancel = false;
+    getAuthProfile()
+      .then((p) => { if (!cancel) setMemberRole(p.role ?? null); })
+      .catch(() => { if (!cancel) setMemberRole(null); });
+    return () => { cancel = true; };
+  }, [apiEnabled]);
+
+  const canManageKeys = apiEnabled && (memberRole === 'ADMIN' || memberRole === 'MANAGER');
+
   // El tab "Usuarios" (gestión de cuentas + cambio de contraseña) es solo para admin.
   // "Notificaciones" (solo lectura) e "Integraciones" (OAuth Google) requieren back
   // → solo admin + modo API. "Mi Cuenta" es accesible para todos los roles.
-  const TABS: Tab[] = isAdmin
-    ? ['estado', 'modulos', 'trabajador', 'inicio', 'usuarios',
-       ...(apiEnabled ? ['notificaciones' as Tab, 'integraciones' as Tab] : []), 'marca', 'negocio', 'cuenta']
-    : BASE_TABS;
+  const TABS: Tab[] = (() => {
+    const tabs: Tab[] = isAdmin
+      ? ['estado', 'modulos', 'trabajador', 'inicio', 'usuarios',
+         ...(apiEnabled ? ['notificaciones' as Tab, 'integraciones' as Tab] : []), 'marca', 'negocio', 'cuenta']
+      : [...BASE_TABS];
+    // "Claves API" visible para ADMIN y MANAGER (independiente de isAdmin, que solo cubre ADMIN).
+    if (canManageKeys) {
+      const idx = tabs.indexOf('cuenta');
+      tabs.splice(idx >= 0 ? idx : tabs.length, 0, 'claves-api');
+    }
+    return tabs;
+  })();
 
   const [tab, setTab] = useState<Tab>('estado');
 
@@ -187,6 +220,20 @@ export default function ConfiguracionPage() {
             Conecta el negocio con Google Calendar y Gmail. Cada negocio usa su propia cuenta de Google.
           </p>
           <IntegracionesPanel />
+        </CardBody></Card>
+      )}
+
+      {/* Claves API: autoservicio de secretos del tenant (IA, Google Maps, URL de BD).
+          Reutiliza el TenantKeysPanel compartido con el businessId de la sesión activa.
+          Gateado por el MemberRole crudo (ADMIN/MANAGER); defensa en profundidad en el
+          render además del gate de TABS. El valor de cada secreto nunca se muestra. */}
+      {tab === 'claves-api' && canManageKeys && activeBusinessId && (
+        <Card><CardBody className="space-y-4">
+          <p className="text-sm text-[var(--panel-muted)]">
+            Gestiona las claves de tus proveedores de IA (OpenAI, Gemini, Anthropic), tu clave de
+            Google Maps y la URL de tu base de datos. Los valores no se muestran una vez guardados.
+          </p>
+          <TenantKeysPanel businessId={activeBusinessId} />
         </CardBody></Card>
       )}
 
