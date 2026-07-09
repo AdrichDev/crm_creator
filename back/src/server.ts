@@ -4,7 +4,6 @@ import swaggerUi from 'swagger-ui-express';
 import { env, assertConfig } from './env.js';
 import { api } from './routes/index.js';
 import { serviceOperatorRouter } from './routes/service-operator.js';
-import { telegramWebhookRouter } from './routes/telegram.js';
 import { notFound, errorHandler } from './middleware/error.js';
 import { startReminderDrainer } from './lib/reminderDrainer.js';
 import { startDigestScheduler } from './lib/digestScheduler.js';
@@ -32,7 +31,6 @@ if (process.env.NODE_ENV !== 'production') {
 // Operator Agent (F1 aa-operator-agent): manos server-side de solo lectura,
 // protegidas SOLO por service token. FUERA de /api → no pasa por el gate de usuario.
 app.use('/service/operator', serviceOperatorRouter);
-app.use('/service/operator/telegram', telegramWebhookRouter);
 
 app.use('/api', api);
 app.use(notFound);

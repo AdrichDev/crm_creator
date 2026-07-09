@@ -4,7 +4,6 @@ import { TenantConfigProvider } from '@/lib/tenant-config-context';
 import { BrandingStyle } from '@/components/layout/branding-style';
 import { CrmThemeProvider } from '@/components/layout/theme-provider';
 import { DialogProvider } from '@/components/ui/dialog-provider';
-import { MinionWidgetGlobal } from '@/components/crm/minion-widget-global';
 
 export const metadata: Metadata = {
   title: 'OperaOS · Consola',
@@ -33,9 +32,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <BrandingStyle />
             <CrmThemeProvider />
             {children}
-            {/* Widget Minion global (OperaOS/3A Estudio): visible en dashboard y dentro
-                de cualquier proyecto; el wrapper excluye auth y portal de cliente. */}
-            <MinionWidgetGlobal />
           </DialogProvider>
         </TenantConfigProvider>
       </body>

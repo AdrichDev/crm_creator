@@ -79,8 +79,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </main>
       </div>
-      {/* El widget Minion ya no se monta aquí: vive en el root layout
-          (MinionWidgetGlobal) para aparecer también en /dashboard. */}
     </div>
   );
 }

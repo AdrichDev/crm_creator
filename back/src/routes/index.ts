@@ -33,8 +33,6 @@ import { configHorarioRouter } from './config-horario.js';
 import { calendarRouter } from './calendar.js';
 import { integrationsRouter } from './integrations.js';
 import { contactosRouter } from './contactos.js';
-import { telegramRouter } from './telegram.js';
-import { operatorChatRouter } from './operator-chat.js';
 import { tenantConfigRouter } from './tenant-config.js';
 import { tenantKeysRouter } from './tenant-keys.js';
 
@@ -116,11 +114,6 @@ api.use('/customer-notes', customerNotesRouter);
 api.use('/reminders', remindersRouter);
 // Contactos comerciales (crm-operaos WU4): agenda de leads/prospectos, paridad con AA.
 api.use('/contactos', contactosRouter);
-// Telegram UI (crm-operaos WU5): lista de conversaciones + hilo + respuesta manual del
-// tenant activo. Hereda authenticate + staffOnly. El webhook entrante es OTRO router
-// (telegramWebhookRouter, operator token) y se monta aparte.
-api.use('/operator-chat', operatorChatRouter);
-api.use('/telegram', telegramRouter);
 
 // Custom
 api.use('/tenants', tenantsRouter); // clientes de AA (aa.tenant, raw cross-schema) → FK de proyectos
