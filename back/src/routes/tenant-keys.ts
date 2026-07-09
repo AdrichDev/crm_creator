@@ -5,7 +5,7 @@ import type { MemberRole } from '../lib/generated/prisma/client.js';
 import { TENANT_SECRET_CATALOG, findSecretSlot, type SecretSlotName } from '../lib/tenant-secrets/catalog.js';
 import { encryptSecret, decryptSecret } from '../lib/tenant-secrets/crypto.js';
 import { testProviderConnection } from '../lib/tenant-secrets/provider-test.js';
-import { rateLimit } from '../lib/rateLimit.js';
+import { consume } from '../lib/rateLimit.js';
 
 // ---------------------------------------------------------------------------
 // crm-onboarding-tenant-keys — superficie HUMANA (sesión + Membership) sobre el
@@ -211,12 +211,12 @@ export async function deleteSecretHandler(db: TenantKeysDb, req: AuthedRequest, 
 
 // Rate limit por businessId:name — acota el "oráculo de validez de clave ajena"
 // que representa este endpoint (llama al proveedor real con la clave tecleada).
-const testSecretLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 5,
-  bucket: 'secret-test',
-  keyOf: (req) => `${req.params.businessId}:${req.params.name}`,
-});
+// Se aplica DENTRO del handler, DESPUÉS de requireMemberAdmin: así un autenticado
+// que NO es miembro del negocio no puede gastar el cupo del "Probar" de un tercero
+// (cae en 404 antes de tocar el contador). Ver N3 de la revisión de seguridad.
+const TEST_RATE_BUCKET = 'secret-test';
+const TEST_RATE_WINDOW_MS = 60_000;
+const TEST_RATE_MAX = 5;
 
 export async function testSecretHandler(
   db: TenantKeysDb,
@@ -232,6 +232,13 @@ export async function testSecretHandler(
     const businessId = req.params.businessId;
     const slot = findSecretSlot(req.params.name);
     if (!slot) return res.status(404).json({ error: { code: 'unknown_secret', message: 'Secreto no reconocido' } });
+
+    // Rate limit DESPUÉS del gate (N3): solo un miembro ADMIN/MANAGER del negocio puede
+    // consumir el contador; un no-miembro ya salió por 404 arriba. Antes de resolver el
+    // value / llamar al proveedor, para acotar el coste del "oráculo de validez".
+    if (!consume(TEST_RATE_BUCKET, `${businessId}:${slot.name}`, TEST_RATE_WINDOW_MS, TEST_RATE_MAX)) {
+      return res.status(429).json({ error: { code: 'rate_limited', message: 'Demasiados intentos, espera unos minutos' } });
+    }
 
     const body = (req.body ?? {}) as { value?: unknown };
     let value: string | null = null;
@@ -263,7 +270,7 @@ export function buildTenantKeysRouter(db: TenantKeysDb): Router {
   router.get('/:businessId/secrets', (req, res) => listSecretsHandler(db, req as AuthedRequest, res));
   router.put('/:businessId/secrets/:name', (req, res) => upsertSecretHandler(db, req as AuthedRequest, res));
   router.delete('/:businessId/secrets/:name', (req, res) => deleteSecretHandler(db, req as AuthedRequest, res));
-  router.post('/:businessId/secrets/:name/test', testSecretLimiter, (req, res) => testSecretHandler(db, req as AuthedRequest, res));
+  router.post('/:businessId/secrets/:name/test', (req, res) => testSecretHandler(db, req as AuthedRequest, res));
   return router;
 }
 

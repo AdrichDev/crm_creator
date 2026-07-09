@@ -327,15 +327,37 @@ describe('POST /tenant-keys/:businessId/secrets/:name/test', () => {
 
   test('6º intento en la ventana → 429 (rate limit por businessId:name)', async () => {
     const db = fakeDb();
+    let connTestCalls = 0;
+    const countingConnTest = async (...args: Parameters<typeof fakeConnTestOk>) => {
+      connTestCalls += 1;
+      return fakeConnTestOk(...args);
+    };
+    // El límite corre DENTRO del handler (tras el gate), así que llamar al handler 6 veces
+    // ejercita el 429 real a nivel de endpoint (no solo el mecanismo genérico de rateLimit).
     for (let i = 0; i < 5; i++) {
       const res = mockRes();
-      await testSecretHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_A, name: 'OPENAI_API_KEY' }, body: { value: 'sk-x' } }), res, fakeConnTestOk);
+      await testSecretHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_A, name: 'OPENAI_API_KEY' }, body: { value: 'sk-x' } }), res, countingConnTest);
       assert.equal(res.statusCode, 200, `intento ${i + 1} debe pasar`);
     }
-    // El 6º NO pasa por el handler (lo bloquea el middleware rateLimit montado en el
-    // router real); aquí se ejercita el handler directamente, así que se documenta la
-    // cobertura del límite exponiendo `consume` — ver rateLimit.test.ts para el 429 real
-    // del middleware. Se verifica aquí que 5 llamadas consecutivas SÍ funcionan (no bloqueo
-    // prematuro) y se deja el 429 real cubierto a nivel de middleware.
+    const sixth = mockRes();
+    await testSecretHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_A, name: 'OPENAI_API_KEY' }, body: { value: 'sk-x' } }), sixth, countingConnTest);
+    assert.equal(sixth.statusCode, 429, 'el 6º debe ser 429');
+    assert.equal((sixth.body as { error: { code: string } }).error.code, 'rate_limited');
+    // El 429 corta ANTES de llamar al proveedor: solo hubo 5 llamadas al connTest.
+    assert.equal(connTestCalls, 5, 'el 6º no debe llegar a llamar al proveedor');
+  });
+
+  test('rate limit NO cuenta para un no-miembro (N3): 404 antes del contador', async () => {
+    const db = fakeDb();
+    // 5 intentos de un no-miembro sobre BIZ_A: todos 404 (gate), sin tocar el bucket.
+    for (let i = 0; i < 5; i++) {
+      const res = mockRes();
+      await testSecretHandler(db, mockReq({ userId: 'user-sin-membership', params: { businessId: BIZ_A, name: 'OPENAI_API_KEY' }, body: { value: 'sk-x' } }), res, fakeConnTestOk);
+      assert.equal(res.statusCode, 404, 'no-miembro → 404 por el gate');
+    }
+    // El miembro legítimo conserva sus 5 intentos intactos (el no-miembro no gastó el cupo).
+    const ok = mockRes();
+    await testSecretHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_A, name: 'OPENAI_API_KEY' }, body: { value: 'sk-x' } }), ok, fakeConnTestOk);
+    assert.equal(ok.statusCode, 200, 'el miembro legítimo no debe verse afectado por el no-miembro');
   });
 });
