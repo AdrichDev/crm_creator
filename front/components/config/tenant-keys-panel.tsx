@@ -163,7 +163,13 @@ export function TenantKeysPanel({ businessId, groups }: TenantKeysPanelProps) {
                 <input
                   type="password"
                   aria-label={`Valor de ${label}`}
-                  placeholder={configured ? 'Sustituir valor guardado…' : 'Pegar valor…'}
+                  placeholder={
+                    configured
+                      ? '••••••••••••  ·  oculto — pega uno nuevo para sustituir'
+                      : kind === 'database'
+                        ? 'postgresql://usuario:password@host:puerto/basedatos'
+                        : 'Pegar valor…'
+                  }
                   value={inputs[name] ?? ''}
                   onChange={(e) => setInputs((prev) => ({ ...prev, [name]: e.target.value }))}
                   className="min-w-[220px] flex-1 rounded-[8px] border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
