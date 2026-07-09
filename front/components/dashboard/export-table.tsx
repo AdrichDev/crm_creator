@@ -18,6 +18,15 @@ const FORMAT_LABEL: Record<BuildFormat, string> = {
 
 const ALL_FORMATS: BuildFormat[] = ['web-zip', 'exe', 'apk', 'ipa'];
 
+// Sufijo del ZIP que produce cada builder en el back (espejo de export-builders/*).
+// Se usa para el nombre sugerido en el diálogo "Guardar como".
+const FORMAT_SUFFIX: Record<BuildFormat, string> = {
+  'web-zip': 'web-src',
+  exe: 'desktop-src',
+  apk: 'android-src',
+  ipa: 'ios-src',
+};
+
 type SortCol = 'name' | 'client' | 'vertical';
 
 interface ExportTableProps {
@@ -93,9 +102,13 @@ export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, 
     // del clic) y guardamos el handle. Al terminar el job se escribe el ZIP en él
     // sin nuevo gesto. Si el navegador no soporta la API, handle=null → descarga por
     // anchor al terminar. Si el usuario cancela el diálogo, NO se arranca el job.
+    // El nombre sugerido refleja el formato: /download devuelve el ZIP del primer
+    // formato seleccionado (mismo orden que se envía al back).
+    const firstFmt = Array.from(fmts)[0];
+    const suffix = FORMAT_SUFFIX[firstFmt] ?? 'src';
     let handle: SaveFileHandle | null = null;
     try {
-      handle = await openSaveDialog(`${toSlug(businessName)}-web-src.zip`);
+      handle = await openSaveDialog(`${toSlug(businessName)}-${suffix}.zip`);
     } catch (err) {
       if (isAbortError(err)) return; // Cancelado → abortar sin exportar.
       handle = null; // Otro fallo del diálogo: seguimos con descarga por anchor.
