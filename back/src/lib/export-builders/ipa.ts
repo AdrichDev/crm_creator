@@ -20,12 +20,12 @@ import {
 } from '../export-temp-copy.js';
 import {
   IOS_ALLOWLIST,
+  NATIVE_EXCLUDE_PATHS,
   allowlistFilter,
   buildEnvContent,
   writeFreshEnvLocal,
   buildEnvExampleContent,
   writeFreshEnvExample,
-  buildMinimalManifest,
 } from './manifest-allowlist.js';
 import {
   buildRuntimeConfigEnvLines,
@@ -34,9 +34,9 @@ import {
 } from './runtime-config-env.js';
 import { buildPublicEnvSecretsLines, type PublicEnvSecret } from './public-env-secrets.js';
 import type { TenantConfig } from '../../../../shared/generate/tenant-types.js';
-import type { Emitter, BuildResult, Deliverable } from './web-zip.js';
+import type { Emitter, BuildResult } from './web-zip.js';
 
-export type { Emitter, BuildResult, Deliverable };
+export type { Emitter, BuildResult };
 
 const require = createRequire(import.meta.url);
 type Archiver = import('archiver').Archiver;
@@ -62,8 +62,7 @@ function toAppId(slug: string): string {
   return `com.operaos.${suffix}`;
 }
 
-/** README cara al cliente: compilacion Xcode generica, sin referencias internas. */
-function renderReadmeClient(productName: string): string {
+function renderReadme(productName: string): string {
   return `# ${productName} — iOS (.ipa)
 
 > **Requisito imprescindible:** iOS **solo** se puede compilar en **macOS con
@@ -152,57 +151,6 @@ cuenta de Apple Developer. Xcode puede gestionarlos automaticamente si activas
 `;
 }
 
-/** README interno de operador: pipeline real en el Mac de compilacion. NUNCA se entrega al cliente. */
-function renderReadmeOperator(productName: string): string {
-  return `PAQUETE INTERNO — no entregar al cliente
-
-# ${productName} — iOS (.ipa, pipeline interno)
-
-## Que es esto
-
-Este ZIP es el paquete de trabajo del **operador** para compilar y firmar la
-app de iOS de este tenant. El cliente final NUNCA recibe este ZIP: recibe
-unicamente el \`.ipa\` ya compilado (o el alta en TestFlight/App Store).
-
-## Pipeline en el Mac de compilacion del operador
-
-1. **Entrar en la carpeta del codigo, instalar dependencias, añadir el
-   plugin de iOS, compilar la web estatica y generar/sincronizar el proyecto
-   Xcode:**
-   \`\`\`
-   cd mobile-src
-   npm install
-   npm install @capacitor/ios
-   npm run build:static
-   npx cap add ios
-   npx cap sync ios
-   \`\`\`
-
-2. **Firmar con el equipo de firma de la organizacion.** El Mac de
-   compilacion del operador (\`/Users/operaos-ci/build\`) tiene instalado el
-   perfil de distribucion **"OperaOS Distribution"** con el Team ID de la
-   cuenta de Apple Developer de la organizacion (no del cliente). En Xcode,
-   **Signing & Capabilities**, selecciona ese equipo de firma antes de
-   **Product > Archive**.
-
-3. **Exportar y entregar** el \`.ipa\` resultante (o subirlo directamente a
-   TestFlight/App Store si el destino del cliente es publicacion en tienda).
-
-## Nota
-
-El README que recibe el cliente (variante \`binary+source\`) es distinto: le
-pide usar SU PROPIA cuenta de Apple Developer, sin mencionar el perfil ni la
-maquina de compilacion internos del operador.
-`;
-}
-
-/** Lee la plantilla README y sustituye los placeholders del tenant. */
-function renderReadme(productName: string, deliverable: Deliverable): string {
-  return deliverable === 'binary'
-    ? renderReadmeOperator(productName)
-    : renderReadmeClient(productName);
-}
-
 function customizeCapacitorConfig(
   frontDir: string,
   appId: string,
@@ -225,7 +173,7 @@ async function assembleZip(
   frontDir: string,
   sharedDir: string,
   outputPath: string,
-  artifacts: { readme: string; manifest: string },
+  artifacts: { readme: string },
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const outStream = fs.createWriteStream(outputPath);
@@ -241,7 +189,7 @@ async function assembleZip(
     archive.pipe(outStream);
 
     archive.directory(frontDir, 'mobile-src', (entry: EntryData) =>
-      allowlistFilter(entry, IOS_ALLOWLIST),
+      allowlistFilter(entry, IOS_ALLOWLIST, [], NATIVE_EXCLUDE_PATHS),
     );
 
     // shared/ en la raiz del ZIP: front importa `../../../shared/generate/*`
@@ -256,7 +204,6 @@ async function assembleZip(
     }
 
     archive.append(artifacts.readme, { name: 'README.md' });
-    archive.append(artifacts.manifest, { name: 'manifest.json' });
 
     void archive.finalize();
   });
@@ -270,8 +217,6 @@ export interface IpaDeps {
   platform?: NodeJS.Platform;
   /** crm-export-runtime-config: cableado runtime de plataforma para este ZIP. */
   runtimeConfig?: RuntimeConfig;
-  /** crm-export-delivery-profiles: destinatario del ZIP. Default 'binary+source'. */
-  deliverable?: Deliverable;
   /**
    * crm-env-contract-tiers (WU3.4): secretos `FRONTEND_PUBLIC` del negocio
    * con `envVarName` asignado, ya descifrados (`readBakeableSecrets`).
@@ -290,7 +235,6 @@ export async function buildIpa(
 ): Promise<BuildResult> {
   const createTempCopy = deps.createTempCopy ?? defaultCreateTempCopy;
   const cleanupTempCopy = deps.cleanupTempCopy ?? defaultCleanupTempCopy;
-  const deliverable: Deliverable = deps.deliverable ?? 'binary+source';
   const applyExportCompat = deps.applyExportCompat ?? defaultApplyExportCompat;
 
   const productName = config.business.name;
@@ -337,10 +281,9 @@ export async function buildIpa(
     emit({ type: 'progress', format: 'ipa', step: 'Empaquetando codigo fuente en ZIP...', pct: 60 });
     fs.mkdirSync(outputDir, { recursive: true });
     const outputPath = path.join(outputDir, `${slug}-ios-src.zip`);
-    const readme = renderReadme(productName, deliverable);
-    const manifest = buildMinimalManifest('ipa', deliverable, config);
+    const readme = renderReadme(productName);
 
-    await assembleZip(tmpFrontDir, tmpSharedDir, outputPath, { readme, manifest });
+    await assembleZip(tmpFrontDir, tmpSharedDir, outputPath, { readme });
 
     emit({ type: 'progress', format: 'ipa', step: 'Guardando archivo ZIP...', pct: 100, outputPath });
     return { success: true, outputPath };

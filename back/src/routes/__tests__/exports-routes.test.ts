@@ -53,7 +53,6 @@ function fakeJob(id: string): ExportJob {
     id,
     projectId: 'proj-1',
     formats: ['web-zip'],
-    deliverable: 'binary+source',
     status: 'running',
     pct: 10,
     perFormat: { 'web-zip': { status: 'running', pct: 10 } },
@@ -199,110 +198,6 @@ describe('POST /api/exports', () => {
     await createExportHandler(deps)(req, res);
     assert.equal(res.statusCode, 400);
     assert.equal((res.body as { error: { code: string } }).error.code, 'invalid_format');
-  });
-});
-
-// ── crm-export-delivery-profiles WU1: contrato `deliverable` ────────────────
-
-describe('POST /api/exports — deliverable (crm-export-delivery-profiles)', () => {
-  test('1.4 default a binary+source cuando no se envía deliverable', async () => {
-    let captured: StartJobParams | undefined;
-    const deps: ExportsDeps = {
-      db: okDb,
-      jobs: {
-        startJob: (params) => {
-          captured = params;
-          return fakeJob('job-deliv-default');
-        },
-        getJob: () => undefined,
-        getActiveJob: () => undefined,
-        cancelJob: () => false,
-      },
-    };
-    const req = {
-      userId: 'u-1',
-      body: { projectId: 'proj-1', formats: ['web-zip'] },
-    } as unknown as AuthedRequest;
-    const res = mockRes();
-
-    await createExportHandler(deps)(req, res);
-
-    assert.equal(res.statusCode, 202);
-    assert.equal(captured?.deliverable, 'binary+source');
-  });
-
-  test('1.4 acepta deliverable = binary y lo propaga a startJob', async () => {
-    let captured: StartJobParams | undefined;
-    const deps: ExportsDeps = {
-      db: okDb,
-      jobs: {
-        startJob: (params) => {
-          captured = params;
-          return fakeJob('job-deliv-binary');
-        },
-        getJob: () => undefined,
-        getActiveJob: () => undefined,
-        cancelJob: () => false,
-      },
-    };
-    const req = {
-      userId: 'u-1',
-      body: { projectId: 'proj-1', formats: ['apk'], deliverable: 'binary' },
-    } as unknown as AuthedRequest;
-    const res = mockRes();
-
-    await createExportHandler(deps)(req, res);
-
-    assert.equal(res.statusCode, 202);
-    assert.equal(captured?.deliverable, 'binary');
-  });
-
-  test('1.4 acepta deliverable = binary+source explícito', async () => {
-    let captured: StartJobParams | undefined;
-    const deps: ExportsDeps = {
-      db: okDb,
-      jobs: {
-        startJob: (params) => {
-          captured = params;
-          return fakeJob('job-deliv-explicit');
-        },
-        getJob: () => undefined,
-        getActiveJob: () => undefined,
-        cancelJob: () => false,
-      },
-    };
-    const req = {
-      userId: 'u-1',
-      body: { projectId: 'proj-1', formats: ['web-zip'], deliverable: 'binary+source' },
-    } as unknown as AuthedRequest;
-    const res = mockRes();
-
-    await createExportHandler(deps)(req, res);
-
-    assert.equal(res.statusCode, 202);
-    assert.equal(captured?.deliverable, 'binary+source');
-  });
-
-  test('1.4 400 invalid_deliverable con valor desconocido', async () => {
-    const deps: ExportsDeps = {
-      db: okDb,
-      jobs: {
-        startJob: () => fakeJob('x'),
-        getJob: () => undefined,
-        getActiveJob: () => undefined,
-        cancelJob: () => false,
-      },
-    };
-    const req = {
-      userId: 'u-1',
-      body: { projectId: 'proj-1', formats: ['web-zip'], deliverable: 'gold-plated' },
-    } as unknown as AuthedRequest;
-    const res = mockRes();
-
-    await createExportHandler(deps)(req, res);
-
-    assert.equal(res.statusCode, 400);
-    assert.equal((res.body as { error: { code: string } }).error.code, 'invalid_deliverable');
   });
 });
 

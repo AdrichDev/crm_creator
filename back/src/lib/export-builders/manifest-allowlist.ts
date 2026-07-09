@@ -24,7 +24,6 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import type { TenantConfig } from '../../../../shared/generate/tenant-types.js';
-import type { Deliverable } from './web-zip.js';
 
 // ---------------------------------------------------------------------------
 // Allowlists por formato (design.md #1)
@@ -129,19 +128,36 @@ interface EntryLike {
 }
 
 /**
+ * Rutas server-only del operador (proxies API: `app/api/*`). Son validas en
+ * web/standalone (servidor Node), pero INCOMPATIBLES con `output: export`
+ * (exe/apk/ios): un route handler dinamico no puede prerenderizarse a HTML
+ * estatico y rompe `next build`. Se excluyen del paquete nativo para que el
+ * `build:static` del cliente compile. NO se excluyen del web-zip.
+ */
+export const NATIVE_EXCLUDE_PATHS: string[] = ['app/api'];
+
+/**
  * Filtra entradas para `archive.directory(...)`: solo deja pasar la entrada
  * si su segmento de primer nivel esta en `allowlist`, o si su ruta completa
  * (relativa a la raiz del directorio empaquetado) esta en `extraFiles`.
  *
  * `extraFiles` permite un archivo puntual (p.ej. `build/icon.png`) SIN abrir
  * toda la carpeta (`build`) a la que pertenece.
+ *
+ * `excludePaths` descarta una ruta anidada y todo su subarbol (p.ej.
+ * `app/api`) aunque su segmento top-level (`app`) SI este en la allowlist —
+ * la exclusion tiene prioridad sobre la inclusion.
  */
 export function allowlistFilter<T extends EntryLike>(
   entry: T,
   allowlist: string[],
   extraFiles: string[] = [],
+  excludePaths: string[] = [],
 ): T | false {
   const normalized = entry.name.replace(/\\/g, '/').replace(/\/+$/, '');
+  for (const ex of excludePaths) {
+    if (normalized === ex || normalized.startsWith(ex + '/')) return false;
+  }
   if (extraFiles.includes(normalized)) return entry;
   const top = normalized.split('/')[0];
   return allowlist.includes(top) ? entry : false;
@@ -244,32 +260,4 @@ export function buildEnvExampleContent(options: BuildEnvOptions = {}): string[] 
 /** Emisor unico de `.env.example` en la copia temporal. */
 export function writeFreshEnvExample(tmpFrontDir: string, lines: string[]): void {
   fs.writeFileSync(path.join(tmpFrontDir, '.env.example'), lines.join('\n') + '\n', 'utf8');
-}
-
-// ---------------------------------------------------------------------------
-// crm-export-delivery-profiles: manifest.json minimo (apk/exe/ipa)
-// ---------------------------------------------------------------------------
-
-/**
- * Manifest minimo para los formatos que solo empaquetaban README hasta ahora
- * (apk/exe/ipa; web-zip ya tiene su propio manifest completo via
- * `buildManifest` de shared/generate). Da trazabilidad al ZIP suelto
- * (design.md §4) sin depender del `ExportJob` en memoria, que expira a los
- * ~30 min (`RETENTION_MS` de `export-job-manager.ts`).
- */
-export function buildMinimalManifest(
-  format: string,
-  deliverable: Deliverable,
-  config: TenantConfig,
-): string {
-  return JSON.stringify(
-    {
-      format,
-      deliverable,
-      generatedAt: new Date().toISOString(),
-      business: { name: config.business.name },
-    },
-    null,
-    2,
-  );
 }

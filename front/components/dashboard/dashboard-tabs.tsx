@@ -6,7 +6,7 @@ import { MODULES } from '@/lib/config/modules';
 import { VERTICAL_MAP } from '@/lib/config/verticals';
 import { useDialog } from '@/components/ui/dialog-provider';
 import { useExportJobContext } from '@/lib/export/export-job-context';
-import type { BuildFormat, Deliverable } from '@/lib/export/types';
+import type { BuildFormat } from '@/lib/export/types';
 import type { SaveFileHandle } from '@/lib/export/download';
 import { ExportTable } from './export-table';
 import { ExportHeaderProgress } from './export-header-progress';
@@ -61,13 +61,8 @@ export function DashboardTabs({
     setPage(0);
   }
 
-  function handleExport(
-    projectId: string,
-    formats: BuildFormat[],
-    handle: SaveFileHandle | null,
-    deliverable: Deliverable,
-  ) {
-    void startExport({ projectId, formats, deliverable }, handle);
+  function handleExport(projectId: string, formats: BuildFormat[], handle: SaveFileHandle | null) {
+    void startExport({ projectId, formats }, handle);
   }
 
   function handleDelete(id: string) {

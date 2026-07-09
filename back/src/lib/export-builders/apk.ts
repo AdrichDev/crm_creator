@@ -20,12 +20,12 @@ import {
 } from '../export-temp-copy.js';
 import {
   ANDROID_ALLOWLIST,
+  NATIVE_EXCLUDE_PATHS,
   allowlistFilter,
   buildEnvContent,
   writeFreshEnvLocal,
   buildEnvExampleContent,
   writeFreshEnvExample,
-  buildMinimalManifest,
 } from './manifest-allowlist.js';
 import {
   buildRuntimeConfigEnvLines,
@@ -34,9 +34,9 @@ import {
 } from './runtime-config-env.js';
 import { buildPublicEnvSecretsLines, type PublicEnvSecret } from './public-env-secrets.js';
 import type { TenantConfig } from '../../../../shared/generate/tenant-types.js';
-import type { Emitter, BuildResult, Deliverable } from './web-zip.js';
+import type { Emitter, BuildResult } from './web-zip.js';
 
-export type { Emitter, BuildResult, Deliverable };
+export type { Emitter, BuildResult };
 
 const require = createRequire(import.meta.url);
 type Archiver = import('archiver').Archiver;
@@ -62,8 +62,7 @@ function toAppId(slug: string): string {
   return `com.operaos.${suffix}`;
 }
 
-/** README cara al cliente: compilacion Android generica, sin referencias internas. */
-function renderReadmeClient(productName: string): string {
+function renderReadme(productName: string): string {
   return `# ${productName} — Android (APK)
 
 ## Que es esto
@@ -153,9 +152,19 @@ proyecto nativo de Android que se compila con Gradle. El resultado es un archivo
   una app es tuya. Se genera **una sola vez** y se **reutiliza** para todas tus
   apps y todas sus futuras versiones.
 
-- **Guardalo con copia de seguridad.** Si lo pierdes, **no podras publicar
+- **Es un archivo binario: no se abre ni se lee.** Que parezca "ilegible" es
+  normal y correcto — es una caja fuerte, no un documento. No lo edites; solo lo
+  pasas al compilar con los parametros \`-P...\` de arriba.
+
+- **Guardalo con copia de seguridad, y apunta sus contrasenas en un gestor de
+  contrasenas.** Si pierdes el archivo O sus contrasenas, **no podras publicar
   actualizaciones** de una app ya entregada: Android las rechazara por no
-  coincidir la firma.
+  coincidir la firma. Es irrecuperable.
+
+- **Dos contrasenas, normalmente iguales.** El keystore pide una contrasena del
+  almacen (\`-PrelStorePass\`) y una de la clave (\`-PrelKeyPass\`). Con el formato
+  por defecto de \`keytool\` (**PKCS12**) ambas son **la misma**; solo difieren si
+  al generarlo elegiste dos distintas a proposito.
 
 - Generarlo (una vez):
   \`\`\`
@@ -163,8 +172,15 @@ proyecto nativo de Android que se compila con Gradle. El resultado es un archivo
   \`\`\`
   El comando te pedira las contrasenas y algunos datos (nombre, organizacion...).
 
-- **Es TUYO y no viaja en este ZIP.** Lo mantienes aparte y lo pasas al compilar
-  con los parametros \`-P...\` mostrados arriba.
+- **Consultar lo que contiene** (alias, fecha, huella) sin abrirlo a mano —
+  necesitas la contrasena del almacen:
+  \`\`\`
+  keytool -list -keystore <ruta-a-tu-keystore.jks> -storepass <contraseña-del-keystore>
+  \`\`\`
+  Si lista tu alias sin error, la contrasena es correcta.
+
+- **Es TUYO y no viaja en este ZIP.** Lo mantienes aparte y NUNCA lo incluyes en
+  un paquete que entregues a un cliente.
 
 ## Actualizaciones
 
@@ -191,68 +207,6 @@ Para instalar el APK directamente (sideload), sin pasar por Google Play:
    Play Protect". Es **normal** para apps instaladas fuera de la Play Store:
    acepta para continuar con la instalacion.
 `;
-}
-
-/** README interno de operador: pipeline local real de firma/compilacion. NUNCA se entrega al cliente. */
-function renderReadmeOperator(productName: string): string {
-  return `PAQUETE INTERNO — no entregar al cliente
-
-# ${productName} — Android (APK, pipeline interno)
-
-## Que es esto
-
-Este ZIP es el paquete de trabajo del **operador** para compilar y firmar el
-APK de este tenant. El cliente final NUNCA recibe este ZIP: recibe unicamente
-el archivo \`.apk\` ya compilado.
-
-## Pipeline local del operador
-
-1. **Entrar en la carpeta del codigo:**
-   \`\`\`
-   cd mobile-src
-   \`\`\`
-
-2. **Instalar dependencias, compilar la web estatica y sincronizar Android:**
-   \`\`\`
-   npm install
-   npm run build:static
-   npx cap sync android
-   cd android
-   \`\`\`
-
-3. **SDK de Android (instalacion local del operador):** el SDK vive en
-   \`C:\\Android\\Sdk\` (\`ANDROID_HOME=C:\\Android\\Sdk\`). No requiere
-   \`android/local.properties\` porque la variable de entorno ya esta fijada en
-   la maquina del operador.
-
-4. **Firmar el release con el keystore de la organizacion:**
-   \`\`\`
-   .\\gradlew.bat assembleRelease \`
-     -PrelKeystore="D:\\Operaos\\keys\\operaos-release.jks" \`
-     -PrelStorePass=$env:OPERAOS_KEYSTORE_PASS \`
-     -PrelAlias="operaos" \`
-     -PrelKeyPass=$env:OPERAOS_KEY_PASS
-   \`\`\`
-   El keystore \`operaos-release.jks\` (alias \`operaos\`) es la identidad de
-   firma de la organizacion; las contrasenas viven en el gestor de secretos
-   del operador, nunca en este README.
-
-5. **Entregar al cliente** unicamente el artefacto resultante:
-   \`app\\build\\outputs\\apk\\release\\app-release.apk\`.
-
-## Nota
-
-El README que recibe el cliente (variante \`binary+source\`) es distinto: usa
-placeholders genericos de keystore/SDK, sin el nombre real del keystore de la
-organizacion ni rutas locales de esta maquina.
-`;
-}
-
-/** Lee la plantilla README y sustituye los placeholders del tenant. */
-function renderReadme(productName: string, deliverable: Deliverable): string {
-  return deliverable === 'binary'
-    ? renderReadmeOperator(productName)
-    : renderReadmeClient(productName);
 }
 
 function escapeXml(value: string): string {
@@ -317,7 +271,7 @@ async function assembleZip(
   frontDir: string,
   sharedDir: string,
   outputPath: string,
-  artifacts: { readme: string; manifest: string },
+  artifacts: { readme: string },
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const outStream = fs.createWriteStream(outputPath);
@@ -333,7 +287,7 @@ async function assembleZip(
     archive.pipe(outStream);
 
     archive.directory(frontDir, 'mobile-src', (entry: EntryData) =>
-      allowlistFilter(entry, ANDROID_ALLOWLIST),
+      allowlistFilter(entry, ANDROID_ALLOWLIST, [], NATIVE_EXCLUDE_PATHS),
     );
 
     // shared/ en la raiz del ZIP: front importa `../../../shared/generate/*`
@@ -348,7 +302,6 @@ async function assembleZip(
     }
 
     archive.append(artifacts.readme, { name: 'README.md' });
-    archive.append(artifacts.manifest, { name: 'manifest.json' });
 
     void archive.finalize();
   });
@@ -362,8 +315,6 @@ export interface ApkDeps {
   platform?: NodeJS.Platform;
   /** crm-export-runtime-config: cableado runtime de plataforma para este ZIP. */
   runtimeConfig?: RuntimeConfig;
-  /** crm-export-delivery-profiles: destinatario del ZIP. Default 'binary+source'. */
-  deliverable?: Deliverable;
   /**
    * crm-env-contract-tiers (WU3.4): secretos `FRONTEND_PUBLIC` del negocio
    * con `envVarName` asignado, ya descifrados (`readBakeableSecrets`).
@@ -383,7 +334,6 @@ export async function buildApk(
   const createTempCopy = deps.createTempCopy ?? defaultCreateTempCopy;
   const cleanupTempCopy = deps.cleanupTempCopy ?? defaultCleanupTempCopy;
   const applyExportCompat = deps.applyExportCompat ?? defaultApplyExportCompat;
-  const deliverable: Deliverable = deps.deliverable ?? 'binary+source';
 
   const productName = config.business.name;
   const slug = toSlug(productName);
@@ -448,10 +398,9 @@ export async function buildApk(
     emit({ type: 'progress', format: 'apk', step: 'Empaquetando codigo fuente en ZIP...', pct: 60 });
     fs.mkdirSync(outputDir, { recursive: true });
     const outputPath = path.join(outputDir, `${slug}-android-src.zip`);
-    const readme = renderReadme(productName, deliverable);
-    const manifest = buildMinimalManifest('apk', deliverable, config);
+    const readme = renderReadme(productName);
 
-    await assembleZip(tmpFrontDir, tmpSharedDir, outputPath, { readme, manifest });
+    await assembleZip(tmpFrontDir, tmpSharedDir, outputPath, { readme });
 
     emit({ type: 'progress', format: 'apk', step: 'Guardando archivo ZIP...', pct: 100, outputPath });
     return { success: true, outputPath };

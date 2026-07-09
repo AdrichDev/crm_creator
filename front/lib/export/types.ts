@@ -4,10 +4,6 @@
 
 export type BuildFormat = 'web-zip' | 'exe' | 'apk' | 'ipa';
 
-// crm-export-delivery-profiles: destinatario del ZIP.
-// 'binary' = paquete interno de operador; 'binary+source' = entregable de cliente.
-export type Deliverable = 'binary' | 'binary+source';
-
 export type PerFormatStatus = 'pending' | 'running' | 'done' | 'error';
 
 export interface PerFormatState {
@@ -34,5 +30,4 @@ export interface ExportJob {
 export interface StartExportParams {
   projectId: string;
   formats: BuildFormat[];
-  deliverable: Deliverable;
 }

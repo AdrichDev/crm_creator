@@ -16,6 +16,7 @@ import {
   ANDROID_ALLOWLIST,
   IOS_ALLOWLIST,
   DESKTOP_ALLOWLIST,
+  NATIVE_EXCLUDE_PATHS,
   allowlistFilter,
   buildEnvContent,
   writeFreshEnvLocal,
@@ -168,4 +169,41 @@ test('1.2 buildEnvExampleContent/writeFreshEnvExample: placeholder, nunca copiad
   const content = fs.readFileSync(path.join(dir, '.env.example'), 'utf8');
   assert.ok(!content.includes('old-dev-value'), 'nunca debe copiar el valor real del repo');
   assert.ok(content.includes('NEXT_PUBLIC_API_URL'), 'debe dejar el placeholder documentado');
+});
+
+// --- crm: proxies API operador (app/api) excluidos SOLO del paquete nativo ---
+// Regresion: `output: export` (exe/apk/ios) no puede empaquetar route handlers
+// dinamicos; se excluyen del ZIP nativo pero se conservan en web-zip.
+
+test('nativo: app/api y su subarbol se excluyen aunque "app" este en la allowlist', () => {
+  for (const list of [ANDROID_ALLOWLIST, IOS_ALLOWLIST, DESKTOP_ALLOWLIST]) {
+    assert.equal(
+      allowlistFilter({ name: 'app/api/ai/generate/route.ts' }, list, [], NATIVE_EXCLUDE_PATHS),
+      false,
+    );
+    assert.equal(allowlistFilter({ name: 'app/api' }, list, [], NATIVE_EXCLUDE_PATHS), false);
+    // Windows: separador invertido tambien se normaliza y excluye.
+    assert.equal(
+      allowlistFilter({ name: 'app\api\market-studies\route.ts' }, list, [], NATIVE_EXCLUDE_PATHS),
+      false,
+    );
+  }
+});
+
+test('nativo: resto de app/ pasa; hermanos con "api" NO se excluyen por error', () => {
+  const e = (name: string) =>
+    allowlistFilter({ name }, ANDROID_ALLOWLIST, [], NATIVE_EXCLUDE_PATHS);
+  assert.deepEqual(e('app/page.tsx'), { name: 'app/page.tsx' });
+  assert.deepEqual(e('app/(crm)/categorias/[id]/page.tsx'), {
+    name: 'app/(crm)/categorias/[id]/page.tsx',
+  });
+  // `lib/api/...` y `app/apitest` no matchean el prefijo `app/api/`.
+  assert.deepEqual(e('lib/api/client.ts'), { name: 'lib/api/client.ts' });
+});
+
+test('web-zip: app/api SI se conserva (standalone soporta route handlers)', () => {
+  assert.deepEqual(
+    allowlistFilter({ name: 'app/api/ai/generate/route.ts' }, WEB_ALLOWLIST),
+    { name: 'app/api/ai/generate/route.ts' },
+  );
 });
