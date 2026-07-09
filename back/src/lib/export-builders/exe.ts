@@ -17,6 +17,14 @@ import {
   createTempCopy as defaultCreateTempCopy,
   cleanupTempCopy as defaultCleanupTempCopy,
 } from '../export-temp-copy.js';
+import {
+  DESKTOP_ALLOWLIST,
+  allowlistFilter,
+  buildEnvContent,
+  writeFreshEnvLocal,
+  buildEnvExampleContent,
+  writeFreshEnvExample,
+} from './manifest-allowlist.js';
 import type { TenantConfig } from '../../../../shared/generate/tenant-types.js';
 import type { Emitter, BuildResult } from './web-zip.js';
 
@@ -33,7 +41,15 @@ const archiver = require('archiver') as ArchiverFactory;
 
 const __dirname_ = path.dirname(fileURLToPath(import.meta.url));
 
-const DESKTOP_EXCLUDED = new Set(['node_modules', '.next', 'out', 'dist-electron', 'build']);
+// shared/ no pasa por el allowlist de front/ (design.md §2, "sin cambios");
+// createTempCopy ya la copia sin node_modules/.next/out, segunda barrera.
+const SHARED_EXCLUDED = new Set(['node_modules', '.next', 'out', 'dist-electron', 'build']);
+
+// Archivo puntual permitido dentro de `build/` sin abrir toda la carpeta
+// ('build' no esta en DESKTOP_ALLOWLIST a proposito, ver proposal.md — bug
+// del icono desaparecido). Corrige el bug: el icono escrito en
+// `tmpFrontDir/build/icon.png` ahora sobrevive al filtro de ensamblado.
+const DESKTOP_EXTRA_FILES = ['build/icon.png'];
 
 function toSlug(name: string): string {
   return name.toLowerCase().replace(/\s+/g, '-');
@@ -118,10 +134,9 @@ async function assembleZip(
 
     archive.pipe(outStream);
 
-    archive.directory(frontDir, 'desktop-src', (entry: EntryData) => {
-      const segs = entry.name.split(/[\\/]/);
-      return segs.some((s) => DESKTOP_EXCLUDED.has(s)) ? false : entry;
-    });
+    archive.directory(frontDir, 'desktop-src', (entry: EntryData) =>
+      allowlistFilter(entry, DESKTOP_ALLOWLIST, DESKTOP_EXTRA_FILES),
+    );
 
     // shared/ en la raiz del ZIP: front importa `../../../shared/generate/*`
     // (desde desktop-src/lib/generate/*), que resuelve a la raiz de extraccion.
@@ -130,7 +145,7 @@ async function assembleZip(
     if (fs.existsSync(sharedDir)) {
       archive.directory(sharedDir, 'shared', (entry: EntryData) => {
         const segs = entry.name.split(/[\\/]/);
-        return segs.some((s) => DESKTOP_EXCLUDED.has(s)) ? false : entry;
+        return segs.some((s) => SHARED_EXCLUDED.has(s)) ? false : entry;
       });
     }
 
@@ -172,6 +187,11 @@ export async function buildExe(
     const tmpFrontDir = copy.frontDir;
     const tmpSharedDir = path.join(copy.rootDir, 'shared');
 
+    // .env.local/.env.example siempre frescos (nunca copiados del operador,
+    // design.md §3 — writeFreshEnvLocal es el unico escritor del pipeline).
+    writeFreshEnvLocal(tmpFrontDir, buildEnvContent(config));
+    writeFreshEnvExample(tmpFrontDir, buildEnvExampleContent());
+
     const removed = applyExportCompat(tmpFrontDir);
     emit({
       type: 'progress',
@@ -191,10 +211,6 @@ export async function buildExe(
       } catch (e) {
         console.warn('No se pudo inyectar el icono:', e);
       }
-    }
-
-    if (config.api?.url) {
-      fs.writeFileSync(path.join(tmpFrontDir, '.env.local'), `NEXT_PUBLIC_API_URL=${config.api.url}\n`, 'utf8');
     }
 
     emit({ type: 'progress', format: 'exe', step: 'Empaquetando codigo fuente en ZIP...', pct: 60 });

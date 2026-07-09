@@ -30,6 +30,14 @@ import {
   createTempCopy as defaultCreateTempCopy,
   cleanupTempCopy as defaultCleanupTempCopy,
 } from '../export-temp-copy.js';
+import {
+  WEB_ALLOWLIST,
+  allowlistFilter,
+  buildEnvContent,
+  writeFreshEnvLocal,
+  buildEnvExampleContent,
+  writeFreshEnvExample,
+} from './manifest-allowlist.js';
 
 // ---------------------------------------------------------------------------
 // Exported types (shared across all builders)
@@ -57,8 +65,11 @@ export type Emitter = (event: ProgressEvent) => void;
 
 const __dirname_ = path.dirname(fileURLToPath(import.meta.url));
 
-// Carpetas que NUNCA entran en `app/` (builds y dependencias).
-const APP_EXCLUDED = new Set(['node_modules', '.next', 'out']);
+// Carpetas que NUNCA entran en `shared/` (builds y dependencias). `shared/`
+// no pasa por el allowlist de `front/` (design.md §2: "sigue empaquetandose
+// aparte sin cambios") — createTempCopy ya la copia sin node_modules/.next/out,
+// este filtro es una segunda barrera redundante pero barata.
+const SHARED_EXCLUDED = new Set(['node_modules', '.next', 'out']);
 
 function toSlug(name: string): string {
   return name.toLowerCase().replace(/\s+/g, '-');
@@ -160,11 +171,9 @@ async function assembleZip(
 
     archive.pipe(outStream);
 
-    // app/ — fuente completa sin node_modules/.next/out, pero CON .env.local.
-    archive.directory(tmpDir, 'app', (entry: EntryData) => {
-      const top = entry.name.split(/[\\/]/)[0];
-      return APP_EXCLUDED.has(top) ? false : entry;
-    });
+    // app/ — solo lo que el cliente necesita para compilar/alojar (allowlist,
+    // sustituye a la denylist APP_EXCLUDED; design.md §1-2).
+    archive.directory(tmpDir, 'app', (entry: EntryData) => allowlistFilter(entry, WEB_ALLOWLIST));
 
     // shared/ en la raiz del ZIP: front importa `../../../shared/generate/*`
     // (desde app/lib/generate/*), que resuelve a la raiz de extraccion. Sin
@@ -173,7 +182,7 @@ async function assembleZip(
     if (fs.existsSync(sharedDir)) {
       archive.directory(sharedDir, 'shared', (entry: EntryData) => {
         const top = entry.name.split(/[\\/]/)[0];
-        return APP_EXCLUDED.has(top) ? false : entry;
+        return SHARED_EXCLUDED.has(top) ? false : entry;
       });
     }
 
@@ -214,9 +223,10 @@ export async function buildWebZip(
     const tmpFrontDir = copy.frontDir;
     const tmpSharedDir = path.join(copy.rootDir, 'shared');
 
-    if (config.api?.url) {
-      fs.writeFileSync(path.join(tmpFrontDir, '.env.local'), `NEXT_PUBLIC_API_URL=${config.api.url}\n`, 'utf8');
-    }
+    // .env.local/.env.example siempre frescos (nunca copiados del operador,
+    // design.md §3 — writeFreshEnvLocal es el unico escritor del pipeline).
+    writeFreshEnvLocal(tmpFrontDir, buildEnvContent(config));
+    writeFreshEnvExample(tmpFrontDir, buildEnvExampleContent());
 
     emit({ type: 'progress', format: 'web-zip', step: 'Generando esquema y manifest...', pct: 40 });
     const sql = buildSql(config);

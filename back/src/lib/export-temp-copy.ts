@@ -9,7 +9,10 @@
  * replicar `shared/` al lado de `front/`, esos imports no resuelven y
  * `next build` falla dentro del tmp (bug detectado en gate 3.V).
  *
- * Inyecta NEXT_PUBLIC_TENANT_JSON en front/.env.local, luego limpia en finally.
+ * NO escribe `.env.local`: `.env.local` esta en EXCLUDED (nunca se copia el
+ * del operador) y cada builder lo escribe fresco despues via
+ * `writeFreshEnvLocal`/`buildEnvContent` (export-builders/manifest-allowlist.ts,
+ * unico escritor del pipeline — ver crm-export-clean-manifest/design.md §3).
  * Nunca toca los originales (frontDir ni el repo raiz).
  *
  * RNF-04: The copy function NEVER writes to the source frontDir or front/.next.
@@ -20,7 +23,6 @@ import * as path from 'path';
 import { spawn as nodeSpawn } from 'node:child_process';
 import { spawnAsync } from './spawn-async.js';
 import { randomUUID } from 'crypto';
-import * as os from 'os';
 import type { TenantConfig } from '../../../shared/generate/tenant-types';
 import type { Emitter } from './export-builders/web-zip.js';
 
@@ -28,8 +30,13 @@ import type { Emitter } from './export-builders/web-zip.js';
 // Public API
 // ---------------------------------------------------------------------------
 
-/** Carpetas excluidas al copiar (builds, deps, VCS, salida estatica previa). */
-const EXCLUDED = new Set(['node_modules', '.next', '.git', 'out']);
+/**
+ * Carpetas/archivos excluidos al copiar (builds, deps, VCS, salida estatica
+ * previa). `.env.local` esta excluido a proposito: el del operador NUNCA
+ * debe llegar a la copia temporal (segunda barrera; la primera es que
+ * ningun builder lo lee — siempre lo sobreescribe fresco, design.md §3).
+ */
+const EXCLUDED = new Set(['node_modules', '.next', '.git', 'out', '.env.local']);
 
 function copyFiltered(src: string, dest: string): void {
   fs.cpSync(src, dest, {
@@ -45,38 +52,25 @@ export interface TempCopyResult {
   frontDir: string;
 }
 
-/** 
- * Obtiene la IP local de la máquina (útil para pruebas en móviles que 
- * necesitan conectarse al backend local en vez de localhost).
- */
-function getLocalIp(): string | null {
-  const nets = os.networkInterfaces();
-  let ip: string | null = null;
-  for (const name of Object.keys(nets)) {
-    if (name.toLowerCase().includes('vswitch') || name.toLowerCase().includes('wsl')) continue;
-    for (const net of nets[name] || []) {
-      if (net.family === 'IPv4' && !net.internal) {
-        ip = net.address;
-        break;
-      }
-    }
-    if (ip) break;
-  }
-  return ip;
-}
-
 /**
  * Crea una copia temporal replicando el layout del repo necesario para que
  * `front/` resuelva sus imports relativos a `shared/`.
  *
+ * `tenantConfig` se recibe para mantener estable la firma publica (call
+ * sites en los 4 builders) aunque esta funcion ya no la use: hornear el
+ * tenant en `.env.local` es responsabilidad exclusiva de
+ * `writeFreshEnvLocal`/`buildEnvContent` (manifest-allowlist.ts), invocadas
+ * por cada builder despues de esta copia.
+ *
  * @param frontDir - Ruta absoluta a front/ (fuente).
- * @param tenantConfig - Configuracion del tenant a hornear en front/.env.local.
+ * @param tenantConfig - Configuracion del tenant (ver nota arriba).
  * @returns `{ rootDir, frontDir }` — rutas absolutas dentro del tmp.
  */
 export async function createTempCopy(
   frontDir: string,
   tenantConfig: TenantConfig,
 ): Promise<TempCopyResult> {
+  void tenantConfig;
   const rootDir = path.join(process.cwd(), 'tmp', `build-${randomUUID()}`);
   const tmpFrontDir = path.join(rootDir, 'front');
   const tmpSharedDir = path.join(rootDir, 'shared');
@@ -94,34 +88,6 @@ export async function createTempCopy(
   if (fs.existsSync(sharedSrcDir)) {
     copyFiltered(sharedSrcDir, tmpSharedDir);
   }
-
-  // Write .env.local with the baked tenant config (dentro de front/, nunca en shared/).
-  //
-  // El JSON se codifica en base64 (NO en crudo) porque dotenv trata `#` como
-  // inicio de comentario y recorta el valor a partir de ahí — la config del
-  // tenant SIEMPRE trae colores hex en branding.primary/secondary (p.ej.
-  // "#1E90FF"), lo que truncaba el JSON y hacía fallar el JSON.parse en
-  // BAKED_TENANT_CONFIG (catch → null, app exportada sin tenant horneado).
-  // Base64 no contiene `#`, comillas ni saltos de línea, así que dotenv lo
-  // deja intacto. tenant-config.ts decodifica con atob+TextDecoder (soporta
-  // UTF-8) antes de JSON.parse.
-  const json = JSON.stringify(tenantConfig);
-  const b64 = Buffer.from(json, 'utf8').toString('base64');
-  let envContent = `\nNEXT_PUBLIC_TENANT_JSON=${b64}\n`;
-  
-  const envPath = path.join(tmpFrontDir, '.env.local');
-  if (fs.existsSync(envPath)) {
-    let currentEnv = fs.readFileSync(envPath, 'utf8');
-    // Reemplaza localhost por la IP local para que las apps moviles
-    // exportadas en desarrollo puedan conectarse al backend.
-    const localIp = getLocalIp();
-    if (localIp) {
-      currentEnv = currentEnv.replace(/localhost/g, localIp);
-      fs.writeFileSync(envPath, currentEnv, 'utf8');
-    }
-  }
-
-  fs.appendFileSync(envPath, envContent, 'utf8');
 
   return { rootDir, frontDir: tmpFrontDir };
 }

@@ -44,7 +44,7 @@ function fakeChild() {
   return child;
 }
 
-test('3.2 createTempCopy excluye node_modules/.next/out/.git y copia el resto', async () => {
+test('3.2 createTempCopy excluye node_modules/.next/out/.git/.env.local y copia el resto', async () => {
   // Fuente sintetica: repoRoot/front (+ repoRoot/shared) con carpetas a excluir.
   const repoRoot = path.join(os.tmpdir(), `repo-${randomUUID()}`);
   const srcDir = path.join(repoRoot, 'front');
@@ -53,6 +53,9 @@ test('3.2 createTempCopy excluye node_modules/.next/out/.git y copia el resto', 
     fs.writeFileSync(path.join(srcDir, d, 'marker.txt'), 'x');
   }
   fs.writeFileSync(path.join(srcDir, 'package.json'), '{}');
+  // .env.local de desarrollo del operador con un secreto — NUNCA debe copiarse
+  // a la copia temporal (segunda barrera, design.md §3; WU2.2).
+  fs.writeFileSync(path.join(srcDir, '.env.local'), 'DEV_SECRET=shhh\n');
 
   fs.mkdirSync(path.join(repoRoot, 'shared', 'generate'), { recursive: true });
   fs.writeFileSync(path.join(repoRoot, 'shared', 'generate', 'build-sql.ts'), '// sql');
@@ -65,7 +68,12 @@ test('3.2 createTempCopy excluye node_modules/.next/out/.git y copia el resto', 
 
     assert.ok(fs.existsSync(path.join(frontDir, 'app', 'marker.txt')), 'app/ debe copiarse');
     assert.ok(fs.existsSync(path.join(frontDir, 'package.json')), 'package.json debe copiarse');
-    assert.ok(fs.existsSync(path.join(frontDir, '.env.local')), '.env.local debe escribirse');
+    // Responsabilidad movida a writeFreshEnvLocal (manifest-allowlist.ts):
+    // createTempCopy ya NO escribe .env.local.
+    assert.ok(
+      !fs.existsSync(path.join(frontDir, '.env.local')),
+      '.env.local NO debe copiarse ni escribirse aqui (single-writer en manifest-allowlist.ts)',
+    );
     for (const d of ['node_modules', '.next', 'out', '.git']) {
       assert.ok(!fs.existsSync(path.join(frontDir, d)), `${d} NO debe copiarse`);
     }
@@ -79,33 +87,6 @@ test('3.2 createTempCopy excluye node_modules/.next/out/.git y copia el resto', 
       !fs.existsSync(path.join(rootDir, 'shared', 'node_modules')),
       'shared/node_modules NO debe copiarse',
     );
-  } finally {
-    fs.rmSync(repoRoot, { recursive: true, force: true });
-  }
-});
-
-test('3.2/3.4 .env.local guarda NEXT_PUBLIC_TENANT_JSON en base64 (no crudo) para que dotenv no lo trunque en el "#" de los colores hex', async () => {
-  const repoRoot = path.join(os.tmpdir(), `repo-${randomUUID()}`);
-  const srcDir = path.join(repoRoot, 'front');
-  fs.mkdirSync(srcDir, { recursive: true });
-  fs.writeFileSync(path.join(srcDir, 'package.json'), '{}');
-
-  try {
-    const { rootDir, frontDir } = await createTempCopy(srcDir, config);
-    created.push(rootDir);
-
-    const envContent = fs.readFileSync(path.join(frontDir, '.env.local'), 'utf8');
-    const match = envContent.match(/^NEXT_PUBLIC_TENANT_JSON=(\S+)$/m);
-    assert.ok(match, 'debe existir la variable NEXT_PUBLIC_TENANT_JSON');
-
-    const b64 = match![1];
-    // Regresion: si se escribiera el JSON crudo, "#1E90FF" partiria la linea
-    // para cualquier parser tipo dotenv que trata `#` como comentario.
-    assert.ok(!b64.includes('#'), 'el valor NO debe contener "#" (debe ir en base64)');
-
-    const decoded = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
-    assert.equal(decoded.business.name, 'EDM San Blas');
-    assert.equal(decoded.branding.primary, '#1E90FF');
   } finally {
     fs.rmSync(repoRoot, { recursive: true, force: true });
   }
