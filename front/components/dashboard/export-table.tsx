@@ -10,10 +10,10 @@ import { openSaveDialog, isAbortError, toSlug, type SaveFileHandle } from '@/lib
 import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 
 const FORMAT_LABEL: Record<BuildFormat, string> = {
-  'web-zip': 'Web (ZIP)',
-  exe: 'Escritorio (ZIP)',
-  apk: 'Android (ZIP)',
-  ipa: 'iOS (ZIP)',
+  'web-zip': 'Web (código fuente)',
+  exe: 'Windows (.exe)',
+  apk: 'Android (APK)',
+  ipa: 'iOS (.ipa)',
 };
 
 const ALL_FORMATS: BuildFormat[] = ['web-zip', 'exe', 'apk', 'ipa'];

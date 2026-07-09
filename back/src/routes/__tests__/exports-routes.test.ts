@@ -157,6 +157,48 @@ describe('POST /api/exports', () => {
     assert.equal(res.statusCode, 409);
     assert.equal((res.body as { error: { code: string } }).error.code, 'build_in_progress');
   });
+
+  test('202 con los cuatro formatos nativos (apk, exe, ipa)', async () => {
+    const deps: ExportsDeps = {
+      db: okDb,
+      jobs: {
+        startJob: () => fakeJob('job-multi'),
+        getJob: () => undefined,
+        getActiveJob: () => undefined,
+        cancelJob: () => false,
+      },
+    };
+    const req = {
+      userId: 'u-1',
+      body: { projectId: 'proj-1', formats: ['apk', 'exe', 'ipa'] },
+    } as unknown as AuthedRequest;
+    const res = mockRes();
+
+    await createExportHandler(deps)(req, res);
+    assert.equal(res.statusCode, 202);
+    assert.deepEqual(res.body, { jobId: 'job-multi' });
+  });
+
+  test('400 invalid_format si el formato es desconocido', async () => {
+    const deps: ExportsDeps = {
+      db: okDb,
+      jobs: {
+        startJob: () => fakeJob('x'),
+        getJob: () => undefined,
+        getActiveJob: () => undefined,
+        cancelJob: () => false,
+      },
+    };
+    const req = {
+      userId: 'u-1',
+      body: { projectId: 'proj-1', formats: ['foo'] },
+    } as unknown as AuthedRequest;
+    const res = mockRes();
+
+    await createExportHandler(deps)(req, res);
+    assert.equal(res.statusCode, 400);
+    assert.equal((res.body as { error: { code: string } }).error.code, 'invalid_format');
+  });
 });
 
 // ── GET /:id/status ──────────────────────────────────────────────────────────

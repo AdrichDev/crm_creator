@@ -48,19 +48,27 @@ function toAppId(slug: string): string {
 function renderReadme(productName: string): string {
   return `# Proyecto iOS para ${productName}
 
+> **Nota:** iOS solo se compila en macOS con Xcode (requisito de Apple).
+> Este ZIP contiene el codigo fuente; el proyecto Xcode (\`ios/\`) se genera en tu Mac.
+
 ## Instrucciones de Compilacion Local (Requiere macOS)
 
-1. Instalar dependencias:
+1. Instalar dependencias del proyecto:
    \`npm install\`
 
-2. Compilar la aplicacion web de Next.js:
+2. Anadir el plugin de iOS de Capacitor (no viene preinstalado):
+   \`npm install @capacitor/ios\`
+
+3. Compilar la aplicacion web de Next.js:
    \`npm run build\`
 
-3. Sincronizar con Capacitor (copia la web compilada al proyecto de iOS):
-   \`npx cap add ios\` (Si es la primera vez)
+4. Crear el proyecto Xcode de iOS (solo Mac, requiere CocoaPods):
+   \`npx cap add ios\`
+
+5. Sincronizar la web compilada con el proyecto iOS:
    \`npx cap sync ios\`
 
-4. Abrir en Xcode para compilar y firmar tu IPA:
+6. Abrir en Xcode para compilar y firmar tu IPA:
    \`npx cap open ios\`
 `;
 }

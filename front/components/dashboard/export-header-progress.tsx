@@ -12,10 +12,10 @@ import { useExportJobContext } from '@/lib/export/export-job-context';
 import type { BuildFormat } from '@/lib/export/types';
 
 const FORMAT_LABEL: Record<BuildFormat, string> = {
-  'web-zip': 'Web ZIP',
-  exe: 'Escritorio (ZIP)',
-  apk: 'Android (ZIP)',
-  ipa: 'iOS (ZIP)',
+  'web-zip': 'Web (código fuente)',
+  exe: 'Windows (.exe)',
+  apk: 'Android (APK)',
+  ipa: 'iOS (.ipa)',
 };
 
 export function ExportHeaderProgress() {
