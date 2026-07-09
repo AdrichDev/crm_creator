@@ -46,22 +46,25 @@ function toAppId(slug: string): string {
 }
 
 function renderReadme(productName: string): string {
-  return `# Proyecto Android para ${productName}
+  return `# ${productName} — Android
 
-## Instrucciones de Compilacion Local
+## Compilar APK (CLI, sin Android Studio)
 
 1. Instalar dependencias:
    \`npm install\`
 
-2. Compilar la aplicacion web de Next.js:
-   \`npm run build\`
+2. Compilar la web estatica de Next.js (salida en \`out/\`):
+   \`npm run build:static\`
 
-3. Sincronizar con Capacitor (copia la web compilada al proyecto de Android):
+3. Sincronizar la web con el proyecto Android de Capacitor:
    \`npx cap sync android\`
 
-4. Abrir en Android Studio para compilar y firmar tu APK/AAB:
-   \`npx cap open android\`
-   (O puedes compilar via CLI usando ./android/gradlew assembleRelease)
+4. Compilar el APK con Gradle:
+   \`cd android && ./gradlew assembleRelease\`
+   (En Windows: \`cd android\` y luego \`gradlew.bat assembleRelease\`)
+
+El APK queda en:
+\`android/app/build/outputs/apk/release/app-release.apk\`
 `;
 }
 

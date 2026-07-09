@@ -66,21 +66,20 @@ function toSlug(name: string): string {
 
 /** Lee la plantilla README y sustituye los placeholders del tenant. */
 function renderReadme(productName: string): string {
-  return `# Proyecto Web para ${productName}
+  return `# ${productName} — Web
 
-## Instrucciones de Despliegue Local
+## Compilar y ejecutar (CLI)
 
 1. Instalar dependencias:
    \`npm install\`
 
-2. Iniciar en modo desarrollo:
-   \`npm run dev\`
-
-3. Compilar para produccion:
+2. Compilar para produccion:
    \`npm run build\`
+
+3. Ejecutar (sirve en http://localhost:3002):
    \`npm start\`
 
-*Nota: Tambien puedes alojar facilmente el codigo fuente en Vercel, conectando un repositorio de Git.*
+*Nota: tambien puedes alojar el codigo fuente en Vercel conectando un repositorio de Git.*
 `;
 }
 

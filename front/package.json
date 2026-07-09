@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev -p 3002",
     "build": "next build",
+    "build:static": "cross-env NEXT_OUTPUT_MODE=export next build",
     "start": "next start -p 3002",
     "lint": "next lint",
     "test": "vitest run",
@@ -43,6 +44,7 @@
     "@types/react-dom": "^19.0.3",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
+    "cross-env": "^10.1.0",
     "electron": "^43.0.0",
     "electron-builder": "^26.15.3",
     "eslint": "^9.39.4",

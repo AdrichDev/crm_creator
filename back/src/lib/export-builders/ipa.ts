@@ -46,12 +46,12 @@ function toAppId(slug: string): string {
 }
 
 function renderReadme(productName: string): string {
-  return `# Proyecto iOS para ${productName}
+  return `# ${productName} — iOS
 
-> **Nota:** iOS solo se compila en macOS con Xcode (requisito de Apple).
+> **Requisito:** iOS solo se compila en macOS con Xcode (politica de Apple).
 > Este ZIP contiene el codigo fuente; el proyecto Xcode (\`ios/\`) se genera en tu Mac.
 
-## Instrucciones de Compilacion Local (Requiere macOS)
+## Proceso completo de compilacion (macOS)
 
 1. Instalar dependencias del proyecto:
    \`npm install\`
@@ -59,17 +59,24 @@ function renderReadme(productName: string): string {
 2. Anadir el plugin de iOS de Capacitor (no viene preinstalado):
    \`npm install @capacitor/ios\`
 
-3. Compilar la aplicacion web de Next.js:
-   \`npm run build\`
+3. Compilar la web estatica de Next.js (salida en \`out/\`):
+   \`npm run build:static\`
 
-4. Crear el proyecto Xcode de iOS (solo Mac, requiere CocoaPods):
+4. Crear el proyecto Xcode de iOS (requiere CocoaPods):
    \`npx cap add ios\`
 
 5. Sincronizar la web compilada con el proyecto iOS:
    \`npx cap sync ios\`
 
-6. Abrir en Xcode para compilar y firmar tu IPA:
-   \`npx cap open ios\`
+6. Compilar el .ipa:
+
+   **Opcion A — Xcode (recomendada):**
+   \`npx cap open ios\` y luego Product > Archive > Distribute App
+
+   **Opcion B — CLI (con firma ya configurada):**
+   \`cd ios/App\`
+   \`xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -archivePath build/App.xcarchive archive\`
+   \`xcodebuild -exportArchive -archivePath build/App.xcarchive -exportPath build -exportOptionsPlist ExportOptions.plist\`
 `;
 }
 

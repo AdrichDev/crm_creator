@@ -40,20 +40,20 @@ function toSlug(name: string): string {
 }
 
 function renderReadme(productName: string): string {
-  return `# Proyecto de Escritorio (Electron) para ${productName}
+  return `# ${productName} — Windows
 
-## Instrucciones de Compilacion Local
+## Compilar .exe (CLI)
 
 1. Instalar dependencias:
    \`npm install\`
 
-2. Compilar la aplicacion web de Next.js:
-   \`npm run build\`
+2. Compilar la web estatica de Next.js (salida en \`out/\`):
+   \`npm run build:static\`
 
-3. Generar el ejecutable de Windows con electron-builder:
-   \`npx electron-builder --win portable nsis -c.productName="${productName}"\`
+3. Generar el ejecutable con electron-builder:
+   \`npx electron-builder --win -c.productName="${productName}"\`
 
-4. Encontraras tus ejecutables (.exe) en la carpeta \`dist-electron/\`.
+Los ejecutables (.exe portable e instalador) quedan en \`dist-electron/\`.
 `;
 }
 
