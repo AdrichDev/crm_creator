@@ -70,7 +70,8 @@ function renderReadme(productName: string): string {
 
 ## Compilar y ejecutar (CLI)
 
-1. Instalar dependencias:
+1. Entrar en la carpeta del codigo e instalar dependencias:
+   \`cd app\`
    \`npm install\`
 
 2. Compilar para produccion:

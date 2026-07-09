@@ -50,7 +50,8 @@ function renderReadme(productName: string): string {
 
 ## Compilar APK (CLI, sin Android Studio)
 
-1. Instalar dependencias:
+1. Entrar en la carpeta del codigo e instalar dependencias:
+   \`cd mobile-src\`
    \`npm install\`
 
 2. Compilar la web estatica de Next.js (salida en \`out/\`):

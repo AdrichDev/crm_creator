@@ -53,7 +53,8 @@ function renderReadme(productName: string): string {
 
 ## Proceso completo de compilacion (macOS)
 
-1. Instalar dependencias del proyecto:
+1. Entrar en la carpeta del codigo e instalar dependencias:
+   \`cd mobile-src\`
    \`npm install\`
 
 2. Anadir el plugin de iOS de Capacitor (no viene preinstalado):

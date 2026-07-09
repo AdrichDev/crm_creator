@@ -44,7 +44,8 @@ function renderReadme(productName: string): string {
 
 ## Compilar .exe (CLI)
 
-1. Instalar dependencias:
+1. Entrar en la carpeta del codigo e instalar dependencias:
+   \`cd desktop-src\`
    \`npm install\`
 
 2. Compilar la web estatica de Next.js (salida en \`out/\`):
