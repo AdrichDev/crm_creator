@@ -176,7 +176,7 @@ describe('Fase 2 · exportador polling', () => {
     render(
       <ExportTable projects={[project]} codeMap={{ p1: 'crm-01' }} isRunning={false} onExport={onExport} />,
     );
-    fireEvent.click(screen.getAllByRole('checkbox')[0]);
+    // Selección de formato ahora es radio con 'web-zip' por defecto → basta con Exportar.
     fireEvent.click(screen.getByRole('button', { name: 'Exportar' }));
 
     // jsdom no expone showSaveFilePicker → handle=null; el job arranca igual.

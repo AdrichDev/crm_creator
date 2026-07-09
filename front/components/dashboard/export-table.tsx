@@ -50,7 +50,7 @@ function AnimatingDots() {
 
 export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, onExport }: ExportTableProps) {
   const [filter, setFilter] = useState('');
-  const [selected, setSelected] = useState<Record<string, Set<BuildFormat>>>({});
+  const [selected, setSelected] = useState<Record<string, BuildFormat>>({});
   const [tenantMap, setTenantMap] = useState<Record<string, string>>({});
   const [sortCol, setSortCol] = useState<SortCol | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -79,16 +79,13 @@ export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, 
     prevExportingIdRef.current = exportingProjectId;
   }, [exportingProjectId]);
 
-  function getFormats(id: string): Set<BuildFormat> {
-    return selected[id] ?? new Set<BuildFormat>();
+  // Se exporta UN formato por vez (/download devuelve un único ZIP). Default: web-zip.
+  function getFormat(id: string): BuildFormat {
+    return selected[id] ?? 'web-zip';
   }
 
-  function toggleFormat(id: string, fmt: BuildFormat) {
-    setSelected((prev) => {
-      const cur = new Set(prev[id] ?? []);
-      if (cur.has(fmt)) cur.delete(fmt); else cur.add(fmt);
-      return { ...prev, [id]: cur };
-    });
+  function setFormatFor(id: string, fmt: BuildFormat) {
+    setSelected((prev) => ({ ...prev, [id]: fmt }));
   }
 
   function handleSort(col: SortCol) {
@@ -96,16 +93,14 @@ export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, 
     else { setSortCol(col); setSortDir('asc'); }
   }
 
-  async function handleExportRow(projectId: string, businessName: string, fmts: Set<BuildFormat>) {
-    if (fmts.size === 0 || isRunning) return;
+  async function handleExportRow(projectId: string, businessName: string, fmt: BuildFormat) {
+    if (isRunning) return;
     // Flujo de un botón: abrimos el diálogo nativo "Guardar como" AQUÍ (en el gesto
     // del clic) y guardamos el handle. Al terminar el job se escribe el ZIP en él
     // sin nuevo gesto. Si el navegador no soporta la API, handle=null → descarga por
     // anchor al terminar. Si el usuario cancela el diálogo, NO se arranca el job.
-    // El nombre sugerido refleja el formato: /download devuelve el ZIP del primer
-    // formato seleccionado (mismo orden que se envía al back).
-    const firstFmt = Array.from(fmts)[0];
-    const suffix = FORMAT_SUFFIX[firstFmt] ?? 'src';
+    // Se exporta un único formato; el nombre sugerido refleja ese formato.
+    const suffix = FORMAT_SUFFIX[fmt] ?? 'src';
     let handle: SaveFileHandle | null = null;
     try {
       handle = await openSaveDialog(`${toSlug(businessName)}-${suffix}.zip`);
@@ -113,7 +108,7 @@ export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, 
       if (isAbortError(err)) return; // Cancelado → abortar sin exportar.
       handle = null; // Otro fallo del diálogo: seguimos con descarga por anchor.
     }
-    onExport(projectId, Array.from(fmts), handle);
+    onExport(projectId, [fmt], handle);
   }
 
   const filtered = projects.filter((p) => {
@@ -191,7 +186,7 @@ export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, 
                   >
                     Tipo <SortIcon col="vertical" />
                   </th>
-                  <th>Formatos</th>
+                  <th>Formato</th>
                   <th>Exportar</th>
                 </tr>
               </thead>
@@ -199,9 +194,9 @@ export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, 
                 {sorted.map((p) => {
                   const v = VERTICAL_MAP[p.config.business.vertical];
                   const clientName = tenantMap[p.config.business.clienteId ?? ''] ?? '—';
-                  const fmts = getFormats(p.id);
+                  const selectedFmt = getFormat(p.id);
                   const isThisExporting = exportingProjectId === p.id;
-                  const canExport = fmts.size > 0 && !isRunning;
+                  const canExport = !isRunning;
 
                   return (
                     <tr key={p.id}>
@@ -222,30 +217,25 @@ export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, 
 
                       <td>
                         <div className="flex flex-wrap gap-2">
-                          {ALL_FORMATS.map((fmt) => {
-                            const disabled = false; // Ya no hay restriccion de SO porque se exporta codigo fuente
-                            return (
-                              <label
-                                key={fmt}
-                                title={disabled ? 'Requiere macOS' : undefined}
-                                className="flex items-center gap-1.5 text-xs select-none"
-                                style={{
-                                  color: fmts.has(fmt) ? 'var(--gold)' : 'var(--panel-muted)',
-                                  opacity: disabled ? 0.35 : 1,
-                                  cursor: disabled ? 'not-allowed' : 'pointer',
-                                }}
-                              >
-                                <input
-                                  type="checkbox"
-                                  disabled={disabled}
-                                  checked={fmts.has(fmt)}
-                                  onChange={() => toggleFormat(p.id, fmt)}
-                                  className="rounded accent-[#c5a028]"
-                                />
-                                {FORMAT_LABEL[fmt]}
-                              </label>
-                            );
-                          })}
+                          {ALL_FORMATS.map((fmt) => (
+                            <label
+                              key={fmt}
+                              className="flex items-center gap-1.5 text-xs select-none"
+                              style={{
+                                color: selectedFmt === fmt ? 'var(--gold)' : 'var(--panel-muted)',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <input
+                                type="radio"
+                                name={`fmt-${p.id}`}
+                                checked={selectedFmt === fmt}
+                                onChange={() => setFormatFor(p.id, fmt)}
+                                className="accent-[#c5a028]"
+                              />
+                              {FORMAT_LABEL[fmt]}
+                            </label>
+                          ))}
                         </div>
                       </td>
 
@@ -253,7 +243,7 @@ export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, 
                         <button
                           type="button"
                           disabled={!canExport || isThisExporting}
-                          onClick={() => void handleExportRow(p.id, p.config.business.name, fmts)}
+                          onClick={() => void handleExportRow(p.id, p.config.business.name, selectedFmt)}
                           className={
                             isThisExporting
                               ? 'rounded-lg border border-[var(--gold)] bg-[#c5a0281a] px-3 py-1.5 text-xs font-medium text-[var(--gold)] cursor-default transition'
