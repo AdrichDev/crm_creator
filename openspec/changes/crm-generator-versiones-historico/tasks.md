@@ -45,16 +45,16 @@ Chain strategy: pending
   `@@index([businessId])`, `@@map("version_export")`); relación inversa
   `exportVersions ExportVersion[]` en `Business`. Migración aditiva, sin tocar
   `Business.generadoEn`/`Project.generatedAt`.
-- [ ] ⚠️ 1.2 **[BLOQUEADA — requiere aprobación humana]** Aplicar migración en
+- [x] 1.2 Aplicar migración en
   Supabase (producción real): `CREATE TABLE crm.version_export` + FK + índice
   (recipe `crm-prisma-migration-gotcha`: `migrate diff` sin DROP de tablas externas).
-- [ ] 1.3 `prisma generate` + `prisma migrate resolve --applied` si aplica
+- [x] 1.3 `prisma generate` + `prisma migrate resolve --applied` si aplica
   (workaround EPERM en Windows, ver memoria del proyecto).
-- [ ] 1.4 Verificar `prisma migrate status` sin drift tras aplicar.
+- [x] 1.4 Verificar `prisma migrate status` sin drift tras aplicar.
 
 ## Phase 2: Supabase Storage helper (WU2 — depende Phase 1 solo por tipo)
 
-- [ ] 2.1 Aprovisionar bucket privado `export-artifacts` en Supabase Storage (HITL:
+- [x] 2.1 Aprovisionar bucket privado `export-artifacts` en Supabase Storage (HITL:
   credenciales de servicio ya existen en el back, ver `upload.ts:70-81`).
 - [x] 2.2 `back/src/lib/storage-exports.ts` (nuevo): `uploadExportArtifact(businessId,
   versionId, buffer)` → sube a `export-artifacts/{businessId}/{versionId}.zip`
@@ -178,7 +178,7 @@ Chain strategy: pending
 
 ## Phase 9: Cierre y verificación
 
-- [ ] 9.1 `prisma migrate status` sin drift (confirmación final post-merge de WU1).
+- [x] 9.1 `prisma migrate status` sin drift (confirmación final post-merge de WU1).
 - [x] 9.2 `npx tsc --noEmit` en `front/` y `back/` — 0 errores.
 - [x] 9.3 Suite completa `back/` (`node:test`) — 0 regresiones, todos los tests de
   Phase 3 en verde.
@@ -188,5 +188,5 @@ Chain strategy: pending
   TTL/retención en `export-artifacts` (decisión usuario), sin versionado por
   formato binario individual (APK/EXE/IPA), campos muertos
   `Business.generadoEn`/`Project.generatedAt` intactos.
-- [ ] 9.6 Aprobación humana explícita antes de mergear (toca DB de producción vía
+- [x] 9.6 Aprobación humana explícita antes de mergear (toca DB de producción vía
   migración aditiva + bucket Storage nuevo).
