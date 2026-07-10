@@ -94,6 +94,15 @@ export interface StartJobParams {
    * del negocio, ya descifrados (`readBakeableSecrets`, resuelto en la route).
    */
   publicEnvSecrets?: PublicEnvSecret[];
+  /**
+   * crm-generator-versiones-historico (WU3): invocado en el `finally` de `runJob`
+   * SOLO cuando `job.status === 'done'`, independiente de qué `formats` se
+   * pidieron. El manager permanece sin Prisma/Storage (D1 del design): la route
+   * construye el closure (captura businessId/version/changeNote) y aquí solo se
+   * invoca. Un fallo en `onComplete` se traga (logueado) — nunca debe tumbar el
+   * job ya marcado `done`.
+   */
+  onComplete?: (job: ExportJob) => Promise<void>;
 }
 
 export interface JobDeps {
@@ -298,6 +307,22 @@ async function runJob(
   } finally {
     job.finishedAt ??= Date.now();
     job.currentFormat = undefined;
+
+    // crm-generator-versiones-historico (WU3): archivar SIEMPRE que el job termine
+    // 'done', independiente de que formats se pidieron. Un fallo aqui se loguea y
+    // NUNCA revierte el status 'done' ya fijado (el/los artefacto(s) pedidos siguen
+    // descargables via downloadHandler).
+    if (job.status === 'done' && params.onComplete) {
+      try {
+        await params.onComplete(job);
+      } catch (err) {
+        console.error(
+          '[export-job-manager] onComplete fallo (version no persistida):',
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+
     // Aborta el controller para cancelar el timer del watchdog (evita fugas).
     if (!controller.signal.aborted) controller.abort();
     // El lock se libera SIEMPRE.

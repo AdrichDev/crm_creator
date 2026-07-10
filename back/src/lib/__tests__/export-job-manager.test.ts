@@ -159,3 +159,57 @@ test('1.5 builder que rechaza → status error + lock liberado', async () => {
   assert.equal(errored.perFormat['web-zip'].status, 'error');
   assert.equal(lock.released, 1, 'el lock debe liberarse siempre');
 });
+
+// ── crm-generator-versiones-historico (WU3.3): onComplete ───────────────────
+
+test('3.3 onComplete se invoca cuando el job termina done, con el job final', async () => {
+  const lock = fakeLock();
+  const builders: BuilderMap = {
+    'web-zip': async (): Promise<BuildResult> => ({ success: true, outputPath: '/x.zip' }),
+  };
+  let capturedJob: import('../export-job-manager.js').ExportJob | undefined;
+  const onComplete = async (job: import('../export-job-manager.js').ExportJob): Promise<void> => {
+    capturedJob = job;
+  };
+
+  const job = startJob({ ...baseParams(['web-zip']), onComplete }, { lock, builders });
+  await waitDone(job.id);
+
+  assert.equal(capturedJob?.id, job.id);
+  assert.equal(capturedJob?.status, 'done');
+});
+
+test('3.3 onComplete NO se invoca si el job termina en error', async () => {
+  const lock = fakeLock();
+  const builders: BuilderMap = {
+    'web-zip': async (): Promise<BuildResult> => {
+      throw new Error('boom');
+    },
+  };
+  let called = false;
+  const onComplete = async (): Promise<void> => {
+    called = true;
+  };
+
+  const job = startJob({ ...baseParams(['web-zip']), onComplete }, { lock, builders });
+  await waitDone(job.id);
+
+  assert.equal(getJob(job.id)!.status, 'error');
+  assert.equal(called, false, 'onComplete no debe correr si el job no termino done');
+});
+
+test('3.3 fallo en onComplete no revierte el status done ni bloquea el lock', async () => {
+  const lock = fakeLock();
+  const builders: BuilderMap = {
+    'web-zip': async (): Promise<BuildResult> => ({ success: true, outputPath: '/x.zip' }),
+  };
+  const onComplete = async (): Promise<void> => {
+    throw new Error('storage caida');
+  };
+
+  const job = startJob({ ...baseParams(['web-zip']), onComplete }, { lock, builders });
+  await waitDone(job.id);
+
+  assert.equal(getJob(job.id)!.status, 'done', 'el job sigue done pese al fallo de onComplete');
+  assert.equal(lock.released, 1, 'el lock se libera igualmente');
+});

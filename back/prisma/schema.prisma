@@ -227,6 +227,7 @@ model Business {
   tenantApiKeys TenantApiKey[]
   tenantSecrets TenantSecret[]
   stateEvents  TenantStateEvent[]
+  exportVersions ExportVersion[]
 
   @@map("negocio")
 }
@@ -244,6 +245,24 @@ model TenantStateEvent {
   createdAt  DateTime        @default(now()) @map("creado_en")
   @@index([businessId, createdAt])
   @@map("tenant_state_event")
+}
+
+// crm-generator-versiones-historico: historial versionado del generador. Una fila
+// por export completado (siempre desde ctx.frontDir, independiente de qué
+// formato(s) binarios pidió el operador). Aditiva; no toca Business.generadoEn ni
+// Project.generatedAt (localStorage), que quedan como deuda documentada.
+model ExportVersion {
+  id          String   @id @default(cuid())
+  businessId  String   @map("negocio_id")
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  version     String   @map("version") // semver manual (`/^\d+\.\d+\.\d+$/`); 1.0.0 auto en el 1er export
+  changeNote  String?  @map("comentario") // estilo mensaje de commit; null en el 1er export
+  format      String   @map("formato") // siempre "source" (zip de ctx.frontDir)
+  storagePath String   @map("ruta_storage") // key en el bucket privado export-artifacts
+  createdAt   DateTime @default(now()) @map("creado_en")
+
+  @@index([businessId])
+  @@map("version_export")
 }
 
 model Location {

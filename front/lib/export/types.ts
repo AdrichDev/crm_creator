@@ -30,4 +30,9 @@ export interface ExportJob {
 export interface StartExportParams {
   projectId: string;
   formats: BuildFormat[];
+  // crm-generator-versiones-historico (WU4): obligatorios a partir del 2º export
+  // del proyecto (el back rechaza con 400 si faltan/no son mayores); el primer
+  // export no los necesita (se resuelve "1.0.0" en el servidor).
+  version?: string;
+  changeNote?: string;
 }

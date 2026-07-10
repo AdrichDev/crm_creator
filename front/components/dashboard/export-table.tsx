@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import type { Project } from '@/lib/tenant-config-context';
 import { VERTICAL_MAP } from '@/lib/config/verticals';
 import { apiFetch, isApiEnabled } from '@/lib/api/client';
+import { fetchExportVersions } from '@/lib/api/exports-history';
 import type { ClientLite } from '@/lib/clients/picker';
 import type { BuildFormat } from '@/lib/export/types';
 import { openSaveDialog, isAbortError, toSlug, type SaveFileHandle } from '@/lib/export/download';
@@ -34,7 +35,25 @@ interface ExportTableProps {
   codeMap: Record<string, string>;
   isRunning: boolean;
   exportingProjectId?: string;
-  onExport: (projectId: string, formats: BuildFormat[], handle: SaveFileHandle | null) => void;
+  onExport: (
+    projectId: string,
+    formats: BuildFormat[],
+    handle: SaveFileHandle | null,
+    version?: string,
+    changeNote?: string,
+  ) => void;
+}
+
+// crm-generator-versiones-historico (WU4): a partir del 2º export del proyecto,
+// version/changeNote son obligatorios (el back rechaza con 400 si faltan). Mismo
+// regex que el back (`/^\d+\.\d+\.\d+$/`) para validar antes de arrancar el job.
+const SEMVER_RE = /^\d+\.\d+\.\d+$/;
+
+interface PendingExport {
+  projectId: string;
+  businessName: string;
+  fmt: BuildFormat;
+  handle: SaveFileHandle | null;
 }
 
 function AnimatingDots() {
@@ -54,6 +73,13 @@ export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, 
   const [tenantMap, setTenantMap] = useState<Record<string, string>>({});
   const [sortCol, setSortCol] = useState<SortCol | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  // crm-generator-versiones-historico (WU4): negocios con ≥1 export previo — a
+  // partir del 2º, version/changeNote son obligatorios (el back rechaza sin ellos).
+  const [businessesWithVersion, setBusinessesWithVersion] = useState<Set<string>>(new Set());
+  const [pending, setPending] = useState<PendingExport | null>(null);
+  const [versionInput, setVersionInput] = useState('');
+  const [changeNoteInput, setChangeNoteInput] = useState('');
+  const [versionError, setVersionError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isApiEnabled()) return;
@@ -62,6 +88,12 @@ export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, 
         if (!Array.isArray(data)) return;
         setTenantMap(Object.fromEntries(data.map((c) => [c.id, c.nombre])));
       })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetchExportVersions()
+      .then((data) => setBusinessesWithVersion(new Set(data.versions.map((v) => v.businessId))))
       .catch(() => {});
   }, []);
 
@@ -108,7 +140,37 @@ export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, 
       if (isAbortError(err)) return; // Cancelado → abortar sin exportar.
       handle = null; // Otro fallo del diálogo: seguimos con descarga por anchor.
     }
+    // crm-generator-versiones-historico (WU4): primer export del proyecto no
+    // pregunta (el back resuelve "1.0.0" solo); a partir del 2º, el diálogo de
+    // versión es obligatorio antes de arrancar el job.
+    if (businessesWithVersion.has(projectId)) {
+      setVersionInput('');
+      setChangeNoteInput('');
+      setVersionError(null);
+      setPending({ projectId, businessName, fmt, handle });
+      return;
+    }
     onExport(projectId, [fmt], handle);
+  }
+
+  function confirmVersionPrompt() {
+    if (!pending) return;
+    if (!SEMVER_RE.test(versionInput.trim())) {
+      setVersionError('Formato esperado: x.y.z (p. ej. 1.1.0)');
+      return;
+    }
+    onExport(
+      pending.projectId,
+      [pending.fmt],
+      pending.handle,
+      versionInput.trim(),
+      changeNoteInput.trim() || undefined,
+    );
+    setPending(null);
+  }
+
+  function cancelVersionPrompt() {
+    setPending(null);
   }
 
   const filtered = projects.filter((p) => {
@@ -266,6 +328,60 @@ export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, 
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* crm-generator-versiones-historico (WU4): diálogo de version/changeNote —
+          solo aparece a partir del 2º export del proyecto. */}
+      {pending && (
+        <div className="opera-modal-backdrop">
+          <div className="opera-modal w-full max-w-sm">
+            <div className="opera-modal-header">
+              <h3 className="opera-modal-title">Nueva versión — {pending.businessName}</h3>
+            </div>
+            <div className="opera-modal-body">
+              <label className="block text-xs font-medium text-[var(--panel-muted)] mb-1" htmlFor="export-version-input">
+                Versión (x.y.z)
+              </label>
+              <input
+                id="export-version-input"
+                type="text"
+                placeholder="1.1.0"
+                value={versionInput}
+                onChange={(e) => { setVersionInput(e.target.value); setVersionError(null); }}
+                className="w-full rounded-lg border border-[var(--line)] bg-transparent px-3 py-2 text-sm text-[var(--panel-text)] outline-none focus:border-[var(--acc)]"
+              />
+              {versionError && <p className="mt-1 text-xs text-red-500">{versionError}</p>}
+
+              <label className="block text-xs font-medium text-[var(--panel-muted)] mt-3 mb-1" htmlFor="export-changenote-input">
+                Notas del cambio (opcional)
+              </label>
+              <textarea
+                id="export-changenote-input"
+                value={changeNoteInput}
+                onChange={(e) => setChangeNoteInput(e.target.value)}
+                rows={3}
+                maxLength={500}
+                className="w-full rounded-lg border border-[var(--line)] bg-transparent px-3 py-2 text-sm text-[var(--panel-text)] outline-none focus:border-[var(--acc)]"
+              />
+            </div>
+            <div className="opera-modal-foot">
+              <button
+                type="button"
+                onClick={cancelVersionPrompt}
+                className="rounded-lg border border-[var(--line)] px-4 py-2 text-sm text-[var(--panel-muted)]"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmVersionPrompt}
+                className="rounded-lg border border-[var(--gold)] px-4 py-2 text-sm font-medium text-[var(--gold)]"
+              >
+                Exportar
+              </button>
+            </div>
           </div>
         </div>
       )}
