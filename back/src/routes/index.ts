@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.js';
+import { tenantGate } from '../middleware/tenant-gate.js';
 import { staffOnly, staffOrClient } from '../middleware/rbac.js';
 import { crudRouter } from '../lib/crud.js';
 import { authRouter } from './auth.js';
@@ -35,10 +36,13 @@ import { integrationsRouter } from './integrations.js';
 import { contactosRouter } from './contactos.js';
 import { tenantConfigRouter } from './tenant-config.js';
 import { tenantKeysRouter } from './tenant-keys.js';
+import { tenantStatusRouter } from './tenant-status.js';
 
 export const api = Router();
 
-// Público (API Headless Universal sin auth de supabase, auth por businessId/apiKey)
+// Público (API Headless Universal sin auth de supabase, auth por businessId/apiKey).
+// crm-tenant-lifecycle-gate (WU2.5): gateado DENTRO del router (resolver de businessId
+// del payload + tenantGate) — un negocio suspendido no acepta leads/reservas.
 api.use('/public', publicRouter);
 
 // Público
@@ -48,6 +52,8 @@ api.use('/branding', brandingRouter);
 // crm-citas-google-calendar: feed ICS por token en la URL (sin Bearer, Google/Outlook
 // lo piden por suscripción); los endpoints de autoservicio dentro del router llaman
 // `authenticate` explícitamente (mismo patrón que /auth).
+// crm-tenant-lifecycle-gate (WU2.5): gateado DENTRO del router — el feed resuelve
+// token→dueño→negocio antes del gate; el autoservicio monta el gate tras authenticate.
 api.use('/calendar', calendarRouter);
 // crm-integraciones-comunicacion (WU1): el callback OAuth es público (Google redirige
 // sin Bearer, identidad en el `state` nonce); connect/revoke exigen sesión de staff
@@ -60,6 +66,18 @@ api.use('/tenant-config', tenantConfigRouter);
 
 // A partir de aquí, todo requiere token (y resuelve el tenant activo)
 api.use(authenticate);
+
+// crm-tenant-lifecycle-gate (WU3): GET /tenant-status EXENTO del kill switch — la pantalla
+// de bloqueo del front lo consulta para saber POR QUÉ está bloqueada (devuelve solo el
+// estado efectivo, ningún dato del negocio). Necesita la identidad de `authenticate`
+// (req.businessId), por eso va tras él pero ANTES del gate.
+api.use('/tenant-status', tenantStatusRouter);
+// Kill switch del carril de PANEL (sesión): todo lo de abajo se corta según el estado del
+// negocio (423 tenant_suspended / 410 tenant_terminated, GRACE pasa con header). NO gatea
+// /service/operator (router aparte en server.ts — el operador debe poder reactivar) ni
+// /license/heartbeat. ⚠️ Requiere la migración tenant_lifecycle aplicada (columna
+// ciclo_vida); ver tasks.md Z.3.
+api.use(tenantGate());
 
 // Endpoints client-scoped (CLIENT solo ve SUS datos). ANTES del guard staffOnly.
 api.use('/me', meRouter);

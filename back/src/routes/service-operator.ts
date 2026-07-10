@@ -4,6 +4,7 @@ import { prisma } from '../prisma.js';
 import { requireOperatorToken } from '../middleware/operator-token.js';
 import { splitNombre, joinNombre } from '../lib/nombre.js';
 import { buildTenantKeysOperatorRouter, type TenantKeysOperatorDb } from './service-operator-tenant-keys.js';
+import { buildLifecycleOperatorRouter, type LifecycleOperatorDb } from './service-operator-lifecycle.js';
 import {
   createProjectService,
   mirrorColumns,
@@ -703,3 +704,38 @@ const tenantKeysOperatorDb: TenantKeysOperatorDb = {
   },
 };
 serviceOperatorRouter.use(buildTenantKeysOperatorRouter(tenantKeysOperatorDb));
+
+// crm-tenant-lifecycle-gate (WU3.2): palanca del kill switch — PUT /businesses/:id/lifecycle
+// + GET /businesses/:id/state-events. Vive en el carril de operador (requireOperatorToken)
+// y FUERA del tenantGate a propósito: el operador debe poder reactivar un negocio cortado.
+// La interfaz no expone borrados: ningún cambio de lifecycle puede purgar datos.
+const lifecycleOperatorDb: LifecycleOperatorDb = {
+  business: {
+    findFirst: (args) => prisma.business.findFirst({ where: args.where, select: { id: true, lifecycle: true } }),
+  },
+  tenantStateEvent: {
+    findMany: (args) =>
+      prisma.tenantStateEvent.findMany({
+        where: args.where,
+        orderBy: args.orderBy,
+        select: { fromState: true, toState: true, reason: true, actor: true, createdAt: true },
+      }),
+  },
+  $transaction: (fn) =>
+    prisma.$transaction((tx) =>
+      fn({
+        business: {
+          update: (args) =>
+            tx.business.update({
+              where: args.where,
+              data: args.data,
+              select: { id: true, lifecycle: true, graceUntil: true, suspendedAt: true },
+            }),
+        },
+        tenantStateEvent: {
+          create: (args) => tx.tenantStateEvent.create({ data: args.data, select: { id: true } }),
+        },
+      }),
+    ),
+};
+serviceOperatorRouter.use(buildLifecycleOperatorRouter(lifecycleOperatorDb));

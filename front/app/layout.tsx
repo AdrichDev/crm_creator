@@ -4,6 +4,7 @@ import { TenantConfigProvider } from '@/lib/tenant-config-context';
 import { BrandingStyle } from '@/components/layout/branding-style';
 import { CrmThemeProvider } from '@/components/layout/theme-provider';
 import { DialogProvider } from '@/components/ui/dialog-provider';
+import { TenantBlockOverlay } from '@/components/tenant/tenant-block-overlay';
 
 export const metadata: Metadata = {
   title: 'OperaOS · Consola',
@@ -32,6 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <BrandingStyle />
             <CrmThemeProvider />
             {children}
+            <TenantBlockOverlay />
           </DialogProvider>
         </TenantConfigProvider>
       </body>

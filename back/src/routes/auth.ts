@@ -5,6 +5,7 @@ import { prisma } from '../prisma.js';
 import { supabaseAdmin } from '../lib/auth.js';
 import { env } from '../env.js';
 import { authenticate } from '../middleware/auth.js';
+import { tenantGate } from '../middleware/tenant-gate.js';
 import type { AuthedRequest } from '../middleware/types.js';
 import { rateLimit, ipKey, ipEmailKey, resetRateLimits } from '../lib/rateLimit.js';
 import { validatePassword } from '../lib/password.js';
@@ -52,8 +53,19 @@ authRouter.post('/login', loginLimiter, (_req, res) => {
 // ---------------------------------------------------------------------------
 // GET /auth/me
 // Returns the crm.User profile and memberships for the authenticated user.
+//
+// crm-tenant-lifecycle-gate (WU3.1) — LOGIN GATE: las credenciales las valida el SDK de
+// Supabase en el front (el back no emite sesión propia), así que el punto
+// server-authoritative del "login" es ESTE bootstrap de sesión. Tras identificar el
+// negocio del usuario (`authenticate` fija req.businessId), el gate corta con 423
+// (SUSPENDED / GRACE expirada) o 410 (TERMINATED) ANTES de devolver perfil y
+// memberships: un usuario de un negocio no ACTIVE/GRACE no obtiene sesión utilizable
+// en el panel ("no entrar a mirar"). Exportado con nombre para el test de wiring
+// (login-gate.test.ts verifica que el gate está montado tras authenticate).
 // ---------------------------------------------------------------------------
-authRouter.get('/me', authenticate, async (req: AuthedRequest, res) => {
+export const loginTenantGate = tenantGate();
+
+authRouter.get('/me', authenticate, loginTenantGate, async (req: AuthedRequest, res) => {
   const user = await prisma.user.findUnique({ where: { id: req.userId } });
   const memberships = await prisma.membership.findMany({ where: { userId: req.userId } });
   // Config del negocio activo (la fuente de verdad del front: nombre, vertical,

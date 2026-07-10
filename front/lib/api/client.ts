@@ -3,6 +3,7 @@
 // Bearer token sourced from Supabase session (access_token) — NOT from localStorage saas.token.
 // x-business-id header retained for tenant scoping.
 import { getAccessToken, getActiveBusinessId } from '@/lib/auth/session';
+import { classifyBlocked, setTenantBlocked } from '@/lib/tenant/blocked-state';
 
 export function apiBaseUrl(): string | null {
   return process.env.NEXT_PUBLIC_API_URL || null;
@@ -24,6 +25,15 @@ export class ApiError extends Error {
   }
 }
 
+// Interceptor del kill switch (crm-tenant-lifecycle-gate WU4): ante una respuesta de
+// error, discrimina por el CÓDIGO del body (no por el status a secas) y, si es un
+// bloqueo del tenant (423 tenant_suspended / 410 tenant_terminated), fija el estado
+// global que monta la pantalla full-screen. Otros 410 del carril auth NO bloquean.
+function flagTenantBlocked(status: number, code?: string): void {
+  const variant = classifyBlocked(status, code);
+  if (variant) setTenantBlocked(variant);
+}
+
 export async function apiFetch<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
   const base = apiBaseUrl();
   if (!base) throw new Error('API no configurada');
@@ -43,6 +53,7 @@ export async function apiFetch<T = unknown>(path: string, init: RequestInit = {}
   const res = await fetch(`${base}/api${path}`, { ...init, headers });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
+    flagTenantBlocked(res.status, body?.error?.code);
     throw new ApiError(body?.error?.message ?? `Error ${res.status}`, res.status, body?.error?.code);
   }
   if (res.status === 204) return undefined as T;
@@ -67,6 +78,7 @@ export async function apiFetchBlob(path: string, init: RequestInit = {}): Promis
   const res = await fetch(`${base}/api${path}`, { ...init, headers });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
+    flagTenantBlocked(res.status, body?.error?.code);
     throw new ApiError(body?.error?.message ?? `Error ${res.status}`, res.status, body?.error?.code);
   }
   return res.blob();
@@ -87,6 +99,7 @@ export async function apiUpload<T = unknown>(path: string, formData: FormData): 
   const res = await fetch(`${base}/api${path}`, { method: 'POST', body: formData, headers });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
+    flagTenantBlocked(res.status, body?.error?.code);
     throw new Error(body?.error?.message ?? `Error ${res.status}`);
   }
   return res.json() as Promise<T>;

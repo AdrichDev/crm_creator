@@ -1,6 +1,7 @@
 import { Router, type Response, type NextFunction } from 'express';
 import { tryResolveTenantApiKey, type TenantApiKeyDb } from '../middleware/tenant-api-key.js';
 import { authenticate } from '../middleware/auth.js';
+import { tenantGate } from '../middleware/tenant-gate.js';
 import { prisma } from '../prisma.js';
 import { readPublicSecrets, readBakeableSecrets } from '../lib/tenant-secrets/store.js';
 import type { AuthedRequest } from '../middleware/types.js';
@@ -92,4 +93,7 @@ export function resolveTenantConfigAuth(
 
 export const tenantConfigRouter = Router();
 
-tenantConfigRouter.get('/', resolveTenantConfigAuth(), (req: AuthedRequest, res) => tenantConfigHandler(defaultDeps, req, res));
+// crm-tenant-lifecycle-gate (WU3): carril TENANT-FACING gateado — la identidad
+// (req.tenantBusinessId) la resuelve resolveTenantConfigAuth justo antes, así que el gate
+// corta apps exportadas de negocios suspendidos/terminados (423/410) además del panel.
+tenantConfigRouter.get('/', resolveTenantConfigAuth(), tenantGate(), (req: AuthedRequest, res) => tenantConfigHandler(defaultDeps, req, res));

@@ -46,6 +46,12 @@ export const env = {
   // SUPABASE_JWT_SECRET eliminado: los tokens se verifican vía JWKS (ES256), no con
   // un secreto HS256 compartido. Ya no se lee ningún secreto para verificar.
 
+  // crm-tenant-lifecycle-gate (WU3.3): secreto HMAC del heartbeat de licencia de las
+  // formas binario/offline (exe/apk exportados). Opcional y fail-closed: vacío → el
+  // endpoint /license/heartbeat responde 503 (deshabilitado), nunca respuestas sin
+  // firmar. Disuasión, no garantía: el corte autoritativo es server-side (tenantGate).
+  licenseHeartbeatSecret: process.env.LICENSE_HEARTBEAT_SECRET ?? '',
+
   // SMTP (nodemailer) — transporte de email transaccional de citas.
   // Default seguro: smtpHost vacío → no-op (EMAIL_ENABLED=false en tests).
   smtpHost:    process.env.SMTP_HOST    ?? '',
