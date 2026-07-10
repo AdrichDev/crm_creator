@@ -119,10 +119,10 @@ export function LifecycleControl({ businessId }: { businessId: string }) {
     <section aria-labelledby="lifecycle-title" className="space-y-6">
       <header className="flex items-center justify-between gap-4">
         <div>
-          <h2 id="lifecycle-title" className="text-lg font-semibold text-neutral-900">
+          <h2 id="lifecycle-title" className="text-lg font-semibold text-[var(--panel-text)]">
             Estado del servicio
           </h2>
-          <p className="text-sm text-neutral-500">
+          <p className="text-sm text-[var(--panel-muted)]">
             Enciende o apaga el acceso del negocio. Apagar corta el acceso sin borrar datos.
           </p>
         </div>
@@ -132,7 +132,7 @@ export function LifecycleControl({ businessId }: { businessId: string }) {
       </header>
 
       {/* Switch verde/rojo (ACTIVE ↔ SUSPENDED). */}
-      <div className="flex items-center gap-4 rounded-lg border border-neutral-200 p-4">
+      <div className="flex items-center gap-4 rounded-lg border border-[var(--line)] p-4">
         <button
           type="button"
           role="switch"
@@ -150,23 +150,23 @@ export function LifecycleControl({ businessId }: { businessId: string }) {
             }`}
           />
         </button>
-        <span className="text-sm font-medium text-neutral-700">
+        <span className="text-sm font-medium text-[var(--panel-text)]">
           {isOn ? 'Encendido (operativo)' : 'Apagado (suspendido)'}
         </span>
       </div>
 
       {/* Selector de estado manual: GRACE / TERMINATED / ACTIVE (reactivar). */}
-      <div className="space-y-3 rounded-lg border border-neutral-200 p-4">
-        <p className="text-sm font-medium text-neutral-700">Fijar otro estado</p>
+      <div className="space-y-3 rounded-lg border border-[var(--line)] p-4">
+        <p className="text-sm font-medium text-[var(--panel-text)]">Fijar otro estado</p>
         <div className="flex flex-wrap items-end gap-3">
-          <label className="flex flex-col gap-1 text-xs text-neutral-500">
+          <label className="flex flex-col gap-1 text-xs text-[var(--panel-muted)]">
             Estado destino
             <select
               aria-label="Estado destino"
               value={target}
               disabled={busy}
               onChange={(e) => setTarget(e.target.value as TenantLifecycle)}
-              className="rounded border border-neutral-300 px-2 py-1 text-sm text-neutral-900"
+              className="rounded border border-[var(--line)] bg-transparent px-2 py-1 text-sm text-[var(--panel-text)]"
             >
               <option value="ACTIVE">Operativo (reactivar)</option>
               <option value="GRACE">Periodo de gracia</option>
@@ -175,7 +175,7 @@ export function LifecycleControl({ businessId }: { businessId: string }) {
             </select>
           </label>
           {target === 'GRACE' && (
-            <label className="flex flex-col gap-1 text-xs text-neutral-500">
+            <label className="flex flex-col gap-1 text-xs text-[var(--panel-muted)]">
               Fin del periodo de gracia
               <input
                 type="datetime-local"
@@ -183,7 +183,7 @@ export function LifecycleControl({ businessId }: { businessId: string }) {
                 value={graceLocal}
                 disabled={busy}
                 onChange={(e) => setGraceLocal(e.target.value)}
-                className="rounded border border-neutral-300 px-2 py-1 text-sm text-neutral-900"
+                className="rounded border border-[var(--line)] bg-transparent px-2 py-1 text-sm text-[var(--panel-text)]"
               />
             </label>
           )}
@@ -197,7 +197,7 @@ export function LifecycleControl({ businessId }: { businessId: string }) {
           </button>
         </div>
         {target === 'TERMINATED' && (
-          <p className="text-xs text-neutral-500">
+          <p className="text-xs text-[var(--panel-muted)]">
             Cerrar la cuenta corta el acceso pero conserva los datos. Es reversible: reactivar
             restaura el servicio al instante.
           </p>
@@ -206,7 +206,7 @@ export function LifecycleControl({ businessId }: { businessId: string }) {
 
       {error && <p className="text-sm text-red-600">{error}</p>}
       {(graceUntil || suspendedAt) && (
-        <p className="text-xs text-neutral-500">
+        <p className="text-xs text-[var(--panel-muted)]">
           {graceUntil && <>Gracia hasta el {graceUntil}. </>}
           {suspendedAt && <>Suspendido desde el {suspendedAt}.</>}
         </p>
@@ -214,21 +214,21 @@ export function LifecycleControl({ businessId }: { businessId: string }) {
 
       {/* Histórico de transiciones. */}
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-neutral-900">Histórico</h3>
+        <h3 className="text-sm font-semibold text-[var(--panel-text)]">Histórico</h3>
         {events.length === 0 ? (
-          <p className="text-sm text-neutral-500">Sin transiciones registradas.</p>
+          <p className="text-sm text-[var(--panel-muted)]">Sin transiciones registradas.</p>
         ) : (
-          <ul className="divide-y divide-neutral-100 text-sm">
+          <ul className="divide-y divide-[var(--line)] text-sm">
             {events.map((ev, i) => (
               <li key={`${ev.createdAt}-${i}`} className="flex flex-wrap items-center gap-2 py-2">
-                <span className="font-medium text-neutral-700">
+                <span className="font-medium text-[var(--panel-text)]">
                   {LABELS[ev.fromState]} → {LABELS[ev.toState]}
                 </span>
-                <span className="text-neutral-400">·</span>
-                <span className="text-neutral-500">{formatDateTime(ev.createdAt)}</span>
-                <span className="text-neutral-400">·</span>
-                <span className="text-neutral-500">{ev.actor}</span>
-                {ev.reason && <span className="text-neutral-500">— {ev.reason}</span>}
+                <span className="text-[var(--panel-muted)]">·</span>
+                <span className="text-[var(--panel-muted)]">{formatDateTime(ev.createdAt)}</span>
+                <span className="text-[var(--panel-muted)]">·</span>
+                <span className="text-[var(--panel-muted)]">{ev.actor}</span>
+                {ev.reason && <span className="text-[var(--panel-muted)]">— {ev.reason}</span>}
               </li>
             ))}
           </ul>
