@@ -200,10 +200,17 @@ memoria ni de un campo muerto en `localStorage`.
 > como gate humano (1.2, 2.1, 9.6) requieren aprobación explícita del usuario, no
 > son automatizables.
 
-## Estado
+## Estado (histórico — ver ARCHIVE-REPORT.md para el estado final real)
 
 PROPUESTA — proposal/design/specs/tasks cerrados, sin código iniciado. WU1.2
 (aplicar migración en Supabase producción) y WU9.6 (aprobación final) están
 bloqueadas por HITL explícito. WU2.1 (aprovisionar bucket) también requiere gate
 humano. El resto de WUs (3-8) son implementables en cadena según el orden de
 dependencias documentado en `tasks.md`.
+
+> **Nota de archivo (2026-07-11):** este párrafo "Estado" quedó desactualizado en
+> el momento de la implementación — todas las fases (incluidas 1.2/1.3/1.4, 2.1,
+> 9.1, 9.6) se completaron, verificaron (`verify-report`, PASS-WITH-NOTES) y
+> mergearon a `main` (commit `3810b67`). Se conserva el texto original sin editar
+> como registro histórico del último punto de sincronización de `sdd-spec`; el
+> estado final real está documentado en `ARCHIVE-REPORT.md`.

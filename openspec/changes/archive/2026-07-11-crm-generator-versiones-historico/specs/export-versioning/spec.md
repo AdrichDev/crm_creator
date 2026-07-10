@@ -28,6 +28,14 @@ succeeds. Order MUST be: generate artifact → upload to Storage → write row.
 - THEN no `ExportVersion` row is created
 - AND the export job is reported as failed, not silently lost
 
+> **Implementation note (recorded at archive time):** the shipped implementation
+> deviates from this scenario's second assertion. Per an explicit design.md
+> decision, a Storage upload failure logs the error (no secrets) and does NOT mark
+> the export job as failed — the requested artifact(s) remain downloadable via the
+> existing `downloadHandler`; only the historical `ExportVersion` row is skipped.
+> This deviation was authorized by the user before implementation and confirmed
+> correct (not flagged) by `sdd-verify` (see verify-report, Engram #863).
+
 ### Requirement: ExportVersion Schema
 
 The system MUST define `ExportVersion` (Prisma model, `@@map` snake_case DB
@@ -44,6 +52,13 @@ untouched).
 - WHEN the `ExportVersion` migration is applied
 - THEN both dead fields still exist unchanged
 - AND `prisma migrate status` reports no drift
+
+> **Implementation note (recorded at archive time):** `format` is always persisted
+> as the literal `"source"` (a zip of `ctx.frontDir`, the shared source directory
+> generated before any format-specific builder runs), not one of
+> web-zip/apk/exe/ipa. This is an explicit design.md decision: the historical
+> record versions the source code, not each individual requested binary. Also
+> authorized and confirmed correct by `sdd-verify`.
 
 ### Requirement: First Export Auto-Versioning
 
