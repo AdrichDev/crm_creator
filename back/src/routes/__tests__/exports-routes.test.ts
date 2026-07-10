@@ -61,8 +61,26 @@ function fakeJob(id: string): ExportJob {
 }
 
 const okDb: ExportsDeps['db'] = {
-  membership: { findFirst: async () => ({ id: 'm-1' }) },
+  membership: {
+    findFirst: async () => ({ id: 'm-1' }),
+    findMany: async () => [],
+  },
   businessSetting: { findFirst: async () => ({ datos: { business: { name: 'Demo' } } }) },
+  exportVersion: {
+    count: async () => 0,
+    create: async () => ({
+      id: 'v-1',
+      businessId: 'proj-1',
+      version: '1.0.0',
+      changeNote: null,
+      storagePath: 'proj-1/v-1.zip',
+      createdAt: new Date(),
+    }),
+    findFirst: async () => null,
+    findMany: async () => [],
+  },
+  business: { findMany: async () => [] },
+  tenantStateEvent: { findMany: async () => [] },
 };
 
 // ── GET /:id/download — guardas (404/400) ───────────────────────────────────

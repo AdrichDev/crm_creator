@@ -7,12 +7,20 @@ import { useProjects } from '@/lib/tenant-config-context';
 import { ThemeToggle } from '@/components/layout/theme-toggle';
 import { DashboardTabs } from '@/components/dashboard/dashboard-tabs';
 import { ExportJobProvider } from '@/lib/export/export-job-context';
+import { fetchExportVersions } from '@/lib/api/exports-history';
 
 export default function Consola() {
   const { ready, projects, config, openProject, deleteProject } = useProjects();
   const router = useRouter();
   const [busy] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
+  // crm-generator-versiones-historico (WU8): contador de "generados" del header ←
+  // proyectos DISTINTOS con ≥1 export (back), no el conteo local de `generatedAt`.
+  const [distinctGenerated, setDistinctGenerated] = useState(0);
+
+  useEffect(() => {
+    fetchExportVersions().then((data) => setDistinctGenerated(data.distinctCount));
+  }, []);
 
   // Auth gate: requires active session.
   // Without session → /login. With session on generated build → /panel.
@@ -72,7 +80,7 @@ export default function Consola() {
           </div>
           <div className="mt-5 flex gap-6 text-sm">
             <div><span className="font-display text-2xl text-gold">{projects.length}</span><span className="ml-2 text-gray-400">proyectos</span></div>
-            <div><span className="font-display text-2xl text-gold">{projects.filter((p) => p.generatedAt).length}</span><span className="ml-2 text-gray-400">generados</span></div>
+            <div><span className="font-display text-2xl text-gold">{distinctGenerated}</span><span className="ml-2 text-gray-400">generados</span></div>
           </div>
         </div>
       </header>

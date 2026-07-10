@@ -10,9 +10,19 @@ import type { BuildFormat } from '@/lib/export/types';
 import type { SaveFileHandle } from '@/lib/export/download';
 import { ExportTable } from './export-table';
 import { ExportHeaderProgress } from './export-header-progress';
+import { GeneradosTab } from './generados-tab';
+import { HistoricoTab } from './historico-tab';
 import { Plus, Pencil, Trash2, FolderOpen } from 'lucide-react';
 
-type Tab = 'dashboard' | 'exportar';
+// crm-generator-versiones-historico (WU5): orden Proyecto→Generados→Histórico→Exportar.
+type Tab = 'dashboard' | 'generados' | 'historico' | 'exportar';
+
+const TAB_LABEL: Record<Tab, string> = {
+  dashboard: 'Proyecto',
+  generados: 'Generados',
+  historico: 'Histórico',
+  exportar: 'Exportar',
+};
 
 const PAGE_SIZE = 10;
 
@@ -61,8 +71,14 @@ export function DashboardTabs({
     setPage(0);
   }
 
-  function handleExport(projectId: string, formats: BuildFormat[], handle: SaveFileHandle | null) {
-    void startExport({ projectId, formats }, handle);
+  function handleExport(
+    projectId: string,
+    formats: BuildFormat[],
+    handle: SaveFileHandle | null,
+    version?: string,
+    changeNote?: string,
+  ) {
+    void startExport({ projectId, formats, version, changeNote }, handle);
   }
 
   function handleDelete(id: string) {
@@ -80,7 +96,7 @@ export function DashboardTabs({
           La barra de progreso del exportador se ancla a la derecha y es
           visible en cualquier pestaña mientras haya un job. */}
       <div className="flex items-end" style={{ gap: '2px' }}>
-        {(['dashboard', 'exportar'] as Tab[]).map((t, i) => {
+        {(['dashboard', 'generados', 'historico', 'exportar'] as Tab[]).map((t, i) => {
           const active = tab === t;
           return (
             <button
@@ -110,7 +126,7 @@ export function DashboardTabs({
                   : 'font-medium text-[var(--panel-muted)] hover:text-[var(--panel-text)]',
               ].join(' ')}
             >
-              {t === 'dashboard' ? 'Proyecto' : 'Exportar'}
+              {TAB_LABEL[t]}
             </button>
           );
         })}
@@ -276,6 +292,20 @@ export function DashboardTabs({
                 )}
               </>
             )}
+          </div>
+        )}
+
+        {/* ─── Generados tab (crm-generator-versiones-historico WU6) ─── */}
+        {tab === 'generados' && (
+          <div>
+            <GeneradosTab />
+          </div>
+        )}
+
+        {/* ─── Histórico tab (crm-generator-versiones-historico WU7) ─── */}
+        {tab === 'historico' && (
+          <div>
+            <HistoricoTab projects={projects} />
           </div>
         )}
 
