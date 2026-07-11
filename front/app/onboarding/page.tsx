@@ -1,5 +1,5 @@
 'use client';
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { useDialog } from '@/components/ui/dialog-provider';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useProjects } from '@/lib/tenant-config-context';
@@ -40,10 +40,14 @@ function OnboardingInner() {
   const editing = projects.find((p) => p.id === projectId) ?? null;
   const isEdit = !!editing;
 
-  // En edición se entra directo a "Módulos" (paso 2): no se permite cambiar el
-  // cliente/nombre, así que el paso 0 (Tipo de negocio/cliente) queda bloqueado.
-  const minStep = isEdit ? 1 : 0;
-  const [step, setStep] = useState(minStep);
+  // En edición se entra directo a "Módulos" (paso 2), pero SÍ se puede volver
+  // atrás hasta "Tipo de negocio" (paso 0) para cambiar el vertical — el cliente/
+  // nombre siguen bloqueados (ocultos) en ese paso, ver render de step 0 abajo.
+  // Bug corregido: antes minStep=1 en edición dejaba el paso 0 inalcanzable y
+  // `pickVertical` (que sí soporta edición) quedaba muerto por la UI — imposible
+  // cambiar el vertical de un proyecto ya creado, nunca.
+  const minStep = 0;
+  const [step, setStep] = useState(isEdit ? 1 : 0);
   const [draft, setDraft] = useState(() =>
     editing ? draftForEdit(editing.config) : configFromVertical('peluqueria', ''));
   // Visual del picker: null = ninguna card seleccionada. Separado de draft.business.vertical
@@ -51,6 +55,25 @@ function OnboardingInner() {
   const [pickedVertical, setPickedVertical] = useState<VerticalId | null>(
     editing ? (editing.config.business.vertical ?? null) : 'peluqueria',
   );
+
+  // BUG crítico (reportado en vivo): `projects` arranca vacío en el contexto
+  // (tenant-config-context.tsx) y se hidrata async. Si este componente monta
+  // ANTES de que termine esa carga, `editing` es `null` en el primer render y
+  // los `useState` de arriba (que son lazy-init, corren UNA sola vez) fijan
+  // `draft`/`pickedVertical` al preset vacío de 'peluqueria' — y se quedan así
+  // para siempre, aunque `editing` se resuelva bien en renders posteriores.
+  // Al guardar, `finish()` pisa TODO `Project.config` con ese draft corrupto:
+  // vertical/módulos/terminología/branding reales se pierden en silencio.
+  // Este efecto resincroniza el draft la PRIMERA vez que `editing` aparece,
+  // sin volver a tocarlo después (no debe pisar ediciones en curso).
+  const editSyncedRef = useRef(isEdit);
+  useEffect(() => {
+    if (!projectId || editSyncedRef.current || !editing) return;
+    setDraft(draftForEdit(editing.config));
+    setPickedVertical(editing.config.business.vertical ?? null);
+    setStep(1);
+    editSyncedRef.current = true;
+  }, [projectId, editing]);
 
   // Tenants reales de agents-agency (aa.tenant) para vincular el proyecto.
   // Se leen del back creador_CRM (/tenants, raw cross-schema sobre la Supabase
@@ -226,10 +249,13 @@ function OnboardingInner() {
 
         {step === 0 && (
           <div className="space-y-4">
-            {/* Cliente primero: al elegirlo se pre-rellena nombre/email/teléfono/dirección. */}
-            <Card><CardBody>
-              <ClientCombobox clients={clients} selectedId={draft.business.clienteId} onPick={pickClient} error={clientsError} />
-            </CardBody></Card>
+            {/* Cliente/nombre solo en alta: en edición ese vínculo queda fijo, no se
+                muestra el picker (pickVertical sigue disponible para cambiar el vertical). */}
+            {!isEdit && (
+              <Card><CardBody>
+                <ClientCombobox clients={clients} selectedId={draft.business.clienteId} onPick={pickClient} error={clientsError} />
+              </CardBody></Card>
+            )}
 
             <VerticalPicker value={pickedVertical} onChange={pickVertical} />
           </div>
@@ -343,8 +369,8 @@ function OnboardingInner() {
         )}
 
         <div className="mt-8 flex items-center justify-between">
-          {/* En edición, "Atrás" se desactiva en Módulos: no se puede volver al paso
-              del cliente (su nombre no es editable). */}
+          {/* "Atrás" llega hasta "Tipo de negocio" (paso 0) incluso en edición: ahí
+              el cliente/nombre quedan ocultos, pero el vertical sí se puede cambiar. */}
           <Button variant="ghost" onClick={() => setStep((s) => Math.max(minStep, s - 1))} disabled={step <= minStep}>
             <ChevronLeft className="h-4 w-4" /> Atrás
           </Button>

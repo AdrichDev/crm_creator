@@ -5,6 +5,7 @@ import { requireOperatorToken } from '../middleware/operator-token.js';
 import { splitNombre, joinNombre } from '../lib/nombre.js';
 import { buildTenantKeysOperatorRouter, type TenantKeysOperatorDb } from './service-operator-tenant-keys.js';
 import { buildLifecycleOperatorRouter, type LifecycleOperatorDb } from './service-operator-lifecycle.js';
+import { buildPurgeOperatorRouter, type PurgeDb } from './service-operator-purge.js';
 import {
   createProjectService,
   mirrorColumns,
@@ -739,3 +740,17 @@ const lifecycleOperatorDb: LifecycleOperatorDb = {
     ),
 };
 serviceOperatorRouter.use(buildLifecycleOperatorRouter(lifecycleOperatorDb));
+
+// crm-tenant-lifecycle-gate (WU6): purga de datos — POST /businesses/:id/purge.
+// Acción AISLADA e IRREVERSIBLE, desacoplada del lifecycle (design §7): exige doble
+// confirmación (echo del id/nombre + confirm:true) y es el ÚNICO camino del operador
+// con capacidad de borrado (PurgeDb es la única interfaz con deletes; lifecycleOperatorDb
+// no los tiene). El TransactionClient de Prisma satisface PurgeTx estructuralmente.
+// Timeout amplio: la purga encadena ~40 deleteMany en una transacción interactiva.
+const purgeOperatorDb: PurgeDb = {
+  business: {
+    findFirst: (args) => prisma.business.findFirst({ where: args.where, select: { id: true, nombre: true } }),
+  },
+  $transaction: (fn) => prisma.$transaction((tx) => fn(tx), { timeout: 60_000, maxWait: 10_000 }),
+};
+serviceOperatorRouter.use(buildPurgeOperatorRouter(purgeOperatorDb));

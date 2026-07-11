@@ -1,15 +1,15 @@
-// Unit test del interceptor del kill switch (crm-tenant-lifecycle-gate WU4, tarea 4.3).
-// Verifica que apiFetch (lib/api/client.ts) discrimina por el CÓDIGO del body, no por
-// el status a secas:
-//   - 423 tenant_suspended  → estado global "suspended" (monta blocked-screen).
-//   - 410 tenant_terminated → estado global "terminated" (variante cuenta cerrada).
-//   - 410 login_moved       → NO bloquea (carril auth exento).
+// Unit test del interceptor del kill switch (crm-tenant-block-scoping, tarea 3.3).
+// Verifica que apiFetch (lib/api/client.ts):
+//   - discrimina por el CÓDIGO del body, no por el status a secas;
+//   - acota el bloqueo al businessId enviado como x-business-id (rutas de negocio);
+//   - NUNCA bloquea desde rutas de plataforma (allowlist: /auth, /tenant-status,
+//     /tenant-config, /service/operator) — OperaOS no se suspende.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // La sesión se mockea: el interceptor no debe depender de Supabase real.
 vi.mock('@/lib/auth/session', () => ({
   getAccessToken: async () => 'test-token',
-  getActiveBusinessId: () => 'biz-1',
+  getActiveBusinessId: () => 'biz-A',
 }));
 
 import { apiFetch } from '@/lib/api/client';
@@ -35,26 +35,46 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('interceptor de bloqueo del tenant', () => {
-  it('423 tenant_suspended → estado global "suspended"', async () => {
+describe('interceptor de bloqueo del tenant (acotado por negocio)', () => {
+  it('423 tenant_suspended en ruta de negocio → bloqueo con el businessId enviado', async () => {
     (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
       errorResponse(423, 'tenant_suspended'),
     );
 
-    await expect(apiFetch('/clients')).rejects.toThrow();
-    expect(getTenantBlocked()).toBe('suspended');
+    await expect(apiFetch('/customers')).rejects.toThrow();
+    expect(getTenantBlocked()).toEqual({ variant: 'suspended', businessId: 'biz-A' });
   });
 
-  it('410 tenant_terminated → estado global "terminated" (variante cerrada)', async () => {
+  it('410 tenant_terminated en ruta de negocio → variante "terminated" con businessId', async () => {
     (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
       errorResponse(410, 'tenant_terminated'),
     );
 
     await expect(apiFetch('/clients')).rejects.toThrow();
-    expect(getTenantBlocked()).toBe('terminated');
+    expect(getTenantBlocked()).toEqual({ variant: 'terminated', businessId: 'biz-A' });
   });
 
-  it('410 login_moved → NO bloquea (carril auth exento)', async () => {
+  it('423 tenant_suspended en /auth/me → NO bloquea (ruta de plataforma)', async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      errorResponse(423, 'tenant_suspended'),
+    );
+
+    await expect(apiFetch('/auth/me')).rejects.toThrow();
+    expect(getTenantBlocked()).toBeNull();
+  });
+
+  it('410 tenant_terminated en rutas de plataforma → NO bloquea', async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      errorResponse(410, 'tenant_terminated'),
+    );
+
+    for (const path of ['/tenant-status', '/tenant-config/algo', '/service/operator/negocios']) {
+      await expect(apiFetch(path)).rejects.toThrow();
+      expect(getTenantBlocked()).toBeNull();
+    }
+  });
+
+  it('410 login_moved → NO bloquea (otros 410 del carril auth exentos)', async () => {
     (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
       errorResponse(410, 'login_moved'),
     );

@@ -8,7 +8,7 @@ Agentic Runtime gate + aprobación humana antes de cualquier push.
 
 ## WU1 — Modelo + transiciones (back/DB)
 - [x] 1.1 Enum `TenantLifecycle` + campos `lifecycle/graceUntil/suspendedAt` en `Business` + modelo `TenantStateEvent` (`schema.prisma`).
-- [x] 1.2 Migración `20260710150000_tenant_lifecycle/migration.sql` (default ACTIVE, sin DROP). ⚠️ PENDIENTE APLICAR por usuario.
+- [x] 1.2 Migración `20260710150000_tenant_lifecycle/migration.sql` (default ACTIVE, sin DROP). ✅ APLICADA a prod Supabase 10/07 (`migrate deploy`; `migrate status` up-to-date, sin drift).
 - [x] 1.3 Transiciones + side-effects en `lib/tenant-lifecycle/transitions.ts`: fijar cualquier estado destino (incluido `TERMINATED → ACTIVE`); `→GRACE` exige `graceUntil` futuro (400 si falta); `→SUSPENDED` fija `suspendedAt`; `→ACTIVE` limpia campos. Sin 409, sin purga.
 - [x] 1.4 Test `tenant-lifecycle.transitions.test.ts` (cualquier→cualquier aplica; payload inválido → 400; nunca 409).
 
@@ -46,19 +46,19 @@ Agentic Runtime gate + aprobación humana antes de cualquier push.
 ## WU6 — Purga de datos (AISLADA, opcional, diferible — NO parte del kill switch)
 > Acción separada, irreversible, desacoplada del switch y de `TERMINATED`. Puede diferirse a
 > otro change sin bloquear el kill switch. Se lista para dejar la separación por escrito.
-- [ ] 6.1 `POST /service/operator/businesses/:id/purge` con doble confirmación (echo id/nombre + `confirm:true`; 400 si falta) → hard-delete cascade. Auditado aparte.
-- [ ] 6.2 Test `purge.guard.test.ts`: sin doble confirmación → 400; con ella → borra; ningún `PUT lifecycle` invoca la purga.
+- [x] 6.1 `POST /service/operator/businesses/:id/purge` con doble confirmación (echo id/nombre exacto + `confirm:true`; falta/mismatch → 400 sin tocar BD; 404 si no existe) → hard-delete en UNA `$transaction` con borrado explícito hijos→padres (41 deleteMany + delete negocio): 3 FKs internas son ON DELETE RESTRICT (reserva→sucursal/servicio, paquete_cliente→paquete) y hacen inseguro el cascade único. `service-operator-purge.ts` con interfaz DI propia `PurgeDb` (la ÚNICA del carril operador con deletes; lifecycle sigue sin ellos). Auditado aparte (log de operador, no TenantStateEvent). Responde 200 con conteos por tabla. NO se borran usuario/token_calendario/AuthToken (nivel usuario) ni aa.* (nivel cliente). ⚠️ Implementado pero DESTRUCTIVO: cada ejecución real requiere decisión humana explícita (doble confirmación por diseño); sin UI front en esta WU.
+- [x] 6.2 Test `purge.guard.test.ts` (12): sin/mala doble confirmación → 400 y CERO borrados; con ella → borra en orden hijos→padres (negocio último, RESTRICT verificados); router de purga solo registra POST .../purge; router lifecycle sin rutas purge; PUT lifecycle→TERMINATED con trampas delete armadas no invoca ningún borrado. DI-mock, sin BD real.
 
 ## Cierre
-- [ ] Z.1 back + front suite verde + `tsc` limpio.
-- [ ] Z.2 Agentic Runtime review + aprobación humana (mueve estado de negocio).
-- [ ] Z.3 Migración APLICADA a Supabase + `prisma migrate status` sin drift.
-- [ ] Z.4 Engram persistido + ESTRUCTURA.md actualizado.
+- [x] Z.1 back + front suite verde + `tsc` limpio. (back 822/822, front 7/7 tests del change, tsc back+front exit 0.)
+- [x] Z.2 Agentic Runtime review + aprobación humana (mueve estado de negocio). (sdd-verify PASS-WITH-NOTES; hallazgos resueltos; usuario aprobó merge+push+deploy.)
+- [x] Z.3 Migración APLICADA a Supabase + `prisma migrate status` sin drift. (10/07, up-to-date.)
+- [ ] Z.4 Engram persistido + ESTRUCTURA.md actualizado. (Engram ✅ obs #852–854 + session summary; ESTRUCTURA.md PENDIENTE.)
 
 ## Verificaciones finales
-- [ ] Apagar un negocio (switch rojo → `SUSPENDED`) corta login y rutas tenant en ≤ TTL; el operador nunca se auto-bloquea.
-- [ ] Reactivar desde `TERMINATED` restaura el servicio con todos los datos intactos.
-- [ ] El operador puede fijar cualquiera de los 4 estados sin transiciones ilegales (sin 409).
-- [ ] Ningún cambio de `lifecycle` ejecuta borrado de datos (verificado por test).
-- [ ] Toda transición deja `TenantStateEvent`.
-- [ ] Matriz de palanca revisada con el usuario (alquiler solo formas hosteado/self-host; T3 self-host completo solo disuasión).
+- [x] Apagar un negocio (switch rojo → `SUSPENDED`) corta login y rutas tenant en ≤ TTL; el operador nunca se auto-bloquea. (tenant-gate.test.ts + exención `/service/operator` estructural; smoke live confirmado por usuario.)
+- [x] Reactivar desde `TERMINATED` restaura el servicio con todos los datos intactos. (tenant-terminated-no-purge.test.ts verde.)
+- [x] El operador puede fijar cualquiera de los 4 estados sin transiciones ilegales (sin 409). (transitions.test.ts: any→any, nunca 409.)
+- [x] Ningún cambio de `lifecycle` ejecuta borrado de datos (verificado por test). (interfaz DB sin métodos delete + test.)
+- [x] Toda transición deja `TenantStateEvent`. (PUT lifecycle inserta evento en `$transaction`; lifecycle.operator.test.ts.)
+- [x] Matriz de palanca revisada con el usuario (alquiler solo formas hosteado/self-host; T3 self-host completo solo disuasión). (Revisada; decisión "cortar public+calendar" tomada → WU2.5.)

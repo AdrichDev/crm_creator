@@ -1,11 +1,14 @@
 import { Router } from 'express';
+import type { Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { createClient } from '@supabase/supabase-js';
 import { prisma } from '../prisma.js';
 import { supabaseAdmin } from '../lib/auth.js';
 import { env } from '../env.js';
 import { authenticate } from '../middleware/auth.js';
-import { tenantGate } from '../middleware/tenant-gate.js';
+import { GRACE_UNTIL_HEADER } from '../middleware/tenant-gate.js';
+import { TenantLifecycle } from '../lib/generated/prisma/client.js';
+import { resolveTenantState, type TenantStateDb } from '../lib/tenant-lifecycle/resolver.js';
 import type { AuthedRequest } from '../middleware/types.js';
 import { rateLimit, ipKey, ipEmailKey, resetRateLimits } from '../lib/rateLimit.js';
 import { validatePassword } from '../lib/password.js';
@@ -54,29 +57,70 @@ authRouter.post('/login', loginLimiter, (_req, res) => {
 // GET /auth/me
 // Returns the crm.User profile and memberships for the authenticated user.
 //
-// crm-tenant-lifecycle-gate (WU3.1) — LOGIN GATE: las credenciales las valida el SDK de
-// Supabase en el front (el back no emite sesión propia), así que el punto
-// server-authoritative del "login" es ESTE bootstrap de sesión. Tras identificar el
-// negocio del usuario (`authenticate` fija req.businessId), el gate corta con 423
-// (SUSPENDED / GRACE expirada) o 410 (TERMINATED) ANTES de devolver perfil y
-// memberships: un usuario de un negocio no ACTIVE/GRACE no obtiene sesión utilizable
-// en el panel ("no entrar a mirar"). Exportado con nombre para el test de wiring
-// (login-gate.test.ts verifica que el gate está montado tras authenticate).
+// crm-tenant-block-scoping — IDENTIDAD SIEMPRE ALCANZABLE: este bootstrap ya no aplica
+// el gate DURO (423/410). La identidad (user + memberships + activeBusinessId + role)
+// SIEMPRE se sirve — OperaOS nunca se suspende; lo que se suspende es cada negocio.
+// El middleware `meLifecycleGate` resuelve el lifecycle EFECTIVO del negocio activo sin
+// cortar la request y el handler DEGRADA: cuando el estado no es ACTIVE/GRACE, la config
+// operable `business` viaja como null y `lifecycle` expone el estado real ("no entrar a
+// mirar" preservado). El gate duro (tenant-gate.ts) sigue intacto en las rutas de datos.
+// Exportado con nombre para el test de wiring (login-gate.test.ts verifica que corre
+// tras authenticate y antes del handler).
 // ---------------------------------------------------------------------------
-export const loginTenantGate = tenantGate();
 
-authRouter.get('/me', authenticate, loginTenantGate, async (req: AuthedRequest, res) => {
+/**
+ * Middleware factory: resuelve el lifecycle efectivo del negocio activo y lo deja en
+ * `res.locals.tenantLifecycle` SIN denegar servicio (a diferencia de tenantGate).
+ * Con GRACE vigente conserva el header informativo `x-tenant-grace-until`.
+ * BD inyectable para tests (mismo patrón DI que tenantGate).
+ */
+export function resolveMeLifecycle(opts: { db?: TenantStateDb } = {}) {
+  return async (req: AuthedRequest, res: Response, next: NextFunction) => {
+    if (!req.businessId) {
+      res.locals.tenantLifecycle = null;
+      return next();
+    }
+    try {
+      const { effective, graceUntil } = await resolveTenantState(
+        req.businessId,
+        opts.db ? { db: opts.db } : {},
+      );
+      if (effective === TenantLifecycle.GRACE && graceUntil) {
+        res.setHeader(GRACE_UNTIL_HEADER, graceUntil.toISOString());
+      }
+      res.locals.tenantLifecycle = effective;
+    } catch (e) {
+      // Fail-closed solo para datos operables: sin estado resuelto no se sirve
+      // `business`, pero la identidad sigue disponible (nunca 500 por esto en /me).
+      console.error('[auth/me] error resolviendo lifecycle del negocio:', e);
+      res.locals.tenantLifecycle = null;
+    }
+    return next();
+  };
+}
+
+/** true si el lifecycle efectivo permite servir la config operable del negocio. */
+export function isBusinessOperable(lifecycle: TenantLifecycle | null): boolean {
+  return lifecycle === TenantLifecycle.ACTIVE || lifecycle === TenantLifecycle.GRACE;
+}
+
+export const meLifecycleGate = resolveMeLifecycle();
+
+authRouter.get('/me', authenticate, meLifecycleGate, async (req: AuthedRequest, res) => {
   const user = await prisma.user.findUnique({ where: { id: req.userId } });
   const memberships = await prisma.membership.findMany({ where: { userId: req.userId } });
+  const lifecycle = (res.locals.tenantLifecycle ?? null) as TenantLifecycle | null;
   // Config del negocio activo (la fuente de verdad del front: nombre, vertical,
-  // branding). El front la usa para construir su TenantConfig — sin mocks locales.
-  const business = await loadActiveBusiness(req.businessId);
+  // branding). Solo se sirve cuando el estado del negocio permite operar; para
+  // SUSPENDED/TERMINATED viaja null y el front acota el bloqueo a ese negocio.
+  const business = isBusinessOperable(lifecycle) ? await loadActiveBusiness(req.businessId) : null;
   res.json({
     user: user && { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, phone: user.phone },
     memberships,
     activeBusinessId: req.businessId,
     role: req.role,
     business,
+    lifecycle,
   });
 });
 

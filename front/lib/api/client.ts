@@ -25,13 +25,26 @@ export class ApiError extends Error {
   }
 }
 
-// Interceptor del kill switch (crm-tenant-lifecycle-gate WU4): ante una respuesta de
-// error, discrimina por el CÓDIGO del body (no por el status a secas) y, si es un
-// bloqueo del tenant (423 tenant_suspended / 410 tenant_terminated), fija el estado
-// global que monta la pantalla full-screen. Otros 410 del carril auth NO bloquean.
-function flagTenantBlocked(status: number, code?: string): void {
+// Rutas de PLATAFORMA (shell OperaOS): identidad, estado del tenant, config del tenant
+// y panel de operador. Un 423/410 en estas rutas NUNCA monta el bloqueo — OperaOS no se
+// suspende; se suspenden los negocios uno a uno. `/me/*` (datos de CLIENTE por negocio)
+// queda deliberadamente FUERA: un cliente mirando el panel de su negocio suspendido SÍ
+// debe ver la pantalla de bloqueo acotada.
+const SHELL_PATH_PREFIXES = ['/auth', '/tenant-status', '/tenant-config', '/service/operator'];
+
+function isShellPath(path: string): boolean {
+  return SHELL_PATH_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`) || path.startsWith(`${p}?`));
+}
+
+// Interceptor del kill switch (crm-tenant-block-scoping): ante una respuesta de error,
+// discrimina por el CÓDIGO del body (no por el status a secas) y, si es un bloqueo del
+// tenant (423 tenant_suspended / 410 tenant_terminated) en una ruta de NEGOCIO, fija el
+// bloqueo acotado al businessId que viajó como x-business-id en esa request. Las rutas
+// de plataforma (allowlist) y otros 410 del carril auth NO bloquean.
+function flagTenantBlocked(path: string, status: number, code?: string, businessId?: string | null): void {
+  if (isShellPath(path)) return;
   const variant = classifyBlocked(status, code);
-  if (variant) setTenantBlocked(variant);
+  if (variant && businessId) setTenantBlocked({ variant, businessId });
 }
 
 export async function apiFetch<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
@@ -53,7 +66,7 @@ export async function apiFetch<T = unknown>(path: string, init: RequestInit = {}
   const res = await fetch(`${base}/api${path}`, { ...init, headers });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    flagTenantBlocked(res.status, body?.error?.code);
+    flagTenantBlocked(path, res.status, body?.error?.code, b);
     throw new ApiError(body?.error?.message ?? `Error ${res.status}`, res.status, body?.error?.code);
   }
   if (res.status === 204) return undefined as T;
@@ -78,7 +91,7 @@ export async function apiFetchBlob(path: string, init: RequestInit = {}): Promis
   const res = await fetch(`${base}/api${path}`, { ...init, headers });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    flagTenantBlocked(res.status, body?.error?.code);
+    flagTenantBlocked(path, res.status, body?.error?.code, b);
     throw new ApiError(body?.error?.message ?? `Error ${res.status}`, res.status, body?.error?.code);
   }
   return res.blob();
@@ -99,7 +112,7 @@ export async function apiUpload<T = unknown>(path: string, formData: FormData): 
   const res = await fetch(`${base}/api${path}`, { method: 'POST', body: formData, headers });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    flagTenantBlocked(res.status, body?.error?.code);
+    flagTenantBlocked(path, res.status, body?.error?.code, b);
     throw new Error(body?.error?.message ?? `Error ${res.status}`);
   }
   return res.json() as Promise<T>;

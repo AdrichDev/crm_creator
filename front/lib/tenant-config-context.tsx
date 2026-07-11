@@ -14,6 +14,7 @@ import { VERTICAL_MAP, type VerticalId } from './config/verticals';
 import type { Role } from './config/roles';
 import { isApiEnabled, apiFetch } from './api/client';
 import { isAuthed, onAuthStateChange, BUSINESS_KEY } from './auth/session';
+import { reconcileTenantBlock } from './tenant/blocked-state';
 
 // Proyecto tal como lo sirve el back (/api/projects).
 interface ApiProject {
@@ -249,6 +250,9 @@ export function TenantConfigProvider({ children }: { children: ReactNode }) {
     // En modo CRM, el proyecto ES el negocio: fija el tenant activo para el scoping
     // de datos (x-business-id) de todas las llamadas al back.
     if (apiMode) { try { localStorage.setItem(BUSINESS_KEY, id); } catch { /* noop */ } }
+    // Reconciliación del kill switch (crm-tenant-block-scoping): un bloqueo obsoleto
+    // de OTRO negocio no debe persistir contra el negocio recién activado.
+    reconcileTenantBlock(id);
   }, [persistActive, apiMode]);
   const closeProject = useCallback(() => persistActive(null), [persistActive]);
 
