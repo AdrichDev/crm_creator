@@ -80,8 +80,8 @@ function fakeDb(opts: { memberships?: MembershipRow[]; secrets?: SecretRow[] } =
     tenantSecret: {
       findMany: async ({ where }) =>
         secrets
-          .filter((s) => s.businessId === where.businessId && where.name.in.includes(s.name as never))
-          .map((s) => ({ name: s.name, updatedAt: s.updatedAt })),
+          .filter((s) => s.businessId === where.businessId)
+          .map((s) => ({ name: s.name, scope: s.scope, envVarName: s.envVarName, updatedAt: s.updatedAt })),
       findUnique: async ({ where }) => {
         const { businessId, name } = where.businessId_name;
         const row = secrets.find((s) => s.businessId === businessId && s.name === name);
@@ -170,6 +170,27 @@ describe('GET /tenant-keys/:businessId/secrets', () => {
     await listSecretsHandler(db, mockReq({ userId: 'user-cliente', params: { businessId: BIZ_A } }), res);
     assert.equal(res.statusCode, 403);
   });
+
+  test('1 preset configurado + 1 free-form → GET trae ambos con scope/envVarName correctos (crm-tenant-keys-freeform)', async () => {
+    const db = fakeDb({
+      secrets: [
+        seedEncrypted(BIZ_A, 'ANTHROPIC_API_KEY', 'BACKEND_SECRET', 'sk-ant-real'),
+        seedEncrypted(BIZ_A, 'NEXT_PUBLIC_SUPABASE_ANON_KEY', 'FRONTEND_PUBLIC', 'anon-real', 'NEXT_PUBLIC_SUPABASE_ANON_KEY'),
+      ],
+    });
+    const res = mockRes();
+    await listSecretsHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_A } }), res);
+    assert.equal(res.statusCode, 200);
+    const body = res.body as { secrets: Array<{ name: string; configured: boolean; scope: string; envVarName: string | null }> };
+    assert.equal(body.secrets.length, 6);
+    const byName = new Map(body.secrets.map((s) => [s.name, s]));
+    assert.equal(byName.get('ANTHROPIC_API_KEY')?.configured, true);
+    const freeform = byName.get('NEXT_PUBLIC_SUPABASE_ANON_KEY');
+    assert.equal(freeform?.configured, true);
+    assert.equal(freeform?.scope, 'FRONTEND_PUBLIC');
+    assert.equal(freeform?.envVarName, 'NEXT_PUBLIC_SUPABASE_ANON_KEY');
+    assert.ok(!JSON.stringify(body).includes('anon-real'));
+  });
 });
 
 describe('PUT /tenant-keys/:businessId/secrets/:name', () => {
@@ -198,12 +219,55 @@ describe('PUT /tenant-keys/:businessId/secrets/:name', () => {
     assert.equal(db.secrets.filter((s) => s.businessId === BIZ_A && s.name === 'OPENAI_API_KEY').length, 1);
   });
 
-  test(':name desconocido → 404 unknown_secret', async () => {
+  test(':name fuera de catálogo pero formato válido → 200 free-form BACKEND_SECRET (crm-tenant-keys-freeform)', async () => {
     const db = fakeDb();
     const res = mockRes();
     await upsertSecretHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_A, name: 'FOO' }, body: { value: 'x' } }), res);
-    assert.equal(res.statusCode, 404);
-    assert.equal((res.body as { error: { code: string } }).error.code, 'unknown_secret');
+    assert.equal(res.statusCode, 200);
+    const body = res.body as { name: string; scope: string; envVarName: string | null };
+    assert.equal(body.scope, 'BACKEND_SECRET');
+    assert.equal(body.envVarName, null);
+  });
+
+  test('free-form NEXT_PUBLIC_SUPABASE_ANON_KEY → 200 FRONTEND_PUBLIC, envVarName = mismo nombre (crm-tenant-keys-freeform)', async () => {
+    const db = fakeDb();
+    const res = mockRes();
+    await upsertSecretHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_A, name: 'NEXT_PUBLIC_SUPABASE_ANON_KEY' }, body: { value: 'anon-key-real' } }), res);
+    assert.equal(res.statusCode, 200);
+    const body = res.body as { name: string; scope: string; envVarName: string | null; configured: boolean };
+    assert.equal(body.scope, 'FRONTEND_PUBLIC');
+    assert.equal(body.envVarName, 'NEXT_PUBLIC_SUPABASE_ANON_KEY');
+    assert.equal(body.configured, true);
+  });
+
+  test('free-form STRIPE_SECRET_KEY → 200 BACKEND_SECRET, envVarName null (crm-tenant-keys-freeform)', async () => {
+    const db = fakeDb();
+    const res = mockRes();
+    await upsertSecretHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_A, name: 'STRIPE_SECRET_KEY' }, body: { value: 'sk_live_x' } }), res);
+    assert.equal(res.statusCode, 200);
+    const body = res.body as { scope: string; envVarName: string | null };
+    assert.equal(body.scope, 'BACKEND_SECRET');
+    assert.equal(body.envVarName, null);
+  });
+
+  test('nombre con formato inválido → 422 invalid_name (crm-tenant-keys-freeform)', async () => {
+    const db = fakeDb();
+    for (const bad of ['stripe_key', '1KEY', 'KEY CON ESPACIO']) {
+      const res = mockRes();
+      await upsertSecretHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_A, name: bad }, body: { value: 'x' } }), res);
+      assert.equal(res.statusCode, 422, `esperaba 422 para "${bad}"`);
+      assert.equal((res.body as { error: { code: string } }).error.code, 'invalid_name', `esperaba invalid_name para "${bad}"`);
+    }
+  });
+
+  test('nombre reservado por el export (NEXT_PUBLIC_TENANT_JSON / NEXT_PUBLIC_API_URL) → 422 reserved_name (crm-tenant-keys-freeform)', async () => {
+    const db = fakeDb();
+    for (const reserved of ['NEXT_PUBLIC_TENANT_JSON', 'NEXT_PUBLIC_API_URL']) {
+      const res = mockRes();
+      await upsertSecretHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_A, name: reserved }, body: { value: 'x' } }), res);
+      assert.equal(res.statusCode, 422, `esperaba 422 para "${reserved}"`);
+      assert.equal((res.body as { error: { code: string } }).error.code, 'reserved_name', `esperaba reserved_name para "${reserved}"`);
+    }
   });
 
   test('value vacío → 422 invalid', async () => {
@@ -262,12 +326,28 @@ describe('DELETE /tenant-keys/:businessId/secrets/:name', () => {
     assert.equal((res.body as { error: { code: string } }).error.code, 'secret_not_found');
   });
 
-  test(':name fuera de catálogo → 404 unknown_secret', async () => {
+  test(':name fuera de catálogo sin fila → 404 secret_not_found (crm-tenant-keys-freeform: ya no hay gate de catálogo)', async () => {
     const db = fakeDb();
     const res = mockRes();
     await deleteSecretHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_A, name: 'FOO' } }), res);
     assert.equal(res.statusCode, 404);
-    assert.equal((res.body as { error: { code: string } }).error.code, 'unknown_secret');
+    assert.equal((res.body as { error: { code: string } }).error.code, 'secret_not_found');
+  });
+
+  test('borra una key free-form previamente creada → 200, desaparece de un GET posterior (crm-tenant-keys-freeform)', async () => {
+    const db = fakeDb();
+    const putRes = mockRes();
+    await upsertSecretHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_A, name: 'STRIPE_SECRET_KEY' }, body: { value: 'sk_x' } }), putRes);
+    assert.equal(putRes.statusCode, 200);
+
+    const delRes = mockRes();
+    await deleteSecretHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_A, name: 'STRIPE_SECRET_KEY' } }), delRes);
+    assert.equal(delRes.statusCode, 200);
+
+    const getRes = mockRes();
+    await listSecretsHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_A } }), getRes);
+    const listed = (getRes.body as { secrets: { name: string }[] }).secrets;
+    assert.equal(listed.some((s) => s.name === 'STRIPE_SECRET_KEY'), false);
   });
 
   test('borrar y volver a guardar el mismo name funciona sin residuo (hard delete no bloquea el upsert)', async () => {
@@ -317,12 +397,18 @@ describe('POST /tenant-keys/:businessId/secrets/:name/test', () => {
     assert.equal((res.body as { error: { code: string } }).error.code, 'no_value');
   });
 
-  test(':name desconocido → 404 unknown_secret', async () => {
+  test(':name fuera de catálogo (free-form) → 400 not_testable, sin llamar al proveedor (crm-tenant-keys-freeform)', async () => {
     const db = fakeDb();
+    let connTestCalls = 0;
+    const countingConnTest = async (...args: Parameters<typeof fakeConnTestOk>) => {
+      connTestCalls += 1;
+      return fakeConnTestOk(...args);
+    };
     const res = mockRes();
-    await testSecretHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_A, name: 'FOO' }, body: { value: 'x' } }), res, fakeConnTestOk);
-    assert.equal(res.statusCode, 404);
-    assert.equal((res.body as { error: { code: string } }).error.code, 'unknown_secret');
+    await testSecretHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_A, name: 'STRIPE_SECRET_KEY' }, body: { value: 'x' } }), res, countingConnTest);
+    assert.equal(res.statusCode, 400);
+    assert.equal((res.body as { error: { code: string } }).error.code, 'not_testable');
+    assert.equal(connTestCalls, 0, 'una key sin provider conocido nunca debe llamar al proveedor');
   });
 
   test('6º intento en la ventana → 429 (rate limit por businessId:name)', async () => {

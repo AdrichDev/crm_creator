@@ -2,10 +2,11 @@ import { Router, type Response } from 'express';
 import { prisma } from '../prisma.js';
 import type { AuthedRequest } from '../middleware/types.js';
 import type { MemberRole } from '../lib/generated/prisma/client.js';
-import { TENANT_SECRET_CATALOG, findSecretSlot, type SecretSlotName } from '../lib/tenant-secrets/catalog.js';
+import { TENANT_SECRET_CATALOG, findSecretSlot, ENV_KEY_NAME_PATTERN, inferScope } from '../lib/tenant-secrets/catalog.js';
 import { encryptSecret, decryptSecret } from '../lib/tenant-secrets/crypto.js';
 import { testProviderConnection } from '../lib/tenant-secrets/provider-test.js';
 import { consume } from '../lib/rateLimit.js';
+import { BASE_ENV_VAR_NAMES } from '../lib/export-builders/public-env-secrets.js';
 
 // ---------------------------------------------------------------------------
 // crm-onboarding-tenant-keys — superficie HUMANA (sesión + Membership) sobre el
@@ -21,11 +22,13 @@ import { consume } from '../lib/rateLimit.js';
 // cerrado, forjar un :businessId ajeno cae en 404 sin tocar datos.
 // ---------------------------------------------------------------------------
 
-const CATALOG_NAMES = TENANT_SECRET_CATALOG.map((s) => s.name);
+const CATALOG_NAMES: string[] = TENANT_SECRET_CATALOG.map((s) => s.name);
 const ADMIN_ROLES: MemberRole[] = ['ADMIN', 'MANAGER'];
 
 interface SecretMetaRow {
   name: string;
+  scope: 'FRONTEND_PUBLIC' | 'BACKEND_SECRET';
+  envVarName: string | null;
   updatedAt: Date;
 }
 
@@ -45,8 +48,8 @@ export interface TenantKeysDb {
   };
   tenantSecret: {
     findMany(args: {
-      where: { businessId: string; name: { in: SecretSlotName[] } };
-      select: { name: true; updatedAt: true };
+      where: { businessId: string };
+      select: { name: true; scope: true; envVarName: true; updatedAt: true };
     }): Promise<SecretMetaRow[]>;
     findUnique(args: {
       where: { businessId_name: { businessId: string; name: string } };
@@ -75,7 +78,8 @@ const defaultDb: TenantKeysDb = {
     findFirst: (args) => prisma.membership.findFirst({ where: args.where, select: { role: true } }),
   },
   tenantSecret: {
-    findMany: (args) => prisma.tenantSecret.findMany({ where: args.where, select: { name: true, updatedAt: true } }),
+    findMany: (args) =>
+      prisma.tenantSecret.findMany({ where: args.where, select: { name: true, scope: true, envVarName: true, updatedAt: true } }),
     findUnique: (args) =>
       prisma.tenantSecret.findUnique({
         where: args.where,
@@ -118,20 +122,33 @@ export async function listSecretsHandler(db: TenantKeysDb, req: AuthedRequest, r
   try {
     if (!(await requireMemberAdmin(db, req, res))) return;
     const businessId = req.params.businessId;
+    // crm-tenant-keys-freeform: sin filtro de nombre — trae TODO lo del tenant, no solo el
+    // catálogo. Las filas fuera de los 5 presets se listan también (name === label, sin
+    // provider, scope/envVarName tal cual quedaron guardados al crearlas).
     const rows = await db.tenantSecret.findMany({
-      where: { businessId, name: { in: CATALOG_NAMES } },
-      select: { name: true, updatedAt: true },
+      where: { businessId },
+      select: { name: true, scope: true, envVarName: true, updatedAt: true },
     });
-    const byName = new Map(rows.map((r) => [r.name, r.updatedAt]));
-    const secrets = TENANT_SECRET_CATALOG.map((slot) => ({
+    const byName = new Map(rows.map((r) => [r.name, r]));
+    const presetSecrets = TENANT_SECRET_CATALOG.map((slot) => ({
       name: slot.name,
       label: slot.label,
       scope: slot.scope,
       envVarName: slot.envVarName ?? null,
       configured: byName.has(slot.name),
-      updatedAt: byName.get(slot.name)?.toISOString() ?? null,
+      updatedAt: byName.get(slot.name)?.updatedAt.toISOString() ?? null,
     }));
-    res.status(200).json({ secrets });
+    const extraSecrets = rows
+      .filter((r) => !CATALOG_NAMES.includes(r.name))
+      .map((r) => ({
+        name: r.name,
+        label: r.name,
+        scope: r.scope,
+        envVarName: r.envVarName,
+        configured: true,
+        updatedAt: r.updatedAt.toISOString(),
+      }));
+    res.status(200).json({ secrets: [...presetSecrets, ...extraSecrets] });
   } catch (e) {
     console.error('[tenant-keys] error listando secretos:', e);
     res.status(500).json({ error: { code: 'server_error', message: 'No se pudieron cargar los secretos' } });
@@ -144,8 +161,30 @@ export async function upsertSecretHandler(db: TenantKeysDb, req: AuthedRequest, 
   try {
     if (!(await requireMemberAdmin(db, req, res))) return;
     const businessId = req.params.businessId;
-    const slot = findSecretSlot(req.params.name);
-    if (!slot) return res.status(404).json({ error: { code: 'unknown_secret', message: 'Secreto no reconocido' } });
+    const name = req.params.name;
+    const slot = findSecretSlot(name);
+
+    // crm-tenant-keys-freeform: fuera del catálogo de 5 presets, se acepta cualquier
+    // nombre con formato válido — scope/envVarName se infieren por prefijo NEXT_PUBLIC_,
+    // nunca del body (mismo principio que el catálogo: el cliente no elige su propio scope).
+    let scope: 'FRONTEND_PUBLIC' | 'BACKEND_SECRET';
+    let envVarName: string | null;
+    let label: string;
+    if (slot) {
+      scope = slot.scope;
+      envVarName = slot.envVarName ?? null;
+      label = slot.label;
+    } else {
+      if (!ENV_KEY_NAME_PATTERN.test(name)) {
+        return res.status(422).json({ error: { code: 'invalid_name', message: 'Nombre inválido: usa MAYÚSCULAS_CON_GUION_BAJO empezando por letra' } });
+      }
+      if (BASE_ENV_VAR_NAMES.includes(name)) {
+        return res.status(422).json({ error: { code: 'reserved_name', message: 'Ese nombre está reservado por el export' } });
+      }
+      scope = inferScope(name);
+      envVarName = scope === 'FRONTEND_PUBLIC' ? name : null;
+      label = name;
+    }
 
     const body = (req.body ?? {}) as { value?: unknown };
     if (typeof body.value !== 'string' || !body.value) {
@@ -157,26 +196,24 @@ export async function upsertSecretHandler(db: TenantKeysDb, req: AuthedRequest, 
       return res.status(422).json({ error: { code: 'invalid', message: 'value no puede contener saltos de línea' } });
     }
 
-    // scope/envVarName SIEMPRE del catálogo — cualquier valor del body para esos
-    // campos se ignora (el tipo del body ni siquiera los declara).
     const enc = encryptSecret(body.value);
     const row = await db.tenantSecret.upsert({
-      where: { businessId_name: { businessId, name: slot.name } },
+      where: { businessId_name: { businessId, name } },
       create: {
-        businessId, name: slot.name, scope: slot.scope,
+        businessId, name, scope,
         valueCiphertext: enc.ciphertext, iv: enc.iv, authTag: enc.authTag, keyVersion: enc.keyVersion,
-        envVarName: slot.envVarName ?? null,
+        envVarName,
       },
       update: {
-        scope: slot.scope,
+        scope,
         valueCiphertext: enc.ciphertext, iv: enc.iv, authTag: enc.authTag, keyVersion: enc.keyVersion,
-        envVarName: slot.envVarName ?? null,
+        envVarName,
       },
     });
 
     // El valor NUNCA vuelve — ni cifrado ni en claro.
     res.status(200).json({
-      name: slot.name, label: slot.label, scope: slot.scope, envVarName: slot.envVarName ?? null,
+      name, label, scope, envVarName,
       configured: true, updatedAt: row.updatedAt.toISOString(),
     });
   } catch (e) {
@@ -191,16 +228,17 @@ export async function deleteSecretHandler(db: TenantKeysDb, req: AuthedRequest, 
   try {
     if (!(await requireMemberAdmin(db, req, res))) return;
     const businessId = req.params.businessId;
-    const slot = findSecretSlot(req.params.name);
-    if (!slot) return res.status(404).json({ error: { code: 'unknown_secret', message: 'Secreto no reconocido' } });
+    const name = req.params.name;
 
-    const existing = await db.tenantSecret.findUnique({ where: { businessId_name: { businessId, name: slot.name } } });
+    // crm-tenant-keys-freeform: opera sobre cualquier name existente, no solo catálogo —
+    // el 404 de abajo ya cubre un nombre inventado sin fila.
+    const existing = await db.tenantSecret.findUnique({ where: { businessId_name: { businessId, name } } });
     if (!existing) return res.status(404).json({ error: { code: 'secret_not_found', message: 'Secreto no encontrado' } });
 
     // Hard delete: sin tombstone (ver design.md §4) — un TenantSecret borrado es
     // indistinguible de uno que nunca existió, y no hay requisito de auditoría histórica.
-    await db.tenantSecret.delete({ where: { businessId_name: { businessId, name: slot.name } } });
-    res.status(200).json({ name: slot.name, configured: false });
+    await db.tenantSecret.delete({ where: { businessId_name: { businessId, name } } });
+    res.status(200).json({ name, configured: false });
   } catch (e) {
     console.error('[tenant-keys] error borrando secreto:', e);
     res.status(500).json({ error: { code: 'server_error', message: 'No se pudo borrar el secreto' } });
@@ -231,7 +269,10 @@ export async function testSecretHandler(
     if (!(await requireMemberAdmin(db, req, res))) return;
     const businessId = req.params.businessId;
     const slot = findSecretSlot(req.params.name);
-    if (!slot) return res.status(404).json({ error: { code: 'unknown_secret', message: 'Secreto no reconocido' } });
+    // crm-tenant-keys-freeform: "Probar conexión" solo existe para los 5 presets con
+    // provider conocido — una key libre no tiene con qué probarse. 400 ANTES del
+    // rate-limit: no consume cupo por algo que nunca se va a poder ejecutar.
+    if (!slot) return res.status(400).json({ error: { code: 'not_testable', message: 'Esta variable no tiene prueba de conexión disponible' } });
 
     // Rate limit DESPUÉS del gate (N3): solo un miembro ADMIN/MANAGER del negocio puede
     // consumir el contador; un no-miembro ya salió por 404 arriba. Antes de resolver el

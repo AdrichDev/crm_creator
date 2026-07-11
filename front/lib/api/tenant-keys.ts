@@ -8,15 +8,23 @@
 // :businessId del PATH, no por el header — ver back/src/routes/tenant-keys.ts.
 import { apiFetch } from './client';
 
-export type TenantSecretName =
-  | 'OPENAI_API_KEY'
-  | 'GEMINI_API_KEY'
-  | 'ANTHROPIC_API_KEY'
-  | 'GOOGLE_MAPS_API_KEY'
-  | 'DATABASE_URL';
+// crm-tenant-keys-freeform: era unión cerrada de 5 nombres — el catálogo pasó de gate a
+// preset, así que el tipo se abre a cualquier nombre válido (el back sigue validando formato).
+export type TenantSecretName = string;
+
+export const KNOWN_PRESET_NAMES = [
+  'OPENAI_API_KEY',
+  'GEMINI_API_KEY',
+  'ANTHROPIC_API_KEY',
+  'GOOGLE_MAPS_API_KEY',
+  'DATABASE_URL',
+] as const;
 
 export interface TenantSecretSlot {
-  name: TenantSecretName;
+  name: string;
+  label: string;
+  scope: 'FRONTEND_PUBLIC' | 'BACKEND_SECRET';
+  envVarName: string | null;
   configured: boolean;
   updatedAt: string | null;
 }

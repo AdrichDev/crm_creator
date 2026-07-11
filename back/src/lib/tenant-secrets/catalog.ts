@@ -45,3 +45,14 @@ const CATALOG_BY_NAME = new Map(TENANT_SECRET_CATALOG.map((slot) => [slot.name, 
 export function findSecretSlot(name: string): SecretSlot | undefined {
   return CATALOG_BY_NAME.get(name as SecretSlotName);
 }
+
+// crm-tenant-keys-freeform: formato de nombre para keys libres (fuera del catálogo de 5
+// presets). Mayúsculas/dígitos/guion bajo, empieza por letra — mismo espíritu que el
+// `ENV_VAR_NAME_PATTERN` de service-operator-tenant-keys.ts pero sin exigir prefijo
+// NEXT_PUBLIC_ (aquí cubre tanto scope público como secreto).
+export const ENV_KEY_NAME_PATTERN = /^[A-Z][A-Z0-9_]*$/;
+
+/** Scope inferido por convención Next.js: prefijo NEXT_PUBLIC_ = va al bundle del front. */
+export function inferScope(name: string): 'FRONTEND_PUBLIC' | 'BACKEND_SECRET' {
+  return name.startsWith('NEXT_PUBLIC_') ? 'FRONTEND_PUBLIC' : 'BACKEND_SECRET';
+}

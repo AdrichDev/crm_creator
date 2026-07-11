@@ -213,3 +213,115 @@ describe('TenantKeysPanel', () => {
     expect(apiFetch).not.toHaveBeenCalledWith(expect.stringContaining('secrets/OPENAI_API_KEY'), expect.objectContaining({ method: 'DELETE' }));
   });
 });
+
+describe('TenantKeysPanel — Otras variables (crm-tenant-keys-freeform)', () => {
+  beforeEach(() => {
+    apiFetch.mockReset().mockResolvedValue(VACIO);
+    confirmMock.mockReset().mockResolvedValue(true);
+  });
+  afterEach(() => cleanup());
+
+  it('key inválida deja "Agregar" disabled', async () => {
+    render(<TenantKeysPanel businessId={BIZ} />);
+    await flush();
+    const keyInput = screen.getByLabelText('Nombre de la nueva variable');
+    const valueInput = screen.getByLabelText('Valor de la nueva variable');
+    fireEvent.change(keyInput, { target: { value: 'stripe_key' } });
+    fireEvent.change(valueInput, { target: { value: 'algo' } });
+    await flush();
+    expect(screen.getByText('Agregar')).toBeDisabled();
+  });
+
+  it('escribir NEXT_PUBLIC_FOO + value + Agregar llama upsertSecret y la fila pasa a persistida', async () => {
+    let putBody = '';
+    apiFetch.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === `/tenant-keys/${BIZ}/secrets` && (!init || init.method === undefined)) {
+        return { secrets: [] };
+      }
+      if (path === `/tenant-keys/${BIZ}/secrets/NEXT_PUBLIC_FOO` && init?.method === 'PUT') {
+        putBody = init.body as string;
+        return {
+          name: 'NEXT_PUBLIC_FOO',
+          label: 'NEXT_PUBLIC_FOO',
+          scope: 'FRONTEND_PUBLIC',
+          envVarName: 'NEXT_PUBLIC_FOO',
+          configured: true,
+          updatedAt: '2026-07-11T00:00:00.000Z',
+        };
+      }
+      return undefined;
+    });
+    render(<TenantKeysPanel businessId={BIZ} />);
+    await flush();
+
+    fireEvent.change(screen.getByLabelText('Nombre de la nueva variable'), { target: { value: 'NEXT_PUBLIC_FOO' } });
+    fireEvent.change(screen.getByLabelText('Valor de la nueva variable'), { target: { value: 'valor-libre' } });
+    await flush();
+    expect(screen.getByText('Agregar')).not.toBeDisabled();
+
+    apiFetch.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === `/tenant-keys/${BIZ}/secrets/NEXT_PUBLIC_FOO` && init?.method === 'PUT') {
+        putBody = init.body as string;
+        return {
+          name: 'NEXT_PUBLIC_FOO',
+          label: 'NEXT_PUBLIC_FOO',
+          scope: 'FRONTEND_PUBLIC',
+          envVarName: 'NEXT_PUBLIC_FOO',
+          configured: true,
+          updatedAt: '2026-07-11T00:00:00.000Z',
+        };
+      }
+      if (path === `/tenant-keys/${BIZ}/secrets`) {
+        return {
+          secrets: [
+            {
+              name: 'NEXT_PUBLIC_FOO',
+              label: 'NEXT_PUBLIC_FOO',
+              scope: 'FRONTEND_PUBLIC',
+              envVarName: 'NEXT_PUBLIC_FOO',
+              configured: true,
+              updatedAt: '2026-07-11T00:00:00.000Z',
+            },
+          ],
+        };
+      }
+      return undefined;
+    });
+
+    fireEvent.click(screen.getByText('Agregar'));
+    await flush();
+
+    expect(JSON.parse(putBody)).toEqual({ value: 'valor-libre' });
+    expect(screen.getByText('NEXT_PUBLIC_FOO')).toBeInTheDocument();
+    expect(screen.getByText('Pública')).toBeInTheDocument();
+    expect((screen.getByLabelText('Nombre de la nueva variable') as HTMLInputElement).value).toBe('');
+  });
+
+  it('Quitar en una fila free-form existente llama deleteSecret', async () => {
+    apiFetch.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === `/tenant-keys/${BIZ}/secrets` && init?.method === undefined) {
+        return {
+          secrets: [
+            {
+              name: 'STRIPE_SECRET_KEY',
+              label: 'STRIPE_SECRET_KEY',
+              scope: 'BACKEND_SECRET',
+              envVarName: null,
+              configured: true,
+              updatedAt: '2026-07-11T00:00:00.000Z',
+            },
+          ],
+        };
+      }
+      if (path === `/tenant-keys/${BIZ}/secrets/STRIPE_SECRET_KEY` && init?.method === 'DELETE') {
+        return { name: 'STRIPE_SECRET_KEY', configured: false };
+      }
+      return undefined;
+    });
+    render(<TenantKeysPanel businessId={BIZ} />);
+    await flush();
+    fireEvent.click(screen.getByText('Quitar'));
+    await flush();
+    expect(apiFetch).toHaveBeenCalledWith(`/tenant-keys/${BIZ}/secrets/STRIPE_SECRET_KEY`, { method: 'DELETE' });
+  });
+});

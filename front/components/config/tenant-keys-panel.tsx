@@ -13,6 +13,7 @@ import {
   upsertSecret,
   deleteSecret,
   testSecret,
+  KNOWN_PRESET_NAMES,
   type TenantSecretName,
   type TenantSecretSlot,
 } from '@/lib/api/tenant-keys';
@@ -26,6 +27,10 @@ const CATALOG: Array<{ name: TenantSecretName; label: string; group: SlotGroup; 
   { name: 'GOOGLE_MAPS_API_KEY', label: 'Google Maps', group: 'maps', kind: 'maps' },
   { name: 'DATABASE_URL', label: 'URL (BD)', group: 'database', kind: 'database' },
 ];
+
+// crm-tenant-keys-freeform: mismo regex que back/src/lib/tenant-secrets/catalog.ts
+// (ENV_KEY_NAME_PATTERN) — duplicado a propósito para no importar código de back en el bundle.
+const ENV_KEY_NAME_PATTERN = /^[A-Z][A-Z0-9_]*$/;
 
 // Máscara de longitud FIJA para un slot ya configurado: el back nunca devuelve el
 // valor ni su longitud, así que estos puntos NO reflejan la clave real — solo indican
@@ -47,6 +52,10 @@ export function TenantKeysPanel({ businessId, groups }: TenantKeysPanelProps) {
   const [status, setStatus] = useState<Record<string, CardStatus>>({});
   const [testResult, setTestResult] = useState<Record<string, TestOutcome>>({});
   const [loading, setLoading] = useState(true);
+  const [draftKey, setDraftKey] = useState('');
+  const [draftValue, setDraftValue] = useState('');
+  const [draftStatus, setDraftStatus] = useState<'idle' | 'saving'>('idle');
+  const [draftError, setDraftError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -63,6 +72,11 @@ export function TenantKeysPanel({ businessId, groups }: TenantKeysPanelProps) {
   useEffect(() => { void load(); }, [load]);
 
   const visible = groups ? CATALOG.filter((c) => groups.includes(c.group)) : CATALOG;
+  // crm-tenant-keys-freeform: filas fuera de los 5 presets — no tienen `group`, así que se
+  // muestran siempre en "Otras variables" sin importar el filtro `groups` de esta instancia.
+  const extraSecrets = slots.filter((s) => !(KNOWN_PRESET_NAMES as readonly string[]).includes(s.name));
+  const draftKeyTrimmed = draftKey.trim();
+  const draftKeyValid = ENV_KEY_NAME_PATTERN.test(draftKeyTrimmed);
 
   function setCardStatus(name: string, s: CardStatus) {
     setStatus((prev) => ({ ...prev, [name]: s }));
@@ -141,6 +155,30 @@ export function TenantKeysPanel({ businessId, groups }: TenantKeysPanelProps) {
     }
   }
 
+  async function agregarLibre() {
+    const key = draftKeyTrimmed;
+    const value = draftValue.trim();
+    if (!draftKeyValid || !value) return;
+    setDraftStatus('saving');
+    setDraftError(null);
+    try {
+      await upsertSecret(businessId, key, value);
+      setDraftKey('');
+      setDraftValue('');
+      await load();
+    } catch (e) {
+      const texto =
+        e instanceof ApiError && e.code === 'reserved_name'
+          ? 'Ese nombre está reservado por el export.'
+          : e instanceof ApiError && e.code === 'invalid_name'
+            ? 'Nombre inválido: usa MAYÚSCULAS_CON_GUION_BAJO empezando por letra.'
+            : 'No se pudo guardar.';
+      setDraftError(texto);
+    } finally {
+      setDraftStatus('idle');
+    }
+  }
+
   return (
     <div className="space-y-4">
       {visible.map(({ name, label, kind }) => {
@@ -212,6 +250,115 @@ export function TenantKeysPanel({ businessId, groups }: TenantKeysPanelProps) {
           </Card>
         );
       })}
+
+      <div className="space-y-3 pt-2">
+        <p className="text-sm font-medium text-white/80">Otras variables</p>
+        <p className="text-xs text-white/50">
+          Añade cualquier variable que tu app exportada necesite. Los nombres que empiezan por{' '}
+          <code>NEXT_PUBLIC_</code> se hornean en el export del front; el resto quedan solo en el backend.
+        </p>
+
+        {extraSecrets.map((slot) => {
+          const name = slot.name;
+          const st = status[name] ?? 'idle';
+          const outcome = testResult[name] ?? null;
+          const editing = inputs[name] !== undefined;
+          return (
+            <Card key={name}>
+              <CardBody className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <p className="font-medium text-white">{name}</p>
+                    <Badge tone={slot.scope === 'FRONTEND_PUBLIC' ? 'blue' : 'gray'}>
+                      {slot.scope === 'FRONTEND_PUBLIC' ? 'Pública' : 'Secreta'}
+                    </Badge>
+                    <Badge tone={slot.configured ? 'green' : 'gray'}>
+                      {slot.configured ? 'configurado' : 'no configurado'}
+                    </Badge>
+                  </div>
+                  <Button variant="outline" onClick={() => void quitar(name, name)} disabled={st !== 'idle'}>
+                    {st === 'deleting' ? 'Quitando…' : 'Quitar'}
+                  </Button>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {slot.configured && !editing ? (
+                    <input
+                      readOnly
+                      type="text"
+                      aria-label={`${name} (guardado, oculto)`}
+                      value={SAVED_MASK}
+                      onFocus={() => setInputs((prev) => ({ ...prev, [name]: '' }))}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setInputs((prev) => ({ ...prev, [name]: '' }));
+                      }}
+                      className="min-w-[220px] flex-1 cursor-text rounded-[8px] border border-white/10 bg-black/20 px-3 py-2 text-sm tracking-widest text-white/60"
+                    />
+                  ) : (
+                    <input
+                      type="password"
+                      aria-label={`Valor de ${name}`}
+                      placeholder="Pegar valor…"
+                      value={inputs[name] ?? ''}
+                      onChange={(e) => setInputs((prev) => ({ ...prev, [name]: e.target.value }))}
+                      className="min-w-[220px] flex-1 rounded-[8px] border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+                      autoComplete="new-password"
+                    />
+                  )}
+                  <Button onClick={() => void guardar(name)} disabled={st !== 'idle' || !(inputs[name] ?? '').trim()}>
+                    {st === 'saving' ? 'Guardando…' : 'Guardar'}
+                  </Button>
+                </div>
+
+                {outcome && (
+                  <p className={outcome.tone === 'ok' ? 'text-sm text-emerald-400' : 'text-sm text-red-400'}>
+                    {outcome.texto}
+                  </p>
+                )}
+              </CardBody>
+            </Card>
+          );
+        })}
+
+        <Card>
+          <CardBody className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="text"
+                aria-label="Nombre de la nueva variable"
+                placeholder="NEXT_PUBLIC_SUPABASE_URL"
+                value={draftKey}
+                onChange={(e) => setDraftKey(e.target.value)}
+                className="min-w-[220px] flex-1 rounded-[8px] border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+              />
+              <input
+                type="password"
+                aria-label="Valor de la nueva variable"
+                placeholder="Pegar valor…"
+                value={draftValue}
+                onChange={(e) => setDraftValue(e.target.value)}
+                className="min-w-[220px] flex-1 rounded-[8px] border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+                autoComplete="new-password"
+              />
+              <Button
+                onClick={() => void agregarLibre()}
+                disabled={draftStatus !== 'idle' || !draftKeyValid || !draftValue.trim()}
+              >
+                {draftStatus === 'saving' ? 'Agregando…' : 'Agregar'}
+              </Button>
+            </div>
+            {draftKeyTrimmed && (
+              <p className="text-xs text-white/50">
+                {draftKeyTrimmed.startsWith('NEXT_PUBLIC_')
+                  ? 'Pública — va al bundle del export'
+                  : 'Secreta — solo backend'}
+              </p>
+            )}
+            {draftError && <p className="text-sm text-red-400">{draftError}</p>}
+          </CardBody>
+        </Card>
+      </div>
     </div>
   );
 }
