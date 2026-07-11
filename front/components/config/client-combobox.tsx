@@ -11,8 +11,8 @@ import { prepareClientOptions, type ClientLite } from '@/lib/clients/picker';
  * (cursor pointer, sin caja ni hueco). Hereda el tema vía el scope .onboarding.
  * El dropdown se abre ARRIBA si no hay espacio suficiente abajo (evita scroll de página).
  */
-export function ClientCombobox({ clients, selectedId, onPick, error }:
-  { clients: ClientLite[]; selectedId?: string; onPick: (c: ClientLite) => void; error?: string }) {
+export function ClientCombobox({ clients, selectedId, onPick, error, disabled }:
+  { clients: ClientLite[]; selectedId?: string; onPick: (c: ClientLite) => void; error?: string; disabled?: boolean }) {
   const selected = clients.find((c) => c.id === selectedId) ?? null;
   const [query, setQuery] = useState(selected?.nombre ?? '');
   const [open, setOpen] = useState(false);
@@ -86,14 +86,15 @@ export function ClientCombobox({ clients, selectedId, onPick, error }:
         <input
           ref={inputRef}
           value={query}
-          onChange={(e) => { setQuery(e.target.value); setOpen(true); setActive(0); }}
-          onFocus={(e) => { setOpen(true); e.currentTarget.select(); }}
-          onKeyDown={onKeyDown}
+          disabled={disabled}
+          onChange={(e) => { if (disabled) return; setQuery(e.target.value); setOpen(true); setActive(0); }}
+          onFocus={(e) => { if (disabled) return; setOpen(true); e.currentTarget.select(); }}
+          onKeyDown={disabled ? undefined : onKeyDown}
           placeholder="Escribe el nombre del cliente"
-          role="combobox" aria-expanded={open} aria-controls="client-listbox"
-          className="w-full rounded-xl border border-gray-300 px-3 py-2 pr-9 text-sm" />
-        {/* Vinculado → check (decorativo). Si no, botón flecha integrado: cursor pointer, sin caja ni hueco. */}
-        {selected && !open ? (
+          role="combobox" aria-expanded={open} aria-controls="client-listbox" aria-disabled={disabled}
+          className={`w-full rounded-xl border border-gray-300 px-3 py-2 pr-9 text-sm ${disabled ? 'cursor-not-allowed bg-gray-50 text-gray-500' : ''}`} />
+        {/* Vinculado → check (decorativo). Deshabilitado: siempre check, sin flecha. Si no, botón flecha integrado: cursor pointer, sin caja ni hueco. */}
+        {disabled || (selected && !open) ? (
           <Check className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--acc)]" />
         ) : (
           <button

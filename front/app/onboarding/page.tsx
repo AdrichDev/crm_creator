@@ -249,13 +249,12 @@ function OnboardingInner() {
 
         {step === 0 && (
           <div className="space-y-4">
-            {/* Cliente/nombre solo en alta: en edición ese vínculo queda fijo, no se
-                muestra el picker (pickVertical sigue disponible para cambiar el vertical). */}
-            {!isEdit && (
-              <Card><CardBody>
-                <ClientCombobox clients={clients} selectedId={draft.business.clienteId} onPick={pickClient} error={clientsError} />
-              </CardBody></Card>
-            )}
+            {/* Cliente: visible siempre. En edición el vínculo queda fijo (deshabilitado,
+                solo lectura del cliente ya asignado); en alta es el picker activo
+                (pickVertical sigue disponible para cambiar el vertical en ambos modos). */}
+            <Card><CardBody>
+              <ClientCombobox clients={clients} selectedId={draft.business.clienteId} onPick={pickClient} error={clientsError} disabled={isEdit} />
+            </CardBody></Card>
 
             <VerticalPicker value={pickedVertical} onChange={pickVertical} />
           </div>
