@@ -6,7 +6,7 @@
 // directorio dinámico `[id]` se elimina por export-compat.ts, así que NO necesita
 // generateStaticParams y nunca viaja al artefacto del tenant.
 import { useParams } from 'next/navigation';
-import { LifecycleControl } from './lifecycle-control';
+import { LifecycleControl } from '@/components/dashboard/lifecycle-control';
 
 export default function OperatorBusinessDetailPage() {
   const params = useParams<{ id: string }>();

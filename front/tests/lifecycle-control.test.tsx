@@ -16,7 +16,7 @@ vi.mock('@/lib/api/operator', () => ({
   fetchBusinessStateEvents,
 }));
 
-import { LifecycleControl } from '@/app/(operador)/negocios/[id]/lifecycle-control';
+import { LifecycleControl } from '@/components/dashboard/lifecycle-control';
 
 const BIZ = 'biz-123';
 

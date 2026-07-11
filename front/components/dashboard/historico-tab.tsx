@@ -11,7 +11,7 @@
 // proyecto que nunca se generó/desplegó.
 import { useEffect, useMemo, useState } from 'react';
 import type { Project } from '@/lib/tenant-config-context';
-import { LifecycleControl } from '@/app/(operador)/negocios/[id]/lifecycle-control';
+import { LifecycleControl } from '@/components/dashboard/lifecycle-control';
 import { fetchExportVersions } from '@/lib/api/exports-history';
 
 interface HistoricoTabProps {
