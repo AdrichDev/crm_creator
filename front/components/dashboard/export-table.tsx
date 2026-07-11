@@ -227,7 +227,7 @@ export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, 
                   <th
                     role="columnheader"
                     aria-sort={sortCol === 'name' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
-                    className={sortCol === 'name' ? 'sorted' : ''}
+                    className={`whitespace-nowrap ${sortCol === 'name' ? 'sorted' : ''}`}
                     onClick={() => handleSort('name')}
                   >
                     Proyecto <SortIcon col="name" />
@@ -235,7 +235,7 @@ export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, 
                   <th
                     role="columnheader"
                     aria-sort={sortCol === 'client' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
-                    className={sortCol === 'client' ? 'sorted' : ''}
+                    className={`whitespace-nowrap ${sortCol === 'client' ? 'sorted' : ''}`}
                     onClick={() => handleSort('client')}
                   >
                     Cliente <SortIcon col="client" />
@@ -243,7 +243,7 @@ export function ExportTable({ projects, codeMap, isRunning, exportingProjectId, 
                   <th
                     role="columnheader"
                     aria-sort={sortCol === 'vertical' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
-                    className={sortCol === 'vertical' ? 'sorted' : ''}
+                    className={`whitespace-nowrap ${sortCol === 'vertical' ? 'sorted' : ''}`}
                     onClick={() => handleSort('vertical')}
                   >
                     Tipo <SortIcon col="vertical" />
