@@ -6,6 +6,7 @@ import { resolveCorsOrigins } from './lib/cors-origins.js';
 import { api } from './routes/index.js';
 import { serviceOperatorRouter } from './routes/service-operator.js';
 import { licenseRouter } from './routes/license.js';
+import { publicRouter } from './routes/public.js';
 import { notFound, errorHandler } from './middleware/error.js';
 import { startReminderDrainer } from './lib/reminderDrainer.js';
 import { startDigestScheduler } from './lib/digestScheduler.js';
@@ -40,6 +41,9 @@ app.use('/service/operator', serviceOperatorRouter);
 // FUERA de /api y EXENTO del tenantGate a propósito: el binario de un negocio suspendido
 // debe poder preguntar el estado — la respuesta firmada 'SUSPENDED' ES el mecanismo de corte.
 app.use('/license', licenseRouter);
+
+// Assets públicos (logo del negocio para los correos). FUERA de /api: sin gate de usuario.
+app.use('/public', publicRouter);
 
 app.use('/api', api);
 app.use(notFound);
