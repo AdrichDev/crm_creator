@@ -1,5 +1,6 @@
 'use client';
 import { apiFetch } from '@/lib/api/client';
+import type { FollowUpCitaInput } from './follow-up';
 import type {
   ComercialCustomer, ComercialContacto, VisitStateDto, VisitDto, CustomerNoteDto, ReminderDto, ReminderSummaryDto,
 } from './types';
@@ -131,4 +132,18 @@ export async function patchReminder(id: string, data: Record<string, unknown>): 
 // Contadores para el panel de seguimiento y la campana (agregado ligero, sin listas).
 export async function fetchReminderSummary(): Promise<ReminderSummaryDto> {
   return apiFetch<ReminderSummaryDto>('/reminders/summary');
+}
+
+// ---- Citas NO completadas hasta hoy (sincronización automática de la campana) ----
+// Devuelve las citas abiertas (no COMPLETED/CANCELLED/NO_SHOW) con fecha <= hoy, para
+// mostrarlas en la campana como notificaciones. Solo lectura, no crea nada.
+export async function fetchCitasPendientes(now: Date = new Date()): Promise<FollowUpCitaInput[]> {
+  const to = new Date(now);
+  to.setHours(23, 59, 59, 999); // fin de hoy → incluye pasadas y las de hoy
+  const res = await apiFetch<{ items: Array<{ id: string; cliente: string; customerId: string | null; fecha: string; hora: string; estado: string }> }>(
+    `/bookings?pendientes=1&to=${encodeURIComponent(to.toISOString())}&limit=50`,
+  );
+  return (res.items ?? [])
+    .filter((b) => b.customerId) // citas de cliente (no de equipo) para la campana
+    .map((b) => ({ id: b.id, customerId: b.customerId as string, customerNombre: b.cliente, startAt: `${b.fecha}T${b.hora}:00`, estadoLabel: b.estado }));
 }

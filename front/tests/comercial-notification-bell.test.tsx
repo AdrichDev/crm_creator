@@ -14,10 +14,12 @@ vi.mock('@/lib/api/client', () => ({ isApiEnabled: () => apiEnabled }));
 
 const fetchReminderSummary = vi.fn();
 const fetchReminders = vi.fn();
+const fetchCitasPendientes = vi.fn();
 const patchReminder = vi.fn();
 vi.mock('@/lib/comercial/api', () => ({
   fetchReminderSummary: (...a: unknown[]) => fetchReminderSummary(...a),
   fetchReminders: (...a: unknown[]) => fetchReminders(...a),
+  fetchCitasPendientes: (...a: unknown[]) => fetchCitasPendientes(...a),
   patchReminder: (...a: unknown[]) => patchReminder(...a),
 }));
 
@@ -40,6 +42,7 @@ describe('NotificationBell — campana de notificaciones (WU4.1, AC6)', () => {
     apiEnabled = true;
     fetchReminderSummary.mockReset().mockResolvedValue({ vencidos: 1, hoy: 0, proximos7d: 1 });
     fetchReminders.mockReset().mockResolvedValue(REMINDERS);
+    fetchCitasPendientes.mockReset().mockResolvedValue([]);
     patchReminder.mockReset().mockResolvedValue({});
     push.mockReset();
   });

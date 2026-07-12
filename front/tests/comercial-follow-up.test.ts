@@ -57,4 +57,17 @@ describe('buildFollowUpList — orden vencido→hoy→próximo→pendiente (WU2.
     expect(reminderUrgency(new Date(2026, 6, 3, 0, 0, 0).toISOString(), NOW)).toBe('proximo');
     expect(reminderUrgency(null, NOW)).toBe('proximo');
   });
+
+  it('citas NO completadas se añaden como cita-pendiente con su urgencia (sync campana)', () => {
+    const citas = [
+      { id: 'b-venc', customerId: 'c1', customerNombre: 'Ana', startAt: new Date(2026, 5, 30, 9, 0, 0).toISOString(), estadoLabel: 'Confirmada' },
+      { id: 'b-hoy', customerId: 'c2', customerNombre: 'Luis', startAt: new Date(2026, 6, 2, 12, 0, 0).toISOString(), estadoLabel: 'Pendiente' },
+    ];
+    const items = buildFollowUpList([], [], NOW, citas);
+    const cit = items.filter((i) => i.kind === 'cita-pendiente');
+    expect(cit).toHaveLength(2);
+    expect(cit.map((i) => i.urgency).sort()).toEqual(['hoy', 'vencido']);
+    expect(cit.find((i) => i.id === 'cita:b-venc')?.titulo).toBe('Cita confirmada');
+    expect(cit.find((i) => i.id === 'cita:b-hoy')?.customerNombre).toBe('Luis');
+  });
 });

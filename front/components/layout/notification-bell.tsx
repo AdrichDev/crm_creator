@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { Bell } from 'lucide-react';
 import { useModuleEnabled } from '@/lib/tenant-config-context';
 import { isApiEnabled } from '@/lib/api/client';
-import { fetchReminderSummary, fetchReminders, patchReminder } from '@/lib/comercial/api';
+import { fetchReminderSummary, fetchReminders, fetchCitasPendientes, patchReminder } from '@/lib/comercial/api';
 import { buildFollowUpList, type FollowUpItem } from '@/lib/comercial/follow-up';
 
 // Campana de notificaciones internas (crm-comercial-colores-seguimiento WU4). Solo se
@@ -40,16 +40,23 @@ export function NotificationBell() {
   const reload = useCallback(async () => {
     if (!habilitado) return;
     try {
-      const [summary, reminders] = await Promise.all([fetchReminderSummary(), fetchReminders()]);
-      setBadge(summary.vencidos + summary.hoy);
+      // Sincroniza además las citas NO completadas hasta hoy (se muestran como notificaciones).
+      const [summary, reminders, citas] = await Promise.all([
+        fetchReminderSummary(), fetchReminders(), fetchCitasPendientes(),
+      ]);
       const list = buildFollowUpList(
         reminders.map((r) => ({
           id: r.id, customerId: r.customerId, customerNombre: r.customerNombre,
           titulo: r.titulo, fechaPrevista: r.fechaPrevista, estado: r.estado,
         })),
         [],
+        new Date(),
+        citas,
       ).filter((i) => i.urgency === 'vencido' || i.urgency === 'hoy');
       setItems(list);
+      // Badge = recordatorios (vencidos+hoy) + citas pendientes mostradas.
+      const citasBadge = list.filter((i) => i.kind === 'cita-pendiente').length;
+      setBadge(summary.vencidos + summary.hoy + citasBadge);
     } catch {
       // Best-effort: la campana no debe romper la navegación si el back falla.
     }

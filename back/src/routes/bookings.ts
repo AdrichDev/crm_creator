@@ -28,8 +28,13 @@ const ESTADO_LABEL: Record<string, string> = {
 // empleado/fecha/hora/estado). Punto único: lo usan citas, panel, estadísticas.
 // Devuelve { items, total, page, limit } paginado.
 bookingsRouter.get('/', async (req: AuthedRequest, res: Response) => {
-  const { from, to, status, employeeId } = req.query as Record<string, string | undefined>;
+  const { from, to, status, employeeId, pendientes } = req.query as Record<string, string | undefined>;
   const { page, limit, search } = parsePagination(req.query as Record<string, unknown>);
+
+  // `pendientes=1`: citas NO completadas (excluye los estados terminales). Usado por la
+  // campana para sincronizar las citas abiertas hasta hoy. Tiene prioridad sobre `status`.
+  const soloPendientes = pendientes === '1' || pendientes === 'true';
+  const TERMINALES: BookingStatus[] = ['COMPLETED', 'CANCELLED', 'NO_SHOW'];
 
   // Búsqueda nested: nombre/apellido del cliente o nombre del servicio.
   const searchWhere = search ? {
@@ -44,7 +49,9 @@ bookingsRouter.get('/', async (req: AuthedRequest, res: Response) => {
     businessId: req.businessId,
     eliminadoEn: null,
     ...searchWhere,
-    ...(status ? { status: status as BookingStatus } : {}),
+    ...(soloPendientes
+      ? { status: { notIn: TERMINALES } }
+      : (status ? { status: status as BookingStatus } : {})),
     ...(employeeId ? { employeeId } : {}),
     ...(from || to ? { startAt: { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) } } : {}),
   };

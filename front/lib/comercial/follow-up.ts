@@ -4,7 +4,7 @@
 // PURO: sin fetch, sin fecha implícita (recibe `now` para ser determinista en tests).
 
 export type FollowUpUrgency = 'vencido' | 'hoy' | 'proximo' | 'pendiente';
-export type FollowUpKind = 'reminder' | 'cliente-pendiente';
+export type FollowUpKind = 'reminder' | 'cliente-pendiente' | 'cita-pendiente';
 
 export interface FollowUpItem {
   id: string;
@@ -34,6 +34,15 @@ export interface FollowUpClienteInput {
   estadoVisita: { esPendiente: boolean } | null;
 }
 
+/** Cita NO completada (hasta hoy). Sincronizada en la campana como notificación. */
+export interface FollowUpCitaInput {
+  id: string;
+  customerId: string;
+  customerNombre: string;
+  startAt: string | null;
+  estadoLabel: string;
+}
+
 function startOfDay(d: Date): Date {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);
@@ -60,6 +69,7 @@ export function buildFollowUpList(
   reminders: FollowUpReminderInput[],
   clientes: FollowUpClienteInput[],
   now: Date = new Date(),
+  citas: FollowUpCitaInput[] = [],
 ): FollowUpItem[] {
   const items: FollowUpItem[] = [];
 
@@ -87,6 +97,19 @@ export function buildFollowUpList(
       customerId: c.id,
       customerNombre: c.nombre,
       titulo: 'Próxima acción pendiente',
+    });
+  }
+
+  // Citas NO completadas hasta hoy (sincronizadas al abrir): vencidas o de hoy.
+  for (const b of citas) {
+    items.push({
+      id: `cita:${b.id}`,
+      kind: 'cita-pendiente',
+      urgency: reminderUrgency(b.startAt, now),
+      fecha: b.startAt,
+      customerId: b.customerId,
+      customerNombre: b.customerNombre,
+      titulo: `Cita ${b.estadoLabel.toLowerCase()}`,
     });
   }
 
