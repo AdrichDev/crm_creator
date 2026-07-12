@@ -11,7 +11,7 @@ import { moduleAllowedForRole, moduleFromPath, memberRoleLabel, DEMO_USERS, type
 import { GENERATED_TENANT } from '@/lib/config/generated-tenant';
 import { isApiEnabled, apiFetch } from '@/lib/api/client';
 import { getAuthProfile } from '@/lib/api/profile';
-import { logout } from '@/lib/auth/session';
+import { logout, getCurrentUser, type SessionUser } from '@/lib/auth/session';
 import { LogOut, Settings } from 'lucide-react';
 
 const PANEL_TITLE: Record<Role, string> = {
@@ -26,6 +26,32 @@ function initialsOf(name: string): string {
   if (parts.length === 0) return '–';
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+export interface FooterUser { nombre: string; iniciales: string; rolLabel: string; email: string; }
+
+/**
+ * Identidad del pie del sidebar. Prioridad (evita SUPLANTAR identidad con un fixture):
+ *  1) realUser (/auth/me): identidad + rol reales.
+ *  2) sessionUser (hay sesión Supabase REAL pero la API no resolvió — caída o sin
+ *     NEXT_PUBLIC_API_URL): se muestra el email real SIN rol, nunca el usuario demo.
+ *  3) showcase sin sesión NI API: usuario demo del rol (modo demostración legítimo).
+ *  4) API disponible pero sin identidad: "Invitado".
+ * El usuario demo solo aparece cuando NO hay ninguna sesión autenticada.
+ */
+export function resolveFooterUser(
+  realUser: FooterUser | null,
+  sessionUser: SessionUser | null,
+  apiOn: boolean,
+  demo: { nombre: string; iniciales: string; rolLabel: string; email: string },
+): FooterUser {
+  if (realUser) return realUser;
+  if (sessionUser) {
+    const nombre = sessionUser.email || 'Tu cuenta';
+    return { nombre, iniciales: initialsOf(nombre), rolLabel: '', email: sessionUser.email };
+  }
+  if (apiOn) return { nombre: 'Invitado', iniciales: '–', rolLabel: '', email: '' };
+  return { nombre: demo.nombre, iniciales: demo.iniciales, rolLabel: demo.rolLabel, email: demo.email };
 }
 
 export function Sidebar() {
@@ -74,7 +100,10 @@ export function Sidebar() {
   // (consola fuente demo) se usa el usuario demo del rol activo. Fallback
   // "Invitado" si la sesión no resuelve.
   const apiOn = isApiEnabled();
-  const [realUser, setRealUser] = useState<{ nombre: string; iniciales: string; rolLabel: string; email: string } | null>(null);
+  const [realUser, setRealUser] = useState<FooterUser | null>(null);
+  // Sesión Supabase REAL (email), leída sin red: distingue "login real, API caída" de
+  // "modo demo sin sesión" → nunca mostrar el usuario demo si el usuario está autenticado.
+  const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -111,10 +140,17 @@ export function Sidebar() {
     return () => { cancelled = true; };
   }, [apiOn]);
 
+  // Sesión Supabase real (email), leída sin red. Refetch por ruta para reflejar el login.
+  useEffect(() => {
+    let cancelled = false;
+    getCurrentUser()
+      .then((u) => { if (!cancelled) setSessionUser(u); })
+      .catch(() => { if (!cancelled) setSessionUser(null); });
+    return () => { cancelled = true; };
+  }, [pathname]);
+
   const demo = DEMO_USERS[role];
-  const user = apiOn
-    ? (realUser ?? { nombre: 'Invitado', iniciales: '–', rolLabel: '', email: '' })
-    : { nombre: demo.nombre, iniciales: demo.iniciales, rolLabel: demo.rolLabel, email: demo.email };
+  const user = resolveFooterUser(realUser, sessionUser, apiOn, demo);
   const rolLabel = user.rolLabel;
 
   // Cierra el popover de cuenta al hacer clic fuera o al pulsar Escape.
