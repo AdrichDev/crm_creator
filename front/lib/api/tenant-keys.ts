@@ -60,3 +60,9 @@ export function testSecret(businessId: string, name: TenantSecretName, value?: s
     body: JSON.stringify(value === undefined ? {} : { value }),
   });
 }
+
+/** Valor descifrado de un secreto guardado (para el botón "ver" del panel; gate admin). */
+export async function revealSecret(businessId: string, name: TenantSecretName): Promise<string> {
+  const res = await apiFetch<{ name: string; value: string }>(`${base(businessId)}/${name}/reveal`);
+  return res.value;
+}

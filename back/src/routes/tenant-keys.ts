@@ -304,11 +304,33 @@ export async function testSecretHandler(
   }
 }
 
+/* ---------- GET /:businessId/secrets/:name/reveal ---------- */
+
+// Devuelve el VALOR descifrado de un secreto guardado, para mostrarlo en el panel
+// (botón "ver"). Gate ADMIN/MANAGER del `:businessId` del path (mismo scoping que el
+// resto: un no-miembro cae en 404, cross-tenant cerrado). Inseguro por diseño y a
+// petición explícita del producto: el admin ve sus propias keys. El value NUNCA se loguea.
+export async function revealSecretHandler(db: TenantKeysDb, req: AuthedRequest, res: Response) {
+  try {
+    if (!(await requireMemberAdmin(db, req, res))) return;
+    const businessId = req.params.businessId;
+    const name = req.params.name;
+    const row = await db.tenantSecret.findUnique({ where: { businessId_name: { businessId, name } } });
+    if (!row) return res.status(404).json({ error: { code: 'secret_not_found', message: 'Secreto no encontrado' } });
+    const value = decryptSecret({ ciphertext: row.valueCiphertext, iv: row.iv, authTag: row.authTag, keyVersion: row.keyVersion });
+    res.status(200).json({ name, value });
+  } catch (e) {
+    console.error('[tenant-keys] error revelando secreto:', e);
+    res.status(500).json({ error: { code: 'server_error', message: 'No se pudo obtener el secreto' } });
+  }
+}
+
 /* ---------- Router ---------- */
 
 export function buildTenantKeysRouter(db: TenantKeysDb): Router {
   const router = Router();
   router.get('/:businessId/secrets', (req, res) => listSecretsHandler(db, req as AuthedRequest, res));
+  router.get('/:businessId/secrets/:name/reveal', (req, res) => revealSecretHandler(db, req as AuthedRequest, res));
   router.put('/:businessId/secrets/:name', (req, res) => upsertSecretHandler(db, req as AuthedRequest, res));
   router.delete('/:businessId/secrets/:name', (req, res) => deleteSecretHandler(db, req as AuthedRequest, res));
   router.post('/:businessId/secrets/:name/test', (req, res) => testSecretHandler(db, req as AuthedRequest, res));

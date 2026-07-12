@@ -14,6 +14,7 @@ import {
   upsertSecretHandler,
   deleteSecretHandler,
   testSecretHandler,
+  revealSecretHandler,
   type TenantKeysDb,
 } from '../tenant-keys.js';
 import { encryptSecret, decryptSecret } from '../../lib/tenant-secrets/crypto.js';
@@ -308,6 +309,31 @@ describe('PUT /tenant-keys/:businessId/secrets/:name', () => {
     await upsertSecretHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_B, name: 'OPENAI_API_KEY' }, body: { value: 'sk-leak' } }), res);
     assert.equal(res.statusCode, 404);
     assert.equal(db.secrets.find((s) => s.businessId === BIZ_B), undefined);
+  });
+});
+
+describe('GET /tenant-keys/:businessId/secrets/:name/reveal', () => {
+  test('admin: devuelve el valor descifrado del secreto guardado', async () => {
+    const db = fakeDb({ secrets: [seedEncrypted(BIZ_A, 'OPENAI_API_KEY', 'BACKEND_SECRET', 'sk-secreto-real')] });
+    const res = mockRes();
+    await revealSecretHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_A, name: 'OPENAI_API_KEY' } }), res);
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.body, { name: 'OPENAI_API_KEY', value: 'sk-secreto-real' });
+  });
+
+  test('slot sin fila → 404 secret_not_found', async () => {
+    const db = fakeDb();
+    const res = mockRes();
+    await revealSecretHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_A, name: 'OPENAI_API_KEY' } }), res);
+    assert.equal(res.statusCode, 404);
+    assert.equal((res.body as { error: { code: string } }).error.code, 'secret_not_found');
+  });
+
+  test('cross-tenant: miembro de A no revela secreto de B → gate (no 200)', async () => {
+    const db = fakeDb({ secrets: [seedEncrypted(BIZ_B, 'OPENAI_API_KEY', 'BACKEND_SECRET', 'sk-b')] });
+    const res = mockRes();
+    await revealSecretHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_B, name: 'OPENAI_API_KEY' } }), res);
+    assert.notEqual(res.statusCode, 200);
   });
 });
 

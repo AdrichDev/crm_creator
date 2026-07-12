@@ -14,6 +14,7 @@ import {
   upsertSecret,
   deleteSecret,
   testSecret,
+  revealSecret,
   KNOWN_PRESET_NAMES,
   type TenantSecretName,
   type TenantSecretSlot,
@@ -71,6 +72,8 @@ export function TenantKeysPanel({ businessId, groups, showExtras = true }: Tenan
   const [inputs, setInputs] = useState<Record<string, string>>({});
   // Mostrar/ocultar el valor tecleado por slot (inseguro a propósito: uso personal del admin).
   const [reveal, setReveal] = useState<Record<string, boolean>>({});
+  // Valor descifrado de un slot YA guardado, cargado bajo demanda al pulsar "ver".
+  const [revealedValue, setRevealedValue] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Record<string, CardStatus>>({});
   const [testResult, setTestResult] = useState<Record<string, TestOutcome>>({});
   const [loading, setLoading] = useState(true);
@@ -81,6 +84,7 @@ export function TenantKeysPanel({ businessId, groups, showExtras = true }: Tenan
 
   const load = useCallback(async () => {
     setLoading(true);
+    setRevealedValue({}); // al recargar, se ocultan de nuevo los valores revelados
     try {
       const r = await listSecrets(businessId);
       setSlots(r.secrets ?? []);
@@ -123,6 +127,20 @@ export function TenantKeysPanel({ businessId, groups, showExtras = true }: Tenan
       setTestResult((prev) => ({ ...prev, [name]: { tone: 'error', texto: 'No se pudo guardar. Inténtalo de nuevo.' } }));
     } finally {
       setCardStatus(name, 'idle');
+    }
+  }
+
+  // Ver/ocultar el valor de un secreto YA guardado (carga descifrada bajo demanda).
+  async function toggleRevealSaved(name: TenantSecretName) {
+    if (revealedValue[name] != null) {
+      setRevealedValue((p) => { const c = { ...p }; delete c[name]; return c; });
+      return;
+    }
+    try {
+      const value = await revealSecret(businessId, name);
+      setRevealedValue((p) => ({ ...p, [name]: value }));
+    } catch {
+      setTestResult((prev) => ({ ...prev, [name]: { tone: 'error', texto: 'No se pudo mostrar la clave.' } }));
     }
   }
 
@@ -238,15 +256,28 @@ export function TenantKeysPanel({ businessId, groups, showExtras = true }: Tenan
                 {configured && inputs[name] === undefined ? (
                   // Slot ya configurado y sin tocar: campo lleno de puntos de longitud
                   // FIJA (no la real). Al hacer foco/clic se limpia para escribir uno nuevo.
-                  <input
-                    readOnly
-                    type="text"
-                    aria-label={`${label} (guardado, oculto)`}
-                    value={SAVED_MASK}
-                    onFocus={() => setInputs((prev) => ({ ...prev, [name]: '' }))}
-                    onMouseDown={(e) => { e.preventDefault(); setInputs((prev) => ({ ...prev, [name]: '' })); }}
-                    className="min-w-[220px] flex-1 cursor-text rounded-[8px] border border-white/10 bg-black/20 px-3 py-2 text-sm tracking-widest text-white/60"
-                  />
+                  <div className="relative min-w-[220px] flex-1">
+                    <input
+                      readOnly
+                      type="text"
+                      aria-label={revealedValue[name] != null ? `${label} (guardado)` : `${label} (guardado, oculto)`}
+                      value={revealedValue[name] ?? SAVED_MASK}
+                      onFocus={() => setInputs((prev) => ({ ...prev, [name]: '' }))}
+                      onMouseDown={(e) => { e.preventDefault(); setInputs((prev) => ({ ...prev, [name]: '' })); }}
+                      className={`w-full cursor-text rounded-[8px] border border-white/10 bg-black/20 px-3 py-2 pr-9 text-sm ${revealedValue[name] != null ? 'text-white' : 'tracking-widest text-white/60'}`}
+                    />
+                    {/* El ojo carga y muestra el valor guardado (descifrado en el back). preventDefault
+                        para no convertir el campo en editable al pulsarlo. */}
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => void toggleRevealSaved(name)}
+                      aria-label={revealedValue[name] != null ? 'Ocultar valor' : 'Mostrar valor'}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-white/50 hover:text-white"
+                    >
+                      {revealedValue[name] != null ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
                 ) : (
                   <div className="relative min-w-[220px] flex-1">
                     <input
