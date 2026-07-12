@@ -729,7 +729,12 @@ body {
 :root[data-theme="light"] .crm-modal-panel input[type="time"] { color-scheme: light; }
 
 /* =========================== MODAL (custom-dialog) =========================== */
-.opera-modal-backdrop { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 1rem; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); }
+/* Los modales del carril operador son SIEMPRE dorados OperaOS, no del brand del
+   tenant: --acc deriva de --brand-primary (línea 22) y BrandingStyle inyecta el brand
+   del negocio en :root, así que sin este reset el modal cogería el color del proyecto.
+   Se resetea en el backdrop (contenedor) → todos los .opera-modal-* heredan el dorado. */
+.opera-modal-backdrop { --acc: var(--gold); --acc-light: var(--gold-light); position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 1rem; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); }
+:root[data-theme="light"] .opera-modal-backdrop { --acc: #8a6516; --acc-light: #c5a028; }
 .opera-modal { position: relative; width: 100%; max-width: 560px; background: #111; border: 2px solid var(--acc); border-radius: 12px; box-shadow: 0 0 30px rgba(0,0,0,0.8); max-height: 88vh; display: flex; flex-direction: column; }
 .opera-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.1); background: color-mix(in srgb, var(--acc) 6%, transparent); }
 .opera-modal-title { color: var(--acc); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; font-family: var(--heading-font); margin: 0; }
