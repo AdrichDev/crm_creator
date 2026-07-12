@@ -102,7 +102,9 @@ export async function heartbeatHandler(deps: HeartbeatDeps, req: Request, res: R
       return res.status(401).json({ error: { code: 'stale_timestamp', message: 'Timestamp fuera de ventana' } });
     }
 
-    const { effective, graceUntil } = await resolveTenantState(businessId, deps.db ? { db: deps.db } : {});
+    // Se pasa el MISMO `now` inyectado que la ventana de replay y el `respTs` firmado: así la
+    // evaluación perezosa de GRACE→SUSPENDED usa un único reloj coherente (en prod = new Date()).
+    const { effective, graceUntil } = await resolveTenantState(businessId, { db: deps.db, now });
     const respTs = now.toISOString();
     const graceIso = graceUntil ? graceUntil.toISOString() : '';
     const signature = signHeartbeat(secret, canonicalHeartbeatResponse(businessId, effective, graceIso, respTs));
