@@ -409,6 +409,12 @@ body {
 
 @media (max-width: 767px) {
   .opera-hamburger { display: inline-flex; }
+  /* Header: menos padding lateral y wrap si los controles no caben (no se recortan). */
+  .opera-header {
+    flex-wrap: wrap; row-gap: .4rem; height: auto;
+    min-height: calc(56px + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) max(1rem, env(safe-area-inset-right)) .4rem max(1rem, env(safe-area-inset-left));
+  }
   /* El sidebar sale del flujo y se abre como drawer sobre el contenido. */
   .opera-sidebar {
     position: fixed; top: 0; left: 0; bottom: 0; z-index: 50;
@@ -755,7 +761,12 @@ body {
    chasis propio, no migran a .opera-modal). Necesitan borde con contraste garantizado
    sobre el backdrop en ambos temas — --panel-text ya es blanco en oscuro y casi negro
    cálido en claro, así que deriva el borde de ahí: nunca se funde con el fondo. */
-.crm-modal-panel { border: 1px solid color-mix(in srgb, var(--panel-text) 22%, transparent); }
+.crm-modal-panel {
+  border: 1px solid color-mix(in srgb, var(--panel-text) 22%, transparent);
+  /* Tope de altura + scroll interno: formularios largos (Nueva cita/clase/entrenamiento)
+     no se desbordan en viewports bajos (móvil apaisado). Paridad con .opera-modal. */
+  max-height: 88vh; overflow-y: auto;
+}
 /* Input de fecha de los modales "nueva-*" (clase/entrenamiento — nueva-cita-modal usa
    su propia regla, arriba, con más especificidad y fondo explícito): hereda el fondo
    `--panel-card` de `.opera-shell input[...]` (línea ~296), que es la superficie de

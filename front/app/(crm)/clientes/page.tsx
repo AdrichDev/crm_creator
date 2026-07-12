@@ -275,7 +275,7 @@ export default function Page() {
         footer={<Button variant="outline" onClick={() => setInfo(null)}>Cerrar</Button>}>
         {actual && (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
               {/* Dirección estructurada agrupada: calle → número → piso → código postal (crm-operaos 9.2). */}
               {([['razonSocial', 'Empresa'], ['contacto', 'Otro contacto'], ['cif', 'NIF / CIF'], ['email', 'Email'], ['telefono', 'Teléfono'],
                  ['direccion', 'Dirección'], ['numero', 'Número'], ['piso', 'Piso'], ['codigoPostal', 'Código postal'],
