@@ -102,7 +102,7 @@ proyecto nativo de Android que se compila con Gradle. El resultado es un archivo
 
 2. **Instalar las dependencias** (solo la primera vez):
    \`\`\`
-   npm install
+   npm install --legacy-peer-deps
    \`\`\`
 
 3. **Compilar la web estatica.** Genera la carpeta \`out/\`, que es la web que

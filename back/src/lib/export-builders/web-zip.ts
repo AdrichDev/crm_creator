@@ -109,7 +109,7 @@ propia maquina para probarla, o alojarla en cualquier proveedor de hosting
    necesita (se guardan en \`node_modules/\`). Solo hace falta hacerlo la primera
    vez o cuando cambien las dependencias:
    \`\`\`
-   npm install
+   npm install --legacy-peer-deps
    \`\`\`
 
 3. **Compilar para produccion.** Genera la version optimizada de la aplicacion.
@@ -135,7 +135,7 @@ Tienes dos caminos habituales:
   el \`build\` y publica la web con una URL propia.
 
 - **Servidor Node propio.** En cualquier servidor con Node 22, repite los pasos
-  \`npm install\` -> \`npm run build\` -> \`npm start\`. Se recomienda usar un gestor
+  \`npm install --legacy-peer-deps\` -> \`npm run build\` -> \`npm start\`. Se recomienda usar un gestor
   de procesos (por ejemplo PM2) para mantener la aplicacion siempre encendida.
 
 > Nota: si tu aplicacion se conecta a una API, configura la URL en un archivo

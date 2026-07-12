@@ -94,13 +94,13 @@ de iOS que se compila y firma con Xcode.
 
 2. **Instalar las dependencias** del proyecto (solo la primera vez):
    \`\`\`
-   npm install
+   npm install --legacy-peer-deps
    \`\`\`
 
 3. **Anadir el plugin de iOS de Capacitor.** No viene preinstalado para no
    arrastrar dependencias de Apple en entornos que no son Mac:
    \`\`\`
-   npm install @capacitor/ios
+   npm install @capacitor/ios --legacy-peer-deps
    \`\`\`
 
 4. **Compilar la web estatica.** Genera la carpeta \`out/\` que Capacitor

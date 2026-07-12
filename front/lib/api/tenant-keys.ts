@@ -18,6 +18,8 @@ export const KNOWN_PRESET_NAMES = [
   'ANTHROPIC_API_KEY',
   'GOOGLE_MAPS_API_KEY',
   'DATABASE_URL',
+  'NEXT_PUBLIC_SUPABASE_URL',
+  'NEXT_PUBLIC_SUPABASE_ANON_KEY',
 ] as const;
 
 export interface TenantSecretSlot {
@@ -31,7 +33,7 @@ export interface TenantSecretSlot {
 
 export interface TenantSecretTestResult {
   ok: boolean;
-  provider: 'openai' | 'gemini' | 'anthropic' | 'maps' | 'database';
+  provider: 'openai' | 'gemini' | 'anthropic' | 'maps' | 'database' | 'supabase_url' | 'supabase_anon';
   detail?: string;
 }
 

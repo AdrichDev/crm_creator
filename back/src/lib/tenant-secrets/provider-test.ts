@@ -16,7 +16,14 @@
 
 import { Pool } from 'pg';
 
-export type SecretProvider = 'openai' | 'gemini' | 'anthropic' | 'maps' | 'database';
+export type SecretProvider =
+  | 'openai'
+  | 'gemini'
+  | 'anthropic'
+  | 'maps'
+  | 'database'
+  | 'supabase_url'
+  | 'supabase_anon';
 
 export interface ProviderTestResult {
   ok: boolean;
@@ -122,6 +129,31 @@ export async function testProviderConnection(
         });
       case 'database':
         return await testDatabaseUrl(value, timeoutMs, createPool);
+      case 'supabase_url':
+        // NEXT_PUBLIC_SUPABASE_URL es pública (va al bundle del front) y SÍ se
+        // puede probar con una llamada real: valida que la URL responda como
+        // proyecto Supabase de verdad (no solo que "parezca" una URL). Nunca
+        // se interpola `value` en `detail`.
+        return await testWithTimeout(timeoutMs, async (signal) => {
+          let parsed: URL;
+          try {
+            parsed = new URL(value);
+          } catch {
+            return { ok: false, detail: 'URL de Supabase inválida' };
+          }
+          if (parsed.protocol !== 'https:') {
+            return { ok: false, detail: 'URL de Supabase inválida' };
+          }
+          const r = await fetchImpl(`${value.replace(/\/$/, '')}/auth/v1/health`, { signal });
+          return r.ok ? { ok: true } : { ok: false, detail: 'Supabase no responde en esa URL' };
+        });
+      case 'supabase_anon':
+        // NEXT_PUBLIC_SUPABASE_ANON_KEY: sin la URL del proyecto no hay endpoint
+        // contra el que probarla, así que se queda en validación de FORMATO
+        // LOCAL (patrón JWT-ish), sin red. Nunca se interpola `value` en `detail`.
+        return /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\./.test(value)
+          ? { ok: true }
+          : { ok: false, detail: 'anon key con formato inválido' };
     }
   } catch {
     // AbortError (timeout) o fallo de red/conexión: nunca se interpola `value` ni el error crudo.

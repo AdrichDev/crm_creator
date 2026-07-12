@@ -124,13 +124,13 @@ beforeEach(() => {
 });
 
 describe('GET /tenant-keys/:businessId/secrets', () => {
-  test('negocio vacío → 5 slots, todos configured:false', async () => {
+  test('negocio vacío → 7 slots, todos configured:false', async () => {
     const db = fakeDb();
     const res = mockRes();
     await listSecretsHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_A } }), res);
     assert.equal(res.statusCode, 200);
     const body = res.body as { secrets: Array<{ name: string; configured: boolean }> };
-    assert.equal(body.secrets.length, 5);
+    assert.equal(body.secrets.length, 7);
     assert.ok(body.secrets.every((s) => s.configured === false));
   });
 
@@ -172,24 +172,27 @@ describe('GET /tenant-keys/:businessId/secrets', () => {
   });
 
   test('1 preset configurado + 1 free-form → GET trae ambos con scope/envVarName correctos (crm-tenant-keys-freeform)', async () => {
+    // Nombre free-form ajeno al catálogo (crm-onboarding-db-keys-export-connect T2
+    // añadió NEXT_PUBLIC_SUPABASE_* como slots reales, así que ya no sirven de
+    // ejemplo de "variable NO catalogada").
     const db = fakeDb({
       secrets: [
         seedEncrypted(BIZ_A, 'ANTHROPIC_API_KEY', 'BACKEND_SECRET', 'sk-ant-real'),
-        seedEncrypted(BIZ_A, 'NEXT_PUBLIC_SUPABASE_ANON_KEY', 'FRONTEND_PUBLIC', 'anon-real', 'NEXT_PUBLIC_SUPABASE_ANON_KEY'),
+        seedEncrypted(BIZ_A, 'NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY', 'FRONTEND_PUBLIC', 'stripe-real', 'NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY'),
       ],
     });
     const res = mockRes();
     await listSecretsHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_A } }), res);
     assert.equal(res.statusCode, 200);
     const body = res.body as { secrets: Array<{ name: string; configured: boolean; scope: string; envVarName: string | null }> };
-    assert.equal(body.secrets.length, 6);
+    assert.equal(body.secrets.length, 8);
     const byName = new Map(body.secrets.map((s) => [s.name, s]));
     assert.equal(byName.get('ANTHROPIC_API_KEY')?.configured, true);
-    const freeform = byName.get('NEXT_PUBLIC_SUPABASE_ANON_KEY');
+    const freeform = byName.get('NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY');
     assert.equal(freeform?.configured, true);
     assert.equal(freeform?.scope, 'FRONTEND_PUBLIC');
-    assert.equal(freeform?.envVarName, 'NEXT_PUBLIC_SUPABASE_ANON_KEY');
-    assert.ok(!JSON.stringify(body).includes('anon-real'));
+    assert.equal(freeform?.envVarName, 'NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY');
+    assert.ok(!JSON.stringify(body).includes('stripe-real'));
   });
 });
 

@@ -44,6 +44,9 @@ export const WEB_ALLOWLIST: string[] = [
   'next-env.d.ts',
   'tailwind.config.ts',
   'postcss.config.mjs',
+  // `.npmrc` con `legacy-peer-deps=true`: sin él, `npm install` del artefacto rompe por
+  // el conflicto React 19 ↔ @emoji-mart/react (peerDep React ≤18).
+  '.npmrc',
   '.env.local',
   '.env.example',
   'README.md',
@@ -64,6 +67,9 @@ export const ANDROID_ALLOWLIST: string[] = [
   'next-env.d.ts',
   'tailwind.config.ts',
   'postcss.config.mjs',
+  // `.npmrc` (legacy-peer-deps=true): imprescindible para que `npm install` del artefacto
+  // no rompa por el conflicto React 19 ↔ @emoji-mart/react.
+  '.npmrc',
   '.env.local',
   '.env.example',
   'README.md',
@@ -86,6 +92,9 @@ export const IOS_ALLOWLIST: string[] = [
   'next-env.d.ts',
   'tailwind.config.ts',
   'postcss.config.mjs',
+  // `.npmrc` (legacy-peer-deps=true): imprescindible para que `npm install` del artefacto
+  // no rompa por el conflicto React 19 ↔ @emoji-mart/react.
+  '.npmrc',
   '.env.local',
   '.env.example',
   'README.md',
@@ -112,6 +121,9 @@ export const DESKTOP_ALLOWLIST: string[] = [
   'next-env.d.ts',
   'tailwind.config.ts',
   'postcss.config.mjs',
+  // `.npmrc` (legacy-peer-deps=true): imprescindible para que `npm install` del artefacto
+  // no rompa por el conflicto React 19 ↔ @emoji-mart/react.
+  '.npmrc',
   '.env.local',
   '.env.example',
   'README.md',

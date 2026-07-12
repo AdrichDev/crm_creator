@@ -38,7 +38,10 @@ import {
   type StartJobParams,
 } from "../lib/export-job-manager.js";
 import type { RuntimeConfig } from "../lib/export-builders/runtime-config-env.js";
-import type { PublicEnvSecret } from "../lib/export-builders/public-env-secrets.js";
+import {
+  buildPublicEnvSecretsLines,
+  type PublicEnvSecret,
+} from "../lib/export-builders/public-env-secrets.js";
 import { readBakeableSecrets } from "../lib/tenant-secrets/store.js";
 import { generateApiKeyToken } from "../middleware/tenant-api-key.js";
 import {
@@ -398,12 +401,75 @@ export function createExportHandler(deps: ExportsDeps) {
     // front/ vive un nivel por encima de back/ (directorio hermano).
     const frontDir = path.resolve(process.cwd(), "..", "front");
 
+    // --- crm-env-contract-tiers (WU3.4): resolver secretos FRONTEND_PUBLIC a hornear ---
+    // Se resuelve ANTES del gate fail-closed (más abajo) porque el gate necesita
+    // saber qué se hornea REALMENTE, no solo qué hay en BD.
+    let publicEnvSecrets: PublicEnvSecret[] = [];
+    let publicEnvSecretsReadFailed = false;
+    if (deps.publicEnvSecrets) {
+      try {
+        publicEnvSecrets = await deps.publicEnvSecrets.read(projectId);
+      } catch (e) {
+        // crm-onboarding-db-keys-export-connect (code-review fix): un fallo de
+        // lectura/descifrado ya NO es fail-open — sin saber si las vars de
+        // conexión están disponibles no se puede garantizar el gate de abajo,
+        // así que se responde 503 (reintentable) en vez de dejar pasar un ZIP
+        // roto. Nunca se loguea valor.
+        publicEnvSecretsReadFailed = true;
+        console.error(
+          "[exports] no se pudieron resolver los secretos públicos del tenant para el export:",
+          e instanceof Error ? e.message : e,
+        );
+      }
+    }
+    if (publicEnvSecretsReadFailed) {
+      return res.status(503).json({
+        error: {
+          code: "export_config_check_failed",
+          message:
+            "No se pudo verificar la configuración de la BD. Reintenta en unos segundos.",
+        },
+      });
+    }
+
+    // --- crm-onboarding-db-keys-export-connect: gate fail-closed para las 3 vars
+    // imprescindibles de conexión (API + BD del tenant). El resto de secretos
+    // FRONTEND_PUBLIC sigue fail-open. Se valida contra las LÍNEAS REALMENTE
+    // HORNEADAS (`buildPublicEnvSecretsLines`, mismo transform que usa el
+    // builder), no el array crudo de BD: un value con salto de línea, vacío,
+    // o en colisión con `BASE_ENV_VAR_NAMES` pasaría el gate crudo pero jamás
+    // llegaría al `.env.local` generado.
+    const bakedLines = buildPublicEnvSecretsLines(publicEnvSecrets);
+    const bakedValueByName = new Map<string, string>();
+    for (const line of bakedLines) {
+      const eq = line.indexOf("=");
+      if (eq > 0) bakedValueByName.set(line.slice(0, eq), line.slice(eq + 1));
+    }
+    const hasBakedValue = (envVarName: string): boolean =>
+      (bakedValueByName.get(envVarName) ?? "").trim().length > 0;
+    const missingDbConfig: string[] = [];
+    if (!config.api?.url) missingDbConfig.push("NEXT_PUBLIC_API_URL");
+    if (!hasBakedValue("NEXT_PUBLIC_SUPABASE_URL")) missingDbConfig.push("NEXT_PUBLIC_SUPABASE_URL");
+    if (!hasBakedValue("NEXT_PUBLIC_SUPABASE_ANON_KEY")) missingDbConfig.push("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+    if (missingDbConfig.length) {
+      return res.status(422).json({
+        error: {
+          code: "export_missing_db_config",
+          message: `Configura en el onboarding antes de exportar: ${missingDbConfig.join(", ")}`,
+        },
+        missing: missingDbConfig,
+      });
+    }
+
     // --- Resolver runtimeConfig (crm-export-runtime-config, design.md §2) ---
     // platformApiUrl: env del propio backend de plataforma (NO del tenant).
     // tenantId: businessId del negocio (identificador real de tenant en este
     // backend; distinto de `config.business.clienteId`, que enlaza con
     // `crm_project.id_cliente` en agents-agency y no es un id de plataforma).
     // tenantApiKey: clave fresca minteada server-side para ESTE export.
+    // crm-onboarding-db-keys-export-connect (code-review fix): esto corre
+    // DESPUÉS del gate — mintear la key ANTES bloqueaba dejaba una TenantApiKey
+    // huérfana (nunca usada) por cada export rechazado con 422.
     const runtimeConfig: RuntimeConfig = {
       platformApiUrl: process.env.PLATFORM_API_URL ?? "",
       tenantId: projectId,
@@ -420,22 +486,6 @@ export function createExportHandler(deps: ExportsDeps) {
         // llega a existir ninguno).
         console.error(
           "[exports] no se pudo emitir TenantApiKey para el export:",
-          e instanceof Error ? e.message : e,
-        );
-      }
-    }
-
-    // --- crm-env-contract-tiers (WU3.4): resolver secretos FRONTEND_PUBLIC a hornear ---
-    let publicEnvSecrets: PublicEnvSecret[] = [];
-    if (deps.publicEnvSecrets) {
-      try {
-        publicEnvSecrets = await deps.publicEnvSecrets.read(projectId);
-      } catch (e) {
-        // Fail-open: un fallo al leer/descifrar secretos no bloquea la
-        // exportación — el ZIP sale sin esas NEXT_PUBLIC_* horneadas (el
-        // negocio las sigue viendo vía /tenant-config). Nunca se loguea valor.
-        console.error(
-          "[exports] no se pudieron resolver los secretos públicos del tenant para el export:",
           e instanceof Error ? e.message : e,
         );
       }

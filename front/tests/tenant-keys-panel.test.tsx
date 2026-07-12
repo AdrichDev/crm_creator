@@ -1,6 +1,7 @@
 // Panel de claves/secretos por-tenant (crm-onboarding-tenant-keys) — render de slots,
-// guardar limpia el input, probar ok/error (AI+database), Maps vía /tenant-config,
-// quitar con confirmación, valor tecleado nunca queda en el DOM tras guardar.
+// guardar limpia el input, probar ok/error (AI+database+maps, todos vía testSecret desde
+// crm-onboarding-db-keys-export-connect T1), quitar con confirmación, valor tecleado
+// nunca queda en el DOM tras guardar.
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, cleanup, screen, fireEvent, act } from '@testing-library/react';
 
@@ -25,8 +26,16 @@ vi.mock('@/components/ui/dialog-provider', () => ({
 }));
 
 import { TenantKeysPanel } from '@/components/config/tenant-keys-panel';
+import { KNOWN_PRESET_NAMES } from '@/lib/api/tenant-keys';
 
 async function flush() { await act(async () => { await Promise.resolve(); await Promise.resolve(); }); }
+
+describe('KNOWN_PRESET_NAMES [crm-onboarding-db-keys-export-connect T5]', () => {
+  it('incluye los 2 slots Supabase', () => {
+    expect(KNOWN_PRESET_NAMES).toContain('NEXT_PUBLIC_SUPABASE_URL');
+    expect(KNOWN_PRESET_NAMES).toContain('NEXT_PUBLIC_SUPABASE_ANON_KEY');
+  });
+});
 
 const BIZ = 'biz-123';
 const VACIO = { secrets: [] };
@@ -42,20 +51,22 @@ describe('TenantKeysPanel', () => {
   });
   afterEach(() => cleanup());
 
-  it('sin groups: renderiza las 5 tarjetas, todas "no configurado"', async () => {
+  it('sin groups: renderiza las 7 tarjetas (5 + 2 Supabase), todas "no configurado"', async () => {
     render(<TenantKeysPanel businessId={BIZ} />);
     await flush();
-    for (const label of ['OpenAI', 'Gemini', 'Anthropic', 'Google Maps', 'URL (BD)']) {
+    for (const label of ['OpenAI', 'Gemini', 'Anthropic', 'Google Maps', 'URL (BD)', 'Supabase URL', 'Supabase anon key']) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
-    expect(screen.getAllByText('no configurado')).toHaveLength(5);
+    expect(screen.getAllByText('no configurado')).toHaveLength(7);
     expect(apiFetch).toHaveBeenCalledWith(`/tenant-keys/${BIZ}/secrets`);
   });
 
-  it('groups=["database"]: renderiza solo la tarjeta de BD', async () => {
+  it('groups=["database"]: renderiza BD + los 2 slots Supabase, nada de AI/Maps', async () => {
     render(<TenantKeysPanel businessId={BIZ} groups={['database']} />);
     await flush();
     expect(screen.getByText('URL (BD)')).toBeInTheDocument();
+    expect(screen.getByText('Supabase URL')).toBeInTheDocument();
+    expect(screen.getByText('Supabase anon key')).toBeInTheDocument();
     expect(screen.queryByText('OpenAI')).toBeNull();
     expect(screen.queryByText('Google Maps')).toBeNull();
   });
@@ -150,38 +161,39 @@ describe('TenantKeysPanel', () => {
     });
     render(<TenantKeysPanel businessId={BIZ} groups={['database']} />);
     await flush();
-    fireEvent.click(screen.getByText('Probar conexión'));
+    // group=database ahora también incluye los 2 slots Supabase — DATABASE_URL es el primero.
+    fireEvent.click(screen.getAllByText('Probar conexión')[0]);
     await flush();
     expect(screen.getByText('no se pudo conectar la base de datos')).toBeInTheDocument();
   });
 
-  it('probar (maps): usa GET /tenant-config, NO .../test — ok si publicEnvSecrets trae la clave', async () => {
+  it('probar (maps) [fix code-review]: NO llama a testSecret (Maps es NEXT_PUBLIC, se valida por HTTP-referrer en el navegador, no server-side) — con el slot configurado muestra éxito sin red', async () => {
     apiFetch.mockImplementation(async (path: string) => {
       if (path === `/tenant-keys/${BIZ}/secrets`) return { secrets: [seed('GOOGLE_MAPS_API_KEY', true)] };
-      if (path === '/tenant-config') return { publicEnvSecrets: { NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: 'AIza-real' } };
       return undefined;
     });
     render(<TenantKeysPanel businessId={BIZ} groups={['maps']} />);
     await flush();
     fireEvent.click(screen.getByText('Probar conexión'));
     await flush();
-    expect(apiFetch).toHaveBeenCalledWith('/tenant-config');
-    expect(apiFetch).not.toHaveBeenCalledWith(expect.stringContaining('/test'), expect.anything());
-    expect(screen.getByText('Clave activa en el runtime del front.')).toBeInTheDocument();
-    expect(document.body.textContent).not.toContain('AIza-real');
+    expect(apiFetch).not.toHaveBeenCalledWith(`/tenant-keys/${BIZ}/secrets/GOOGLE_MAPS_API_KEY/test`, expect.anything());
+    expect(apiFetch).not.toHaveBeenCalledWith('/tenant-config');
+    expect(screen.getByText('Clave guardada; se aplicará en el front y en el export.')).toBeInTheDocument();
   });
 
-  it('probar (maps) sin propagar: error', async () => {
+  it('probar (maps): con edición pendiente sin guardar pide guardar primero, sin llamar a testSecret', async () => {
     apiFetch.mockImplementation(async (path: string) => {
       if (path === `/tenant-keys/${BIZ}/secrets`) return { secrets: [seed('GOOGLE_MAPS_API_KEY', true)] };
-      if (path === '/tenant-config') return { publicEnvSecrets: {} };
       return undefined;
     });
     render(<TenantKeysPanel businessId={BIZ} groups={['maps']} />);
     await flush();
+    fireEvent.focus(screen.getByLabelText('Google Maps (guardado, oculto)'));
+    fireEvent.change(screen.getByLabelText('Valor de Google Maps'), { target: { value: 'nueva-clave-sin-guardar' } });
     fireEvent.click(screen.getByText('Probar conexión'));
     await flush();
-    expect(screen.getByText('La clave aún no se refleja en el front. Guarda primero.')).toBeInTheDocument();
+    expect(apiFetch).not.toHaveBeenCalledWith(`/tenant-keys/${BIZ}/secrets/GOOGLE_MAPS_API_KEY/test`, expect.anything());
+    expect(screen.getByText('Guarda la clave primero.')).toBeInTheDocument();
   });
 
   it('quitar: pide confirmación y llama DELETE', async () => {
@@ -220,6 +232,19 @@ describe('TenantKeysPanel — Otras variables (crm-tenant-keys-freeform)', () =>
     confirmMock.mockReset().mockResolvedValue(true);
   });
   afterEach(() => cleanup());
+
+  it('showExtras=false oculta la sección "Otras variables" (evita duplicado con varios paneles)', async () => {
+    render(<TenantKeysPanel businessId={BIZ} groups={['database']} showExtras={false} />);
+    await flush();
+    expect(screen.queryByText('Otras variables')).toBeNull();
+    expect(screen.queryByLabelText('Nombre de la nueva variable')).toBeNull();
+  });
+
+  it('showExtras por defecto muestra "Otras variables"', async () => {
+    render(<TenantKeysPanel businessId={BIZ} />);
+    await flush();
+    expect(screen.getByText('Otras variables')).toBeInTheDocument();
+  });
 
   it('key inválida deja "Agregar" disabled', async () => {
     render(<TenantKeysPanel businessId={BIZ} />);
@@ -295,6 +320,28 @@ describe('TenantKeysPanel — Otras variables (crm-tenant-keys-freeform)', () =>
     expect(screen.getByText('NEXT_PUBLIC_FOO')).toBeInTheDocument();
     expect(screen.getByText('Pública')).toBeInTheDocument();
     expect((screen.getByLabelText('Nombre de la nueva variable') as HTMLInputElement).value).toBe('');
+  });
+
+  it('[crm-onboarding-db-keys-export-connect T5] slots Supabase configurados: campo dedicado en group database, NUNCA en "Otras variables"', async () => {
+    apiFetch.mockImplementation(async (path: string) => {
+      if (path === `/tenant-keys/${BIZ}/secrets`) {
+        return {
+          secrets: [
+            seed('NEXT_PUBLIC_SUPABASE_URL', true),
+            seed('NEXT_PUBLIC_SUPABASE_ANON_KEY', true),
+          ],
+        };
+      }
+      return undefined;
+    });
+    render(<TenantKeysPanel businessId={BIZ} groups={['database']} />);
+    await flush();
+    // Aparecen como tarjetas dedicadas con su label del CATALOG, no con el nombre crudo.
+    expect(screen.getByText('Supabase URL')).toBeInTheDocument();
+    expect(screen.getByText('Supabase anon key')).toBeInTheDocument();
+    // Si hubieran caído en "Otras variables" se verían con el nombre crudo de la variable.
+    expect(screen.queryByText('NEXT_PUBLIC_SUPABASE_URL')).toBeNull();
+    expect(screen.queryByText('NEXT_PUBLIC_SUPABASE_ANON_KEY')).toBeNull();
   });
 
   it('Quitar en una fila free-form existente llama deleteSecret', async () => {

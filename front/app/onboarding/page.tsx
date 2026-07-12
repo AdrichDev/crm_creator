@@ -81,6 +81,10 @@ function OnboardingInner() {
   const [clients, setClients] = useState<ClientLite[]>([]);
   const [clientsError, setClientsError] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  // Estado del botón "Guardar" por-paso (solo edición). Vuelve a 'idle' en cuanto el
+  // usuario edita el draft o cambia de paso, para no mostrar "Guardado" en falso.
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  useEffect(() => { setSaveState('idle'); }, [draft, step]);
   useEffect(() => {
     if (!isApiEnabled()) return; // modo demo sin back: sin tenants
     apiFetch<ClientLite[]>('/tenants')
@@ -171,28 +175,52 @@ function OnboardingInner() {
     }
   }
 
-  async function finish() {
+  // Construye la config a persistir desde el draft actual (normaliza nombre y
+  // logoText, marca setupComplete). Compartida por el submit final y el guardado
+  // por-paso para que ambos escriban EXACTAMENTE la misma config.
+  function buildConfig(): TenantConfig {
     const name = draft.business.name.trim() || VERTICAL_MAP[draft.business.vertical].label;
-    const cfg = { ...draft, business: { ...draft.business, name },
+    return { ...draft, business: { ...draft.business, name },
       branding: { ...draft.branding, logoText: draft.branding.logoText || name.slice(0, 2).toUpperCase() },
       setupComplete: true };
+  }
+
+  // Persiste la config sobre el proyecto en edición (PATCH /projects/:id) SIN navegar.
+  // Reutilizada por `finish()` (que navega si va bien) y por `saveStep()` (que se
+  // queda en el paso). Solo aplica en edición: en alta el proyecto aún no existe.
+  // Devuelve true si guardó, false si falló (deja el error visible, no navega).
+  async function persist(cfg: TenantConfig): Promise<boolean> {
+    if (!(isEdit && editing)) return false;
+    setErrorMsg('');
+    try {
+      await updateProject(editing.id, cfg);
+      // Deja el proyecto editado como activo: evita que /dashboard u otras vistas
+      // queden apuntando al proyecto activo anterior.
+      openProject(editing.id);
+      // Aplica el horario a OpeningHour (requiere el x-business-id ya fijado).
+      await syncHorarioConAviso(cfg);
+      return true;
+    } catch (e) {
+      const msg = (e as { message?: string })?.message ?? '';
+      setErrorMsg(msg || 'No se pudieron guardar los cambios. Verifica que tienes sesión activa y el backend responde.');
+      return false;
+    }
+  }
+
+  // Guardado por-paso (solo edición): persiste el draft completo y permanece en el
+  // paso actual. El PATCH pisa BusinessSetting.datos íntegro, pero en edición el
+  // draft ya está hidratado con toda la config → no se pierden apartados.
+  async function saveStep(): Promise<void> {
+    setSaveState('saving');
+    const ok = await persist(buildConfig());
+    setSaveState(ok ? 'saved' : 'idle');
+  }
+
+  async function finish() {
+    const cfg = buildConfig();
     if (isEdit && editing) {
-      // UC-1: persistir SOBRE el proyecto existente (PATCH /projects/:id), sin crear
-      // uno nuevo. Se ESPERA el guardado con el id explícito del proyecto editado; si
-      // falla, se muestra el error y NO se navega (no declarar "guardado" en falso).
-      setErrorMsg('');
-      try {
-        await updateProject(editing.id, cfg);
-        // Deja el proyecto editado como activo (como antes de este fix): evita que
-        // /dashboard u otras vistas queden apuntando al proyecto activo anterior.
-        openProject(editing.id);
-        // Aplica el horario a OpeningHour (requiere el x-business-id ya fijado).
-        await syncHorarioConAviso(cfg);
-        router.push('/dashboard');
-      } catch (e) {
-        const msg = (e as { message?: string })?.message ?? '';
-        setErrorMsg(msg || 'No se pudieron guardar los cambios. Verifica que tienes sesión activa y el backend responde.');
-      }
+      // UC-1: persistir SOBRE el proyecto existente y navegar a la consola si va bien.
+      if (await persist(cfg)) router.push('/dashboard');
       return;
     }
     // En modo CRM hay que vincular un cliente (tenant) existente de agents-agency.
@@ -225,9 +253,18 @@ function OnboardingInner() {
     <div className="crm-console onboarding min-h-screen"
       style={{ '--brand-primary': draft.branding.primary, '--brand-secondary': draft.branding.secondary } as React.CSSProperties}>
       <div className="mx-auto max-w-4xl px-5 py-10">
-        <Button variant="ghost" onClick={() => router.push('/dashboard')} className="mb-6">
-          <ChevronLeft className="h-4 w-4" /> Volver a proyectos
-        </Button>
+        <div className="mb-6 flex items-center justify-between gap-2">
+          <Button variant="ghost" onClick={() => router.push('/dashboard')}>
+            <ChevronLeft className="h-4 w-4" /> Volver a proyectos
+          </Button>
+          {/* Guardado por-paso (solo edición): persiste el apartado actual sin recorrer
+              el resto de pasos. Arriba, junto a "Volver a proyectos". */}
+          {isEdit && (
+            <Button variant="ghost" onClick={saveStep} disabled={saveState === 'saving'}>
+              <Check className="h-4 w-4" /> {saveState === 'saving' ? 'Guardando…' : saveState === 'saved' ? 'Guardado ✓' : 'Guardar'}
+            </Button>
+          )}
+        </div>
         <div className="mb-2 text-center">
           <h1 className="font-display text-3xl font-semibold text-gray-900">{isEdit ? 'Editar el negocio' : 'Configura el negocio'}</h1>
           <p className="mt-1 text-sm text-gray-500">{isEdit ? 'Ajusta apartados, marca y datos. Los cambios se guardan sobre este proyecto.' : 'Elige qué incluye la plataforma. Podrás cambiarlo cuando quieras.'}</p>
@@ -237,8 +274,16 @@ function OnboardingInner() {
         <div className="mb-8 mt-6 flex items-center justify-center gap-2">
           {STEPS.map((s, i) => (
             <div key={s} className="flex items-center gap-2">
-              <div className={cn('grid h-8 w-8 place-items-center rounded-full text-xs font-semibold',
-                i < step ? 'bg-[var(--brand-primary)] text-white' : i === step ? 'border-2 border-[var(--brand-primary)] text-[var(--brand-primary)]' : 'bg-gray-200 text-gray-500')}>
+              {/* En edición el círculo es clicable: salta directo a cualquier paso
+                  (config ya completa). En alta se mantiene el flujo guiado next/back. */}
+              <div
+                role={isEdit ? 'button' : undefined}
+                tabIndex={isEdit ? 0 : undefined}
+                onClick={isEdit ? () => setStep(i) : undefined}
+                onKeyDown={isEdit ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setStep(i); } } : undefined}
+                className={cn('grid h-8 w-8 place-items-center rounded-full text-xs font-semibold',
+                  isEdit && 'cursor-pointer',
+                  i < step ? 'bg-[var(--brand-primary)] text-white' : i === step ? 'border-2 border-[var(--brand-primary)] text-[var(--brand-primary)]' : 'bg-gray-200 text-gray-500')}>
                 {i < step ? <Check className="h-4 w-4" /> : i + 1}
               </div>
               <span className={cn('hidden text-sm sm:block', i === step ? 'font-medium text-gray-900' : 'text-gray-400')}>{s}</span>
@@ -298,7 +343,7 @@ function OnboardingInner() {
                 <p className="text-xs text-gray-500">URL de conexión del proyecto. Se guarda cifrada; opcional — si se deja vacía, se puede configurar más adelante.</p>
               </div>
               {isEdit && editing ? (
-                <TenantKeysPanel businessId={editing.id} groups={['database']} />
+                <TenantKeysPanel businessId={editing.id} groups={['database']} showExtras={false} />
               ) : (
                 // crm-onboarding-tenant-keys (WU5.3): en alta NUEVA no existe `businessId` hasta
                 // `finish()` (createProject se llama al final del wizard) — el store cifrado
