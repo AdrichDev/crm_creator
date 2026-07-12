@@ -54,10 +54,26 @@ export function exportArtifactPath(businessId: string, versionId: string): strin
 }
 
 /**
- * Comprime un directorio completo (recursivo) a un Buffer ZIP en memoria. Usado
- * para archivar `ctx.frontDir` tal cual, sin allowlist ni build adicional — el
- * artefacto de versión es la fuente completa compartida por todos los builders,
- * no el ZIP filtrado que produce `buildWebZip`.
+ * Directorios generados/instalados que NUNCA deben entrar en el artefacto de
+ * versión: son basura compilada o dependencias reinstalables, no fuente. Sin este
+ * filtro, comprimir `frontDir` arrastra `node_modules`/`.next` (cientos de MB) a un
+ * Buffer EN MEMORIA → OOM en el proceso (Render ~512MB), que rompe la exportación
+ * entera. El cliente reinstala con `npm install` (ver README del export).
+ */
+export const VERSION_ARTIFACT_EXCLUDED_DIRS = new Set<string>([
+  'node_modules', '.next', '.git', '.turbo', '.vercel', 'coverage', 'dist', 'out',
+]);
+
+/** true si la ruta relativa NO cae bajo un directorio excluido del artefacto. */
+export function includeInVersionArtifact(relPath: string): boolean {
+  return !relPath.split(/[\\/]/).some((seg) => VERSION_ARTIFACT_EXCLUDED_DIRS.has(seg));
+}
+
+/**
+ * Comprime un directorio (recursivo) a un Buffer ZIP en memoria, EXCLUYENDO
+ * `node_modules`/`.next`/etc. (ver VERSION_ARTIFACT_EXCLUDED_DIRS). Usado para
+ * archivar `ctx.frontDir` como fuente de la versión — sin allowlist de formato,
+ * pero sí sin dependencias/artefactos generados que dispararían un OOM.
  */
 export async function zipDirectoryToBuffer(dir: string): Promise<Buffer> {
   return new Promise<Buffer>((resolve, reject) => {
@@ -71,7 +87,7 @@ export async function zipDirectoryToBuffer(dir: string): Promise<Buffer> {
     });
     archive.on('end', () => resolve(Buffer.concat(chunks)));
 
-    archive.directory(dir, false);
+    archive.directory(dir, false, (entry) => (includeInVersionArtifact(entry.name) ? entry : false));
     void archive.finalize();
   });
 }

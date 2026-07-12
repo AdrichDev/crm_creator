@@ -13,6 +13,7 @@ import {
   signExportUrl,
   exportArtifactPath,
   zipDirectoryToBuffer,
+  includeInVersionArtifact,
   EXPORT_ARTIFACTS_BUCKET,
   type ExportStorageApi,
 } from '../storage-exports.js';
@@ -23,6 +24,21 @@ import * as path from 'node:path';
 describe('exportArtifactPath', () => {
   test('construye la key {businessId}/{versionId}.zip', () => {
     assert.equal(exportArtifactPath('biz-1', 'ver-1'), 'biz-1/ver-1.zip');
+  });
+});
+
+describe('includeInVersionArtifact (excluye node_modules/.next → evita OOM)', () => {
+  test('excluye dependencias y artefactos generados (a cualquier profundidad)', () => {
+    assert.equal(includeInVersionArtifact('node_modules/react/index.js'), false);
+    assert.equal(includeInVersionArtifact('.next/server/app.js'), false);
+    assert.equal(includeInVersionArtifact('android/node_modules/x'), false); // segmento anidado
+    assert.equal(includeInVersionArtifact('.git/HEAD'), false);
+    assert.equal(includeInVersionArtifact('dist/bundle.js'), false);
+  });
+  test('incluye la fuente real', () => {
+    assert.equal(includeInVersionArtifact('app/page.tsx'), true);
+    assert.equal(includeInVersionArtifact('components/config/panel.tsx'), true);
+    assert.equal(includeInVersionArtifact('package.json'), true);
   });
 });
 
