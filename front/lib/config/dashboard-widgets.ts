@@ -18,14 +18,15 @@ export type WidgetId =
   | 'facturacion-pendiente'
   | 'vacaciones-pendientes'
   | 'ocupacion-semana'
-  // Accesos rápidos genéricos: un widget-atajo por cada módulo habilitado que no
-  // tiene widget de datos dedicado. Abren el módulo directamente desde el inicio.
-  | 'acceso-servicios'
-  | 'acceso-empleados'
-  | 'acceso-fichaje'
-  | 'acceso-productos'
-  | 'acceso-pedidos'
-  | 'acceso-marketing'
+  // Widgets de resumen: contador sincronizado con la colección real del módulo,
+  // para módulos habilitables sin widget de datos dedicado.
+  | 'resumen-servicios'
+  | 'resumen-empleados'
+  | 'resumen-fichaje'
+  | 'resumen-productos'
+  | 'resumen-pedidos'
+  | 'resumen-marketing'
+  // Accesos rápidos: módulos agregadores (sin colección propia) → atajo al módulo.
   | 'acceso-estadisticas'
   | 'acceso-estudios-mercado';
 
@@ -39,8 +40,9 @@ export interface WidgetDef {
   size: WidgetSize;
   /** Si está presente, el widget solo está disponible cuando este módulo está activo. */
   dependsOn?: ModuleId;
-  /** 'acceso' = atajo genérico que abre el módulo (sin datos); ausente/'data' = widget con contenido propio. */
-  kind?: 'data' | 'acceso';
+  /** 'resumen' = contador sincronizado con la colección del módulo; 'acceso' = atajo
+   *  genérico que abre el módulo (sin datos); ausente/'data' = widget con contenido propio. */
+  kind?: 'data' | 'acceso' | 'resumen';
 }
 
 export const MAX_DASHBOARD_WIDGETS = 6;
@@ -64,24 +66,30 @@ const DATA_WIDGETS: WidgetDef[] = [
 // Módulos habilitables sin widget de datos dedicado: se ofrecen como atajo de
 // acceso rápido en el inicio (icono + nombre + enlace directo al módulo). Se
 // derivan de MODULE_MAP para heredar label/icono/ruta y no duplicar metadatos.
-const ACCESS_MODULES: ModuleId[] = [
-  'servicios', 'empleados', 'fichaje', 'productos', 'pedidos', 'marketing', 'estadisticas', 'estudios-mercado',
-];
+// Módulos con colección propia pero sin widget de datos dedicado: widget de RESUMEN
+// (contador sincronizado con la colección real del módulo).
+const SUMMARY_MODULES: ModuleId[] = ['servicios', 'empleados', 'fichaje', 'productos', 'pedidos', 'marketing'];
 
-const ACCESS_WIDGETS: WidgetDef[] = ACCESS_MODULES.map((m) => {
+// Módulos agregadores (sin colección propia): atajo de acceso rápido al módulo.
+const ACCESS_MODULES: ModuleId[] = ['estadisticas', 'estudios-mercado'];
+
+function widgetFromModule(m: ModuleId, id: string, kind: 'resumen' | 'acceso'): WidgetDef {
   const mod = MODULE_MAP[m];
   return {
-    id: `acceso-${m}` as WidgetId,
+    id: id as WidgetId,
     label: mod.defaultLabel,
     description: mod.description,
     icon: mod.icon,
     size: 'sm' as WidgetSize,
     dependsOn: m,
-    kind: 'acceso' as const,
+    kind,
   };
-});
+}
 
-export const DASHBOARD_WIDGETS: WidgetDef[] = [...DATA_WIDGETS, ...ACCESS_WIDGETS];
+const SUMMARY_WIDGETS: WidgetDef[] = SUMMARY_MODULES.map((m) => widgetFromModule(m, `resumen-${m}`, 'resumen'));
+const ACCESS_WIDGETS: WidgetDef[] = ACCESS_MODULES.map((m) => widgetFromModule(m, `acceso-${m}`, 'acceso'));
+
+export const DASHBOARD_WIDGETS: WidgetDef[] = [...DATA_WIDGETS, ...SUMMARY_WIDGETS, ...ACCESS_WIDGETS];
 
 export const DASHBOARD_WIDGET_MAP: Record<WidgetId, WidgetDef> = Object.fromEntries(
   DASHBOARD_WIDGETS.map((w) => [w.id, w]),

@@ -15,6 +15,7 @@ import { VentasHoyWidget } from './widgets/ventas-hoy-widget';
 import { FacturacionWidget } from './widgets/facturacion-widget';
 import { VacacionesWidget } from './widgets/vacaciones-widget';
 import { OcupacionSemanaWidget } from './widgets/ocupacion-semana-widget';
+import { ModuleSummaryWidget } from './widgets/module-summary-widget';
 
 function WidgetBody({ id }: { id: WidgetId }) {
   switch (id) {
@@ -85,7 +86,11 @@ export function WidgetGrid({ selected, modules }: WidgetGridProps) {
                 <ArrowUpRight className="h-3.5 w-3.5" />
               </Link>
             )}
-            <WidgetBody id={w.id} />
+            {w.kind === 'resumen' && w.dependsOn ? (
+              <ModuleSummaryWidget moduleId={w.dependsOn} />
+            ) : (
+              <WidgetBody id={w.id} />
+            )}
           </div>
         );
       })}
