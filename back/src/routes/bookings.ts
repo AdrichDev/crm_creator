@@ -14,6 +14,7 @@ import {
 } from '../lib/integrations/calendar.js';
 import { emit } from '../lib/automation/index.js';
 import { buildReviewRequest } from '../lib/eventPayloads.js';
+import { reviewRequestEmail } from '../lib/email-templates.js';
 import { parsePagination } from '../lib/pagination.js';
 import { resolveCitaDireccion } from '../lib/citaDireccion.js';
 
@@ -373,13 +374,18 @@ bookingsRouter.post('/:id/complete', async (req: AuthedRequest, res: Response) =
       const business = await prisma.business.findFirst({ where: { id: req.businessId }, select: { nombre: true } });
 
       // emit() es soft-fail: nunca lanza. eventId idempotente por transición.
-      await emit('review.request', buildReviewRequest({
+      const reviewPayload = buildReviewRequest({
         businessName: business?.nombre ?? '',
         customer: booking.customer,
         email: booking.customer.email,
         serviceName: booking.service?.nombre ?? '',
         startAt: booking.startAt,
-      }), { businessId: booking.businessId, eventId: `${booking.id}:review` });
+      });
+      await emit('review.request', reviewPayload, {
+        businessId: booking.businessId,
+        eventId: `${booking.id}:review`,
+        email: reviewRequestEmail(reviewPayload),
+      });
     } catch (err) {
       console.error('[booking.complete] error en review.request:', (err as Error).message);
     }

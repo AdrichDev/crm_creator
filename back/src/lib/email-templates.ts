@@ -205,3 +205,37 @@ export function packageRenewalEmail(businessName: string, customerName: string, 
     }),
   };
 }
+
+export function reviewRequestEmail(p: { businessName: string; customerName: string; serviceName: string; fecha: string; hora: string }): EmailContent {
+  const servicio = p.serviceName ? ` (<strong>${esc(p.serviceName)}</strong>)` : '';
+  return {
+    subject: `¿Qué tal tu experiencia? · ${p.businessName}`,
+    html: emailShell({
+      businessName: p.businessName,
+      title: '¿Nos dejas tu opinión?',
+      bodyHtml: intro(`Hola <strong>${esc(p.customerName)}</strong>, gracias por tu visita${servicio} del <strong>${esc(p.fecha)}</strong> a las <strong>${esc(p.hora)}</strong>. ¿Qué tal fue todo? Tu opinión nos ayuda a mejorar.`),
+    }),
+  };
+}
+
+export function timeoffRequestedEmail(p: { businessName: string; employeeName: string; tipo: string; inicio: string; fin: string }): EmailContent {
+  return {
+    subject: `Solicitud de ${p.tipo} · ${p.employeeName} · ${p.businessName}`,
+    html: emailShell({
+      businessName: p.businessName,
+      title: 'Nueva solicitud de ausencia',
+      bodyHtml: intro(`<strong>${esc(p.employeeName)}</strong> ha solicitado <strong>${esc(p.tipo)}</strong> del <strong>${esc(p.inicio)}</strong> al <strong>${esc(p.fin)}</strong>.`),
+    }),
+  };
+}
+
+export function timeoffResolvedEmail(p: { businessName: string; employeeName: string; estado: string; inicio: string; fin: string }): EmailContent {
+  return {
+    subject: `Tu solicitud ha sido ${p.estado.toLowerCase()} · ${p.businessName}`,
+    html: emailShell({
+      businessName: p.businessName,
+      title: `Solicitud ${esc(p.estado.toLowerCase())}`,
+      bodyHtml: intro(`Hola <strong>${esc(p.employeeName)}</strong>, tu solicitud de ausencia (<strong>${esc(p.inicio)}</strong> — <strong>${esc(p.fin)}</strong>) ha sido <strong>${esc(p.estado)}</strong>.`),
+    }),
+  };
+}
