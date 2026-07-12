@@ -34,6 +34,8 @@ export interface EmitOptions {
    */
   url?: string;
   secret?: string;
+  /** crm-email-templates: HTML ya maquetado por el back; viaja en el envelope hacia n8n. */
+  email?: { subject: string; html: string };
 }
 
 // Memoria de eventos ya enviados en este proceso → idempotencia barata.
@@ -81,6 +83,7 @@ export async function emit<N extends AutomationEventName>(
     businessId: opts.businessId,
     occurredAt: (opts.occurredAt ?? new Date()).toISOString(),
     data,
+    ...(opts.email ? { email: opts.email } : {}),
   };
   const rawBody = JSON.stringify(envelope);
 

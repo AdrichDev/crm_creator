@@ -3,6 +3,16 @@ import { emit as defaultEmit } from './automation/index.js';
 import { adminEmails as prodAdminEmails } from './adminEmails.js';
 import { env } from '../env.js';
 import type { AutomationEventName, AutomationPayloads } from './automation/index.js';
+import {
+  invoicePendingEmail,
+  cashSummaryEmail,
+  lowStockEmail,
+  reactivationEmail,
+  fichajeWeeklyEmail,
+  birthdayEmail,
+  packageRenewalEmail,
+  type EmailContent,
+} from './email-templates.js';
 
 // ---------------------------------------------------------------------------
 // Scheduler de digests/eventos programados (Fases 3-5).
@@ -152,6 +162,8 @@ async function processDigest<N extends AutomationEventName>(
     programadoEn: Date;
     data: AutomationPayloads[N];
     now: Date;
+    /** crm-email-templates: HTML ya maquetado por el back; viaja en el envelope hacia n8n. */
+    rendered?: EmailContent;
   },
 ): Promise<void> {
   const res = await deps.createDigestRow({
@@ -178,6 +190,7 @@ async function processDigest<N extends AutomationEventName>(
       businessId: args.businessId,
       eventId: rowId,
       occurredAt: args.now,
+      email: args.rendered,
     });
   } catch {
     return; // deja la fila 'pending' para retry en la próxima pasada
@@ -194,11 +207,13 @@ async function runInvoicePending(deps: DigestDeps, biz: BusinessRow, admins: str
   const rows = await deps.invoicePending(biz.id);
   if (rows.length === 0) return; // sin pendientes → no emite
   const detalle = rows.map((r) => `${r.numero} — ${r.cliente} — ${eur(r.total)} (${r.estado})`).join('\n');
+  const rendered = invoicePendingEmail(biz.nombre, rows);
   for (const email of admins) {
     await processDigest(deps, {
       eventName: 'invoice.pending_digest',
       businessId: biz.id, destino: email, programadoEn: today, now,
       data: { businessName: biz.nombre, email, detalle, totalPendientes: rows.length },
+      rendered,
     });
   }
 }
@@ -219,12 +234,15 @@ async function runCashSummary(deps: DigestDeps, biz: BusinessRow, admins: string
     ? 'Sin ventas'
     : [...porMetodo.entries()].map(([m, a]) => `${m}: ${a.count} ventas — ${eur(a.total)}`).join('\n');
   const fecha = start.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
+  const porMetodoArr = [...porMetodo.entries()].map(([metodo, a]) => ({ metodo, count: a.count, total: a.total }));
+  const rendered = cashSummaryEmail(biz.nombre, fecha, total, porMetodoArr);
   for (const email of admins) {
     // Se emite AUNQUE haya 0 ventas (resumen diario de caja).
     await processDigest(deps, {
       eventName: 'cash.daily_summary',
       businessId: biz.id, destino: email, programadoEn: today, now,
       data: { businessName: biz.nombre, email, fecha, total, detalle },
+      rendered,
     });
   }
 }
@@ -233,11 +251,13 @@ async function runLowStock(deps: DigestDeps, biz: BusinessRow, admins: string[],
   const rows = await deps.lowStock(biz.id);
   if (rows.length === 0) return; // sin filas → no emite
   const detalle = rows.map((r) => `${r.nombre} — stock ${r.stock} (mín ${r.minimo})`).join('\n');
+  const rendered = lowStockEmail(biz.nombre, rows);
   for (const email of admins) {
     await processDigest(deps, {
       eventName: 'stock.low_digest',
       businessId: biz.id, destino: email, programadoEn: today, now,
       data: { businessName: biz.nombre, email, detalle, numProductos: rows.length },
+      rendered,
     });
   }
 }
@@ -246,10 +266,12 @@ async function runBirthdays(deps: DigestDeps, biz: BusinessRow, today: Date, now
   const rows = await deps.birthdaysToday(biz.id, now);
   for (const c of rows) {
     // Uno por cliente, destino = email del cliente (idempotencia email + día).
+    const customerName = fullName(c.nombre, c.apellido);
     await processDigest(deps, {
       eventName: 'customer.birthday',
       businessId: biz.id, destino: c.email, programadoEn: today, now,
-      data: { businessName: biz.nombre, customerName: fullName(c.nombre, c.apellido), email: c.email },
+      data: { businessName: biz.nombre, customerName, email: c.email },
+      rendered: birthdayEmail(biz.nombre, customerName),
     });
   }
 }
@@ -267,6 +289,7 @@ async function runRenewals(deps: DigestDeps, biz: BusinessRow, today: Date, now:
         businessName: biz.nombre, customerName: r.customerName, email: r.email,
         packageName: r.packageName, sesionesRestantes: r.sesionesRestantes,
       },
+      rendered: packageRenewalEmail(biz.nombre, r.customerName, r.packageName, r.sesionesRestantes),
     });
   }
 }
@@ -275,15 +298,18 @@ async function runReactivation(deps: DigestDeps, biz: BusinessRow, admins: strin
   const cutoff = new Date(now.getTime() - REACTIVATION_DAYS * 24 * 60 * 60 * 1000);
   const rows = await deps.inactiveCustomers(biz.id, cutoff);
   if (rows.length === 0) return;
-  const detalle = rows.slice(0, REACTIVATION_MAX).map((c) => {
-    const fecha = c.ultimaVisita.toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
-    return `${fullName(c.nombre, c.apellido)} — última cita ${fecha}`;
-  }).join('\n');
+  const shown = rows.slice(0, REACTIVATION_MAX).map((c) => ({
+    nombre: fullName(c.nombre, c.apellido),
+    fecha: c.ultimaVisita.toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }),
+  }));
+  const detalle = shown.map((c) => `${c.nombre} — última cita ${c.fecha}`).join('\n');
+  const rendered = reactivationEmail(biz.nombre, shown, rows.length);
   for (const email of admins) {
     await processDigest(deps, {
       eventName: 'customer.reactivation_digest',
       businessId: biz.id, destino: email, programadoEn: monday, now,
       data: { businessName: biz.nombre, email, detalle, numClientes: rows.length },
+      rendered,
     });
   }
 }
@@ -294,11 +320,13 @@ async function runFichajeWeekly(deps: DigestDeps, biz: BusinessRow, admins: stri
   const rows = await deps.fichajesForRange(biz.id, start, monday);
   if (rows.length === 0) return;
   const detalle = rows.map((r) => `${r.empleado}: ${r.horas.toFixed(1)} h`).join('\n');
+  const rendered = fichajeWeeklyEmail(biz.nombre, rows);
   for (const email of admins) {
     await processDigest(deps, {
       eventName: 'fichaje.weekly_summary',
       businessId: biz.id, destino: email, programadoEn: monday, now,
       data: { businessName: biz.nombre, email, detalle },
+      rendered,
     });
   }
 }
