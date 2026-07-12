@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ApiError } from '@/lib/api/client';
 import { useDialog } from '@/components/ui/dialog-provider';
 import { Card, CardBody, Badge, Button } from '@/components/ui/primitives';
+import { Eye, EyeOff } from 'lucide-react';
 import {
   listSecrets,
   upsertSecret,
@@ -68,6 +69,8 @@ export function TenantKeysPanel({ businessId, groups, showExtras = true }: Tenan
   const dialog = useDialog();
   const [slots, setSlots] = useState<TenantSecretSlot[]>([]);
   const [inputs, setInputs] = useState<Record<string, string>>({});
+  // Mostrar/ocultar el valor tecleado por slot (inseguro a propósito: uso personal del admin).
+  const [reveal, setReveal] = useState<Record<string, boolean>>({});
   const [status, setStatus] = useState<Record<string, CardStatus>>({});
   const [testResult, setTestResult] = useState<Record<string, TestOutcome>>({});
   const [loading, setLoading] = useState(true);
@@ -245,16 +248,26 @@ export function TenantKeysPanel({ businessId, groups, showExtras = true }: Tenan
                     className="min-w-[220px] flex-1 cursor-text rounded-[8px] border border-white/10 bg-black/20 px-3 py-2 text-sm tracking-widest text-white/60"
                   />
                 ) : (
-                  <input
-                    type="password"
-                    aria-label={`Valor de ${label}`}
-                    placeholder={placeholderFor(kind, name)}
-                    value={inputs[name] ?? ''}
-                    onChange={(e) => setInputs((prev) => ({ ...prev, [name]: e.target.value }))}
-                    className="min-w-[220px] flex-1 rounded-[8px] border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
-                    autoComplete="new-password"
-                    autoFocus={configured}
-                  />
+                  <div className="relative min-w-[220px] flex-1">
+                    <input
+                      type={reveal[name] ? 'text' : 'password'}
+                      aria-label={`Valor de ${label}`}
+                      placeholder={placeholderFor(kind, name)}
+                      value={inputs[name] ?? ''}
+                      onChange={(e) => setInputs((prev) => ({ ...prev, [name]: e.target.value }))}
+                      className="w-full rounded-[8px] border border-white/10 bg-black/20 px-3 py-2 pr-9 text-sm text-white"
+                      autoComplete="new-password"
+                      autoFocus={configured}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setReveal((p) => ({ ...p, [name]: !p[name] }))}
+                      aria-label={reveal[name] ? 'Ocultar valor' : 'Mostrar valor'}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-white/50 hover:text-white"
+                    >
+                      {reveal[name] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
                 )}
                 <Button onClick={() => void guardar(name)} disabled={st !== 'idle' || !(inputs[name]?.trim())}>
                   {st === 'saving'

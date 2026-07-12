@@ -44,8 +44,23 @@ export interface ProviderTestDeps {
 
 const defaultDeps: ProviderTestDeps = {
   fetchImpl: (...args) => fetch(...args),
-  createPool: (connectionString, timeoutMs) =>
-    new Pool({ connectionString, connectionTimeoutMillis: timeoutMs, query_timeout: timeoutMs, max: 1 }),
+  createPool: (connectionString, timeoutMs) => {
+    // Postgres gestionado (Supabase, Neon, RDS…) EXIGE SSL. `pg` no lo activa por defecto,
+    // así que un `SELECT 1` contra el pooler de Supabase fallaba aunque la URL fuese
+    // correcta ("no se pudo conectar la base de datos"). Se activa SSL salvo host local
+    // (dev sin SSL) o si la cadena ya fija `sslmode`. `rejectUnauthorized:false` acepta la
+    // cadena de certificado del pooler (patrón habitual con Supabase).
+    const isLocal = /@(localhost|127\.0\.0\.1|\[::1\])/.test(connectionString);
+    const hasSslMode = /[?&]sslmode=/.test(connectionString);
+    const ssl = isLocal || hasSslMode ? undefined : { rejectUnauthorized: false };
+    return new Pool({
+      connectionString,
+      connectionTimeoutMillis: timeoutMs,
+      query_timeout: timeoutMs,
+      max: 1,
+      ...(ssl ? { ssl } : {}),
+    });
+  },
 };
 
 const DEFAULT_TIMEOUT_MS = 5_000;
