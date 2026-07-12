@@ -13,7 +13,8 @@ import { GENERATED_TENANT } from './config/generated-tenant';
 import { VERTICAL_MAP, type VerticalId } from './config/verticals';
 import type { Role } from './config/roles';
 import { isApiEnabled, apiFetch } from './api/client';
-import { isAuthed, onAuthStateChange, BUSINESS_KEY } from './auth/session';
+import { isAuthed, onAuthStateChange, roleFromMembership, BUSINESS_KEY, type MemberRole } from './auth/session';
+import { getAuthProfile } from './api/profile';
 import { reconcileTenantBlock } from './tenant/blocked-state';
 
 // Proyecto tal como lo sirve el back (/api/projects).
@@ -128,8 +129,18 @@ export function TenantConfigProvider({ children }: { children: ReactNode }) {
         setProjects(rows.map(projectFromApi));
         const a = localStorage.getItem(ACTIVE_KEY);
         if (a) setActiveId(a);
-        const r = localStorage.getItem(ROLE_KEY);
-        if (r === 'admin' || r === 'trabajador' || r === 'cliente') setRoleState(r);
+        // FUENTE DE VERDAD del rol = /auth/me (Membership), re-resuelto en CADA carga.
+        // Antes se leía solo la caché de localStorage, que podía quedar pegada en
+        // 'trabajador' si un login previo cayó (backend caído) → el admin no entraba
+        // en modo admin nunca más. Fallback a la caché solo si /auth/me falla.
+        try {
+          const me = await getAuthProfile();
+          if (!alive) return;
+          setRole(roleFromMembership(me.role as MemberRole | undefined));
+        } catch {
+          const r = localStorage.getItem(ROLE_KEY);
+          if (r === 'admin' || r === 'trabajador' || r === 'cliente') setRoleState(r);
+        }
       } catch { /* deja la lista como esté */ }
       if (alive) setReady(true);
     }
