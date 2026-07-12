@@ -124,9 +124,12 @@ export function onAuthStateChange(
   return () => subscription.unsubscribe();
 }
 
-/** Active business id from localStorage (unchanged from prior implementation). */
+/** Negocio activo. En un export single-tenant, NEXT_PUBLIC_BUSINESS_ID GANA sobre el
+ *  localStorage (que pudo quedar cacheado en otro negocio de un login previo). En la
+ *  plataforma multi-proyecto (sin esa env) se usa la selección de localStorage. */
 export function getActiveBusinessId(): string | null {
   const env = process.env.NEXT_PUBLIC_BUSINESS_ID || null;
-  if (typeof window === 'undefined') return env;
-  return window.localStorage.getItem(BUSINESS_KEY) || env;
+  if (env) return env;
+  if (typeof window === 'undefined') return null;
+  return window.localStorage.getItem(BUSINESS_KEY);
 }
