@@ -54,7 +54,7 @@ export function resolveFooterUser(
   return { nombre: demo.nombre, iniciales: demo.iniciales, rolLabel: demo.rolLabel, email: demo.email };
 }
 
-export function Sidebar() {
+export function Sidebar({ mobileOpen = false, onNavigate }: { mobileOpen?: boolean; onNavigate?: () => void } = {}) {
   const { config, closeProject } = useProjects();
   const { role } = useRole();
   const pathname = usePathname();
@@ -184,7 +184,7 @@ export function Sidebar() {
   }
 
   return (
-    <aside className={cn('opera-sidebar dark-scroll relative', collapsed && 'opera-sidebar-collapsed')}>
+    <aside className={cn('opera-sidebar dark-scroll relative', collapsed && 'opera-sidebar-collapsed', mobileOpen && 'opera-sidebar-mobile-open')}>
       {/* Botón de colapso (paridad visual con agents-agency: misma posición/flechas) */}
       <button
         onClick={toggleCollapse}
@@ -213,7 +213,7 @@ export function Sidebar() {
 
       {!collapsed && <p className="opera-sidebar-title">{PANEL_TITLE[role]}</p>}
 
-      <nav className="opera-sidebar-links">
+      <nav className="opera-sidebar-links" onClick={onNavigate}>
         {groups.map((g) => (
           <div key={g.cat}>
             {!collapsed && <p className="group-label">{CATEGORY_LABEL[g.cat]}</p>}

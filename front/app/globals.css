@@ -397,6 +397,31 @@ body {
   font-size: 1.05rem; letter-spacing: .5px; padding: 1.5rem 1.5rem .5rem;
 }
 .opera-sidebar-biz { padding: 0 1.5rem 1rem; }
+
+/* --- Navegación móvil: hamburguesa + sidebar como drawer (C2 Fase 1) --- */
+.opera-hamburger {
+  display: none; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 38px; height: 38px; border-radius: 8px;
+  color: var(--panel-text); background: transparent; border: 1px solid var(--line);
+}
+.opera-hamburger:hover { background: rgba(255, 255, 255, 0.06); }
+.opera-nav-backdrop { position: fixed; inset: 0; z-index: 45; background: rgba(0, 0, 0, 0.5); }
+
+@media (max-width: 767px) {
+  .opera-hamburger { display: inline-flex; }
+  /* El sidebar sale del flujo y se abre como drawer sobre el contenido. */
+  .opera-sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0; z-index: 50;
+    width: 264px; max-width: 84vw;
+    transform: translateX(-100%); transition: transform .25s ease;
+    box-shadow: 2px 0 20px rgba(0, 0, 0, .45);
+    padding-left: env(safe-area-inset-left);
+  }
+  .opera-sidebar.opera-sidebar-mobile-open { transform: translateX(0); }
+  /* En móvil el drawer va SIEMPRE completo (ignora el colapso de escritorio). */
+  .opera-sidebar-collapsed { width: 264px; }
+  .opera-sidebar-collapsed .opera-sidebar-links a { justify-content: flex-start; padding-left: 1rem; padding-right: 1rem; }
+}
 .opera-sidebar-links { list-style: none; padding: .5rem .75rem; margin: 0; flex: 1; overflow-y: auto; }
 .opera-sidebar-links .group-label {
   font-size: 10px; text-transform: uppercase; letter-spacing: .12em;

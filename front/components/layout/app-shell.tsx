@@ -1,12 +1,12 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { Sidebar } from './sidebar';
 import { useProjects } from '@/lib/tenant-config-context';
 import { GENERATED_TENANT } from '@/lib/config/generated-tenant';
 import { isAuthed } from '@/lib/auth/session';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Menu } from 'lucide-react';
 import { ROLES, type Role } from '@/lib/config/roles';
 import { ThemeToggle } from './theme-toggle';
 import { NotificationBell } from './notification-bell';
@@ -16,6 +16,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   // null = checking, true/false = resolved
   const [authedState, setAuthedState] = useState<boolean | null>(null);
+  // Drawer de navegación en móvil (< md): el sidebar sale como overlay.
+  const [navOpen, setNavOpen] = useState(false);
+  const pathname = usePathname();
+  useEffect(() => { setNavOpen(false); }, [pathname]); // cerrar el drawer al navegar
 
   // Gate de login: solo en builds generados (cliente final) que aún NO tienen
   // landing importada. Al añadir landing (config.branding.designSource) el gate
@@ -40,12 +44,20 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="opera-shell">
-      <Sidebar />
+      <Sidebar mobileOpen={navOpen} onNavigate={() => setNavOpen(false)} />
+      {/* Backdrop del drawer móvil: al pulsar fuera, cierra. */}
+      {navOpen && <div className="opera-nav-backdrop" onClick={() => setNavOpen(false)} aria-hidden />}
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="opera-header">
-          <h1 className="opera-brand-title">
-            {config.business.name} <span className="accent">· PANEL</span>
-          </h1>
+          <div className="flex min-w-0 items-center gap-2">
+            {/* Hamburguesa: solo visible en móvil (CSS). Abre el drawer del sidebar. */}
+            <button type="button" className="opera-hamburger" aria-label="Abrir menú" onClick={() => setNavOpen(true)}>
+              <Menu className="h-5 w-5" />
+            </button>
+            <h1 className="opera-brand-title truncate">
+              {config.business.name} <span className="accent">· PANEL</span>
+            </h1>
+          </div>
 
           <div className="flex items-center gap-3">
             {/* "Volver" (a la consola de proyectos) y "Ver como" son herramientas de la
