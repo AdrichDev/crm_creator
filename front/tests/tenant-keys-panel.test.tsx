@@ -113,6 +113,30 @@ describe('TenantKeysPanel', () => {
     expect(editable.value).toBe('');
   });
 
+  it('slot configurado: botón "Guardado" deshabilitado; al teclear una clave nueva pasa a "Guardar" habilitado', async () => {
+    // group=maps tiene un único slot → aísla el botón sin colisión con otras tarjetas.
+    apiFetch.mockImplementation(async (path: string) => {
+      if (path === `/tenant-keys/${BIZ}/secrets`) return { secrets: [seed('GOOGLE_MAPS_API_KEY', true)] };
+      return undefined;
+    });
+    render(<TenantKeysPanel businessId={BIZ} groups={['maps']} />);
+    await flush();
+
+    // Ya guardado y sin edición pendiente → "Guardado" deshabilitado.
+    const guardado = screen.getByRole('button', { name: 'Guardado' });
+    expect(guardado).toBeDisabled();
+
+    // Teclear una clave nueva habilita el guardado y cambia el label a "Guardar".
+    fireEvent.focus(screen.getByLabelText('Google Maps (guardado, oculto)'));
+    await flush();
+    fireEvent.change(screen.getByLabelText('Valor de Google Maps'), { target: { value: 'AIza-nueva' } });
+    await flush();
+
+    const guardar = screen.getByRole('button', { name: 'Guardar' });
+    expect(guardar).not.toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Guardado' })).toBeNull();
+  });
+
   it('guardar: llama PUT con el valor tecleado, limpia el input tras guardar y el valor nunca queda en el DOM', async () => {
     let putBody = '';
     apiFetch.mockImplementation(async (path: string, init?: RequestInit) => {

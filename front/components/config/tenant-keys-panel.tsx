@@ -257,7 +257,11 @@ export function TenantKeysPanel({ businessId, groups, showExtras = true }: Tenan
                   />
                 )}
                 <Button onClick={() => void guardar(name)} disabled={st !== 'idle' || !(inputs[name]?.trim())}>
-                  {st === 'saving' ? 'Guardando…' : 'Guardar'}
+                  {st === 'saving'
+                    ? 'Guardando…'
+                    : configured && !inputs[name]?.trim()
+                      ? 'Guardado'
+                      : 'Guardar'}
                 </Button>
                 <Button variant="outline" onClick={() => void probar(name, kind)} disabled={st !== 'idle' || (!configured && !(inputs[name]?.trim()))}>
                   {st === 'testing' ? 'Probando…' : 'Probar conexión'}
