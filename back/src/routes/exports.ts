@@ -38,6 +38,7 @@ import {
   type StartJobParams,
 } from "../lib/export-job-manager.js";
 import type { RuntimeConfig } from "../lib/export-builders/runtime-config-env.js";
+import { env } from "../env.js";
 import {
   type PublicEnvSecret,
 } from "../lib/export-builders/public-env-secrets.js";
@@ -393,6 +394,15 @@ export function createExportHandler(deps: ExportsDeps) {
     }
 
     const config = setting.datos as unknown as TenantConfig;
+
+    // Si el proyecto no fijó su "Backend API URL", se hornea la URL del backend de
+    // PLATAFORMA (env.exportPublicApiUrl / RENDER_EXTERNAL_URL) como NEXT_PUBLIC_API_URL.
+    // Sin esto, el artefacto sale con la API "sin configurar" → arranca en modo mock y
+    // no conecta al backend. El artefacto usa el backend de plataforma, así que este es
+    // el default correcto; si el operador puso una URL propia, esa gana.
+    if (!config.api?.url && env.exportPublicApiUrl) {
+      config.api = { ...(config.api ?? {}), url: env.exportPublicApiUrl };
+    }
 
     // --- Derivar outputDir y frontDir ---
     const slug = toSlug(config.business.name);

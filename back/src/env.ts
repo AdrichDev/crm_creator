@@ -24,6 +24,12 @@ export const env = {
   // URL pública del front, base de los enlaces de invitación/reset que viajan por email.
   frontUrl: process.env.FRONT_URL ?? 'http://localhost:3002',
 
+  // URL pública del backend de PLATAFORMA que se hornea como NEXT_PUBLIC_API_URL en los
+  // exports cuando el proyecto no fijó su propio "Backend API URL". Sin esto, el CRM
+  // exportado sale sin API → modo mock. En Render, RENDER_EXTERNAL_URL ya trae la URL
+  // pública del servicio automáticamente, así que no hace falta configurar nada extra.
+  exportPublicApiUrl: process.env.EXPORT_PUBLIC_API_URL ?? process.env.RENDER_EXTERNAL_URL ?? '',
+
   // Automatizaciones n8n (opcionales, fail-open). Si AUTOMATION_WEBHOOK_URL está vacío,
   // el emisor es no-op y las notificaciones de citas salen por SMTP directo (email.ts).
   // NO se exigen en assertConfig: el CRM arranca y opera sin n8n configurado.
