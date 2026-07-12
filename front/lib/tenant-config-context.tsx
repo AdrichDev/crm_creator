@@ -129,20 +129,19 @@ export function TenantConfigProvider({ children }: { children: ReactNode }) {
         setProjects(rows.map(projectFromApi));
         const a = localStorage.getItem(ACTIVE_KEY);
         if (a) setActiveId(a);
-        // FUENTE DE VERDAD del rol = /auth/me (Membership), re-resuelto en CADA carga.
-        // Antes se leía solo la caché de localStorage, que podía quedar pegada en
-        // 'trabajador' si un login previo cayó (backend caído) → el admin no entraba
-        // en modo admin nunca más. Fallback a la caché solo si /auth/me falla.
-        try {
-          const me = await getAuthProfile();
-          if (!alive) return;
-          setRole(roleFromMembership(me.role as MemberRole | undefined));
-        } catch {
-          const r = localStorage.getItem(ROLE_KEY);
-          if (r === 'admin' || r === 'trabajador' || r === 'cliente') setRoleState(r);
-        }
       } catch { /* deja la lista como esté */ }
+      // La UI ya puede pintar: NO se bloquea esperando la resolución del rol (si el
+      // backend tarda/cuelga, la app cargaba en un spinner infinito). ready primero.
       if (alive) setReady(true);
+      // Rol REAL desde /auth/me (Membership) EN SEGUNDO PLANO — re-resuelto en cada
+      // carga para no quedar pegado a la caché 'trabajador' de un login previo caído.
+      try {
+        const me = await getAuthProfile();
+        if (alive) setRole(roleFromMembership(me.role as MemberRole | undefined));
+      } catch {
+        const r = localStorage.getItem(ROLE_KEY);
+        if (alive && (r === 'admin' || r === 'trabajador' || r === 'cliente')) setRoleState(r);
+      }
     }
     void loadProjects();
     // Recargar al iniciar sesión (login en otra ruta) o refrescar token.
