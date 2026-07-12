@@ -13,6 +13,7 @@ import { isApiEnabled, apiFetch } from '@/lib/api/client';
 import { getAuthProfile } from '@/lib/api/profile';
 import { logout, getCurrentUser, type SessionUser } from '@/lib/auth/session';
 import { LogOut, Settings } from 'lucide-react';
+import { ThemeToggle } from './theme-toggle';
 
 const PANEL_TITLE: Record<Role, string> = {
   admin: 'Centro de Mando',
@@ -276,6 +277,12 @@ export function Sidebar({ mobileOpen = false, onNavigate }: { mobileOpen?: boole
             >
               {user.iniciales}
             </button>
+          )}
+
+          {/* Modo oscuro/claro: en MÓVIL vive aquí (junto a la cuenta), no en el header
+              estrecho donde causaba wrap. En desktop (md+) sigue en el header. */}
+          {!collapsed && (
+            <span className="inline-flex md:hidden"><ThemeToggle /></span>
           )}
 
           {!collapsed && (

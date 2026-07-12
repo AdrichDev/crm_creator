@@ -69,7 +69,11 @@ export function AppShell({ children }: { children: ReactNode }) {
               </button>
             )}
 
-            <ThemeToggle />
+            {/* Theme toggle: en móvil se mueve al pie del sidebar (junto a la cuenta)
+                para no saturar el header estrecho; aquí solo desde md+. */}
+            <span className="hidden md:inline-flex">
+              <ThemeToggle />
+            </span>
 
             <NotificationBell />
 
