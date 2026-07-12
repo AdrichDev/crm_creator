@@ -1,8 +1,17 @@
-<!-- invoice.pending_digest. Vars: $json.data.safe.{businessName,detalle,totalPendientes} + $json.{logoHtml,primary} -->
-<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222">
+<!-- invoice.pending_digest. Vars: $json.data.safe.{businessName,detalle} + $json.data.totalPendientes + $json.logoHtml. detalle: "Nº — Cliente — Importe (estado)" por línea. -->
+<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:auto;color:#222">
   <div style="text-align:center;margin-bottom:18px">{{ $json.logoHtml }}</div>
-  <h2 style="margin:0 0 12px">🧾 Facturas pendientes</h2>
-  <p>En <b>{{ $json.data.safe.businessName }}</b> hay <b>{{ $json.data.safe.totalPendientes }}</b> facturas pendientes o vencidas de cobro:</p>
-  <div style="background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0;white-space:pre-line;font-size:14px;line-height:1.5">{{ $json.data.safe.detalle }}</div>
-  <p style="font-size:13px;color:#666">📊 Revisa el detalle en tu panel para gestionar los cobros. 💪</p>
+  <h2 style="margin:0 0 6px">🧾 Facturas pendientes</h2>
+  <p style="margin:0 0 16px;color:#555">En <b>{{ $json.data.safe.businessName }}</b> hay <b>{{ $json.data.totalPendientes }}</b> factura(s) pendiente(s) o vencida(s) de cobro:</p>
+  <table style="width:100%;border-collapse:collapse;font-size:14px">
+    <thead>
+      <tr style="text-align:left;color:#64748b;border-bottom:2px solid #e2e8f0">
+        <th style="padding:8px 6px">Nº</th><th style="padding:8px 6px">Cliente</th><th style="padding:8px 6px;text-align:right">Importe</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{ $json.data.safe.detalle.split('\n').filter(l => l.trim()).map(l => '<tr style="border-bottom:1px solid #f1f5f9"><td style="padding:8px 6px">' + (l.split(' — ')[0] || '') + '</td><td style="padding:8px 6px">' + (l.split(' — ')[1] || '') + '</td><td style="padding:8px 6px;text-align:right;white-space:nowrap">' + (l.split(' — ')[2] || l) + '</td></tr>').join('') }}
+    </tbody>
+  </table>
+  <p style="font-size:13px;color:#666;margin-top:16px">📊 Revisa el detalle en tu panel para gestionar los cobros. 💪</p>
 </div>

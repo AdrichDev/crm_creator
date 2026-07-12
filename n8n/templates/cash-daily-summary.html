@@ -1,8 +1,20 @@
-<!-- cash.daily_summary. Vars: $json.data.safe.{businessName,fecha,total,detalle} + $json.{logoHtml,primary} -->
-<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222">
+<!-- cash.daily_summary. Vars: $json.data.safe.{businessName,fecha,detalle} + $json.data.total + $json.logoHtml. detalle: "Método: N ventas — Importe" por línea (o "Sin ventas"). -->
+<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:auto;color:#222">
   <div style="text-align:center;margin-bottom:18px">{{ $json.logoHtml }}</div>
-  <h2 style="margin:0 0 12px">💰 Resumen de caja</h2>
-  <p>Resumen de caja del <b>{{ $json.data.safe.fecha }}</b> en <b>{{ $json.data.safe.businessName }}</b>. Total: <b>{{ $json.data.safe.total }}</b>.</p>
-  <div style="background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0;white-space:pre-line;font-size:14px;line-height:1.5">{{ $json.data.safe.detalle }}</div>
-  <p style="font-size:13px;color:#666">📈 Desglose por método de pago arriba. ¡Buen trabajo hoy! 🙌</p>
+  <h2 style="margin:0 0 6px">💰 Resumen de caja</h2>
+  <p style="margin:0 0 16px;color:#555">Ventas del <b>{{ $json.data.safe.fecha }}</b> en <b>{{ $json.data.safe.businessName }}</b>.</p>
+  <table style="width:100%;border-collapse:collapse;font-size:14px">
+    <thead>
+      <tr style="text-align:left;color:#64748b;border-bottom:2px solid #e2e8f0">
+        <th style="padding:8px 6px">Método</th><th style="padding:8px 6px;text-align:right">Ventas e importe</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{ $json.data.safe.detalle.trim() === 'Sin ventas' ? '<tr><td colspan="2" style="padding:10px 6px;color:#94a3b8">No se registraron ventas en la jornada.</td></tr>' : $json.data.safe.detalle.split('\n').filter(l => l.trim()).map(l => '<tr style="border-bottom:1px solid #f1f5f9"><td style="padding:8px 6px">' + (l.split(':')[0] || '') + '</td><td style="padding:8px 6px;text-align:right;white-space:nowrap">' + (l.split(':').slice(1).join(':').trim() || l) + '</td></tr>').join('') }}
+    </tbody>
+    <tfoot>
+      <tr><td style="padding:10px 6px;font-weight:700">Total del día</td><td style="padding:10px 6px;text-align:right;font-weight:700;color:#1d4ed8">{{ Number($json.data.total || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }) }}</td></tr>
+    </tfoot>
+  </table>
+  <p style="font-size:13px;color:#666;margin-top:16px">📈 Desglose por método de pago. ¡Buen trabajo hoy! 🙌</p>
 </div>

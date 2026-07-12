@@ -1,8 +1,17 @@
-<!-- stock.low_digest. Vars: $json.data.safe.{businessName,detalle,numProductos} + $json.{logoHtml,primary} -->
-<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222">
+<!-- stock.low_digest. Vars: $json.data.safe.{businessName,detalle,numProductos} + $json.logoHtml. detalle: "Nombre — stock X (mín Y)" por línea. -->
+<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:auto;color:#222">
   <div style="text-align:center;margin-bottom:18px">{{ $json.logoHtml }}</div>
-  <h2 style="margin:0 0 12px">📦 Stock bajo</h2>
-  <p>En <b>{{ $json.data.safe.businessName }}</b> hay <b>{{ $json.data.safe.numProductos }}</b> productos por debajo del stock mínimo:</p>
-  <div style="background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0;white-space:pre-line;font-size:14px;line-height:1.5">{{ $json.data.safe.detalle }}</div>
-  <p style="font-size:13px;color:#666">🛒 Revisa el inventario y planifica el reabastecimiento. 📋</p>
+  <h2 style="margin:0 0 6px">📦 Stock bajo</h2>
+  <p style="margin:0 0 16px;color:#555">En <b>{{ $json.data.safe.businessName }}</b> hay <b>{{ $json.data.safe.numProductos }}</b> producto(s) por debajo del mínimo:</p>
+  <table style="width:100%;border-collapse:collapse;font-size:14px">
+    <thead>
+      <tr style="text-align:left;color:#64748b;border-bottom:2px solid #e2e8f0">
+        <th style="padding:8px 6px">Producto</th><th style="padding:8px 6px;text-align:right">Existencias</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{ $json.data.safe.detalle.split('\n').filter(l => l.trim()).map(l => '<tr style="border-bottom:1px solid #f1f5f9"><td style="padding:8px 6px">' + (l.split(' — ')[0] || '') + '</td><td style="padding:8px 6px;text-align:right;white-space:nowrap">' + (l.split(' — ')[1] || l) + '</td></tr>').join('') }}
+    </tbody>
+  </table>
+  <p style="font-size:13px;color:#666;margin-top:16px">🛒 Revisa el inventario y planifica el reabastecimiento. 📋</p>
 </div>

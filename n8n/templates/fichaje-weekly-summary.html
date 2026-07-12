@@ -1,8 +1,17 @@
-<!-- fichaje.weekly_summary. Vars: $json.data.safe.{businessName,detalle} + $json.{logoHtml,primary} -->
-<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222">
+<!-- fichaje.weekly_summary. Vars: $json.data.safe.{businessName,detalle} + $json.logoHtml. detalle: "Empleado: X h" por línea. -->
+<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:auto;color:#222">
   <div style="text-align:center;margin-bottom:18px">{{ $json.logoHtml }}</div>
-  <h2 style="margin:0 0 12px">⏱️ Resumen semanal de fichajes</h2>
-  <p>Horas registradas la semana pasada por el equipo de <b>{{ $json.data.safe.businessName }}</b>:</p>
-  <div style="background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0;white-space:pre-line;font-size:14px;line-height:1.5">{{ $json.data.safe.detalle }}</div>
-  <p style="font-size:13px;color:#666">📋 Detalle de horas por empleado arriba. 💼</p>
+  <h2 style="margin:0 0 6px">⏱️ Resumen semanal de fichajes</h2>
+  <p style="margin:0 0 16px;color:#555">Horas registradas la semana pasada por el equipo de <b>{{ $json.data.safe.businessName }}</b>:</p>
+  <table style="width:100%;border-collapse:collapse;font-size:14px">
+    <thead>
+      <tr style="text-align:left;color:#64748b;border-bottom:2px solid #e2e8f0">
+        <th style="padding:8px 6px">Empleado</th><th style="padding:8px 6px;text-align:right">Horas</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{ $json.data.safe.detalle.split('\n').filter(l => l.trim()).map(l => '<tr style="border-bottom:1px solid #f1f5f9"><td style="padding:8px 6px">' + (l.split(':')[0] || '') + '</td><td style="padding:8px 6px;text-align:right;white-space:nowrap">' + (l.split(':').slice(1).join(':').trim() || l) + '</td></tr>').join('') }}
+    </tbody>
+  </table>
+  <p style="font-size:13px;color:#666;margin-top:16px">📋 Detalle de horas por empleado. 💼</p>
 </div>
