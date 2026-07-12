@@ -277,7 +277,9 @@ body {
 /* Shell del panel (oscuro) — fondo normal del proyecto, SIN rejilla */
 /* Altura fija de viewport + overflow hidden: el sidebar queda FIJO y solo .opera-main
    scrollea (como agents-agency), en vez de scrollear la página entera. */
-.opera-shell { display: flex; height: 100vh; overflow: hidden; background: var(--panel-bg); color: var(--panel-text); }
+/* 100dvh (no 100vh): en móvil el viewport dinámico evita que la barra de URL/gestos
+   recorte el contenido. Fallback a 100vh para navegadores sin dvh. */
+.opera-shell { display: flex; height: 100vh; height: 100dvh; overflow: hidden; background: var(--panel-bg); color: var(--panel-text); }
 
 /* Selects nativos del panel (nueva cita, EntityModal, "Ver como"...): sin
    color-scheme el navegador dibuja el desplegable con el chroma del SO en vez
@@ -336,7 +338,9 @@ body {
 /* Header superior del panel */
 .opera-header {
   display: flex; justify-content: space-between; align-items: center; gap: 1rem;
-  padding: 0 2rem; height: 64px; flex-shrink: 0;
+  /* safe-area: el header baja del notch/status-bar (top) y respeta la isla en landscape. */
+  padding: env(safe-area-inset-top) max(2rem, env(safe-area-inset-right)) 0 max(2rem, env(safe-area-inset-left));
+  height: calc(64px + env(safe-area-inset-top)); flex-shrink: 0;
   background: rgba(10,10,10,0.95);
   border-bottom: 2px solid color-mix(in srgb, var(--acc) 22%, transparent);
   position: sticky; top: 0; z-index: 50; backdrop-filter: blur(6px);
@@ -363,7 +367,8 @@ body {
 .opera-main {
   flex: 1; min-width: 0; min-height: 0;
   display: flex; flex-direction: column;
-  padding: 2.5rem clamp(1rem, 4vw, 3rem);
+  /* safe-area: respeta la barra de gestos (bottom) y el notch en landscape (right). */
+  padding: 2.5rem max(clamp(1rem, 4vw, 3rem), env(safe-area-inset-right)) calc(2.5rem + env(safe-area-inset-bottom)) clamp(1rem, 4vw, 3rem);
   overflow-y: auto;
 }
 

@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { TenantConfigProvider } from '@/lib/tenant-config-context';
 import { BrandingStyle } from '@/components/layout/branding-style';
@@ -10,6 +10,14 @@ export const metadata: Metadata = {
   title: 'OperaOS · Consola',
   description: 'Plantilla SaaS modular y configurable por tipo de negocio.',
   icons: { icon: '/favicon.svg' },
+};
+
+// viewport-fit=cover habilita las env(safe-area-inset-*) para respetar el notch/isla y
+// las barras del sistema en móvil (apk/ipa) — el chrome usa esos insets en globals.css.
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
 };
 
 // Resuelve el tema antes de pintar: evita el flash y fija data-theme en <html>
