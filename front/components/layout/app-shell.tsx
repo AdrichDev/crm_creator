@@ -48,21 +48,27 @@ export function AppShell({ children }: { children: ReactNode }) {
           </h1>
 
           <div className="flex items-center gap-3">
-            <button onClick={volver} className="btn btn-outline btn-sm">
-              <ArrowLeft className="h-4 w-4" /> Volver
-            </button>
+            {/* "Volver" (a la consola de proyectos) y "Ver como" son herramientas de la
+                PLATAFORMA OperaOS (pruebas): solo se muestran en la consola fuente, NUNCA
+                en un CRM exportado (GENERATED_TENANT = build de un solo cliente). */}
+            {!GENERATED_TENANT && (
+              <button onClick={volver} className="btn btn-outline btn-sm">
+                <ArrowLeft className="h-4 w-4" /> Volver
+              </button>
+            )}
 
             <ThemeToggle />
 
             <NotificationBell />
 
-            {/* Selector de perfil (filtrado de vista) */}
-            <label className="opera-role-select">
-              <span className="hidden text-xs text-gray-400 sm:inline">Ver como</span>
-              <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-                {ROLES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
-              </select>
-            </label>
+            {!GENERATED_TENANT && (
+              <label className="opera-role-select">
+                <span className="hidden text-xs text-gray-400 sm:inline">Ver como</span>
+                <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
+                  {ROLES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+                </select>
+              </label>
+            )}
           </div>
         </header>
         <main className="opera-main dark-scroll">

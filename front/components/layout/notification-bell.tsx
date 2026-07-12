@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bell } from 'lucide-react';
 import { useModuleEnabled } from '@/lib/tenant-config-context';
@@ -19,6 +19,21 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [badge, setBadge] = useState(0);
   const [items, setItems] = useState<FollowUpItem[]>([]);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // Click fuera del desplegable → se contrae.
+  useEffect(() => {
+    if (!open) return;
+    function onDocPointer(e: MouseEvent | TouchEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onDocPointer);
+    document.addEventListener('touchstart', onDocPointer);
+    return () => {
+      document.removeEventListener('mousedown', onDocPointer);
+      document.removeEventListener('touchstart', onDocPointer);
+    };
+  }, [open]);
 
   const habilitado = comercialActivo && apiEnabled;
 
@@ -63,7 +78,7 @@ export function NotificationBell() {
   if (!habilitado) return null;
 
   return (
-    <div className="relative">
+    <div className="relative" ref={rootRef}>
       <button type="button" onClick={() => setOpen((o) => !o)} aria-label="Notificaciones"
         className="relative rounded-lg p-2 text-gray-400 transition hover:bg-[var(--hover-bg)] hover:text-[var(--hover-text)]">
         <Bell className="h-4 w-4" />
