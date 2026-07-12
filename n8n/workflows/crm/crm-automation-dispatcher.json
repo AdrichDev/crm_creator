@@ -471,7 +471,9 @@
         "subject": "={{ '✨ ' + ($json.data.businessName || 'Tu cuenta') + ' — activa tu acceso' }}",
         "emailFormat": "html",
         "html": "=<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 12px\">👋 Hola {{ $json.data.firstName }},</h2>\n  <p>Se ha creado tu cuenta{{ $json.data.businessName ? ' en <b>' + $json.data.businessName + '</b>' : '' }}. Act&iacute;vala y elige tu contrase&ntilde;a:</p>\n  <p style=\"text-align:center;margin:28px 0\">\n    <a href=\"{{ $json.data.inviteUrl }}\" style=\"background:{{ $json.primary }};color:#fff;padding:13px 26px;border-radius:10px;text-decoration:none;display:inline-block;font-weight:600\">✨ Activar mi cuenta</a>\n  </p>\n  <p style=\"font-size:13px;color:#666\">⏰ El enlace caduca el {{ $json.expiresHuman }}. Si no esperabas este correo, ign&oacute;ralo. 🔒</p>\n</div>",
-        "options": {}
+        "options": {
+          "appendAttribution": false
+        }
       },
       "id": "55555555-5555-4555-8555-555555555555",
       "name": "Email: alta usuario",
@@ -496,7 +498,9 @@
         "subject": "🔐 Restablece tu contraseña",
         "emailFormat": "html",
         "html": "=<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 12px\">🔐 Hola {{ $json.data.firstName }},</h2>\n  <p>Hemos recibido una solicitud para restablecer tu contrase&ntilde;a. Si fuiste t&uacute;, pulsa el bot&oacute;n:</p>\n  <p style=\"text-align:center;margin:28px 0\">\n    <a href=\"{{ $json.data.resetUrl }}\" style=\"background:{{ $json.primary }};color:#fff;padding:13px 26px;border-radius:10px;text-decoration:none;display:inline-block;font-weight:600\">🔑 Restablecer contrase&ntilde;a</a>\n  </p>\n  <p style=\"font-size:13px;color:#666\">⏰ Caduca el {{ $json.expiresHuman }}. Si no fuiste t&uacute;, ign&oacute;ralo: tu contrase&ntilde;a no cambiar&aacute;. 🛡️</p>\n</div>",
-        "options": {}
+        "options": {
+          "appendAttribution": false
+        }
       },
       "id": "66666666-6666-4666-8666-666666666666",
       "name": "Email: reset contraseña",
@@ -521,7 +525,9 @@
         "subject": "={{ '✅ Verifica tu email' + ($json.data.businessName ? ' — ' + $json.data.businessName : '') }}",
         "emailFormat": "html",
         "html": "=<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 12px\">✅ ¡Hola {{ $json.data.firstName }}!</h2>\n  <p>Gracias por registrarte{{ $json.data.businessName ? ' en <b>' + $json.data.businessName + '</b>' : '' }}. Verifica tu email y elige tu contrase&ntilde;a para activar tu cuenta:</p>\n  <p style=\"text-align:center;margin:28px 0\">\n    <a href=\"{{ $json.data.verifyUrl }}\" style=\"background:{{ $json.primary }};color:#fff;padding:13px 26px;border-radius:10px;text-decoration:none;display:inline-block;font-weight:600\">✅ Verificar mi email</a>\n  </p>\n  <p style=\"font-size:13px;color:#666\">⏰ El enlace caduca el {{ $json.expiresHuman }}. Si no te registraste, ign&oacute;ralo. 🔒</p>\n</div>",
-        "options": {}
+        "options": {
+          "appendAttribution": false
+        }
       },
       "id": "99999999-9999-4999-8999-999999999999",
       "name": "Email: verificación",
@@ -546,7 +552,9 @@
         "subject": "={{ '✅ Cita confirmada — ' + ($json.data.serviceName || 'tu cita') }}",
         "emailFormat": "html",
         "html": "=<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 12px\">✅ Hola {{ $json.data.safe.customerName }},</h2>\n  <p>Tu cita en <b>{{ $json.data.safe.businessName }}</b> est&aacute; confirmada. Aqu&iacute; tienes los detalles:</p>\n  <div style=\"background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0\">\n    <p style=\"margin:4px 0\">💇 <b>Servicio:</b> {{ $json.data.safe.serviceName }}</p>\n    <p style=\"margin:4px 0\">📅 <b>Fecha:</b> {{ $json.data.safe.fecha }}</p>\n    <p style=\"margin:4px 0\">🕐 <b>Hora:</b> {{ $json.data.safe.hora }}</p>\n    {{ $json.data.safe.employeeName ? '<p style=\"margin:4px 0\">👤 <b>Profesional:</b> ' + $json.data.safe.employeeName + '</p>' : '' }}\n  </div>\n  <p style=\"font-size:13px;color:#666\">📍 Te esperamos. Si necesitas cambiar la cita, contacta con nosotros. 🙌</p>\n</div>",
-        "options": {}
+        "options": {
+          "appendAttribution": false
+        }
       },
       "id": "a1a1a1a1-aaaa-4aaa-8aaa-a1a1a1a1a1a1",
       "name": "Email: cita confirmada",
@@ -571,7 +579,9 @@
         "subject": "={{ '⏰ Recordatorio: tu cita mañana — ' + ($json.data.serviceName || '') }}",
         "emailFormat": "html",
         "html": "=<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 12px\">⏰ Hola {{ $json.data.safe.customerName }},</h2>\n  <p>Te recordamos que tienes una cita <b>ma&ntilde;ana</b> en <b>{{ $json.data.safe.businessName }}</b>:</p>\n  <div style=\"background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0\">\n    <p style=\"margin:4px 0\">💇 <b>Servicio:</b> {{ $json.data.safe.serviceName }}</p>\n    <p style=\"margin:4px 0\">📅 <b>Fecha:</b> {{ $json.data.safe.fecha }}</p>\n    <p style=\"margin:4px 0\">🕐 <b>Hora:</b> {{ $json.data.safe.hora }}</p>\n    {{ $json.data.safe.employeeName ? '<p style=\"margin:4px 0\">👤 <b>Profesional:</b> ' + $json.data.safe.employeeName + '</p>' : '' }}\n  </div>\n  <p style=\"font-size:13px;color:#666\">🙌 Si no puedes asistir, av&iacute;sanos para reprogramar. ¡Te esperamos!</p>\n</div>",
-        "options": {}
+        "options": {
+          "appendAttribution": false
+        }
       },
       "id": "b2b2b2b2-bbbb-4bbb-8bbb-b2b2b2b2b2b2",
       "name": "Email: recordatorio 24h",
@@ -596,7 +606,9 @@
         "subject": "={{ '🔔 Tu cita es hoy — ' + ($json.data.serviceName || '') }}",
         "emailFormat": "html",
         "html": "=<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 12px\">🔔 Hola {{ $json.data.safe.customerName }},</h2>\n  <p>Tu cita en <b>{{ $json.data.safe.businessName }}</b> es <b>dentro de un par de horas</b>:</p>\n  <div style=\"background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0\">\n    <p style=\"margin:4px 0\">💇 <b>Servicio:</b> {{ $json.data.safe.serviceName }}</p>\n    <p style=\"margin:4px 0\">📅 <b>Fecha:</b> {{ $json.data.safe.fecha }}</p>\n    <p style=\"margin:4px 0\">🕐 <b>Hora:</b> {{ $json.data.safe.hora }}</p>\n    {{ $json.data.safe.employeeName ? '<p style=\"margin:4px 0\">👤 <b>Profesional:</b> ' + $json.data.safe.employeeName + '</p>' : '' }}\n  </div>\n  <p style=\"font-size:13px;color:#666\">🚗 Ve preparando tu visita. ¡Nos vemos pronto!</p>\n</div>",
-        "options": {}
+        "options": {
+          "appendAttribution": false
+        }
       },
       "id": "c3c3c3c3-cccc-4ccc-8ccc-c3c3c3c3c3c3",
       "name": "Email: recordatorio 2h",
@@ -621,7 +633,9 @@
         "subject": "={{ '😊 ¿Reprogramamos tu cita en ' + ($json.data.businessName || 'tu negocio') + '?' }}",
         "emailFormat": "html",
         "html": "=<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 12px\">😊 Hola {{ $json.data.safe.customerName }},</h2>\n  <p>Te echamos de menos en tu cita de <b>{{ $json.data.safe.fecha }}</b> a las <b>{{ $json.data.safe.hora }}</b> en <b>{{ $json.data.safe.businessName }}</b>.</p>\n  <p>No pasa nada, a todos se nos escapa un d&iacute;a. Cuando quieras, reprogramamos tu <b>{{ $json.data.safe.serviceName }}</b> en el horario que mejor te venga.</p>\n  <p style=\"font-size:13px;color:#666\">📞 Contacta con nosotros para elegir nuevo hueco. ¡Te esperamos! 🙌</p>\n</div>",
-        "options": {}
+        "options": {
+          "appendAttribution": false
+        }
       },
       "id": "d4d4d4d4-dddd-4ddd-8ddd-d4d4d4d4d4d4",
       "name": "Email: no-show",
@@ -663,7 +677,9 @@
         "subject": "={{ '🧾 Facturas pendientes — ' + ($json.data.businessName || 'tu negocio') }}",
         "emailFormat": "html",
         "html": "=<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 6px\">🧾 Facturas pendientes</h2>\n  <p style=\"margin:0 0 16px;color:#555\">En <b>{{ $json.data.safe.businessName }}</b> hay <b>{{ $json.data.totalPendientes }}</b> factura(s) pendiente(s) o vencida(s) de cobro:</p>\n  <table style=\"width:100%;border-collapse:collapse;font-size:14px\">\n    <thead>\n      <tr style=\"text-align:left;color:#64748b;border-bottom:2px solid #e2e8f0\">\n        <th style=\"padding:8px 6px\">Nº</th><th style=\"padding:8px 6px\">Cliente</th><th style=\"padding:8px 6px;text-align:right\">Importe</th>\n      </tr>\n    </thead>\n    <tbody>\n      {{ $json.data.safe.detalle.split('\\n').filter(l => l.trim()).map(l => '<tr style=\"border-bottom:1px solid #f1f5f9\"><td style=\"padding:8px 6px\">' + (l.split(' — ')[0] || '') + '</td><td style=\"padding:8px 6px\">' + (l.split(' — ')[1] || '') + '</td><td style=\"padding:8px 6px;text-align:right;white-space:nowrap\">' + (l.split(' — ')[2] || l) + '</td></tr>').join('') }}\n    </tbody>\n  </table>\n  <p style=\"font-size:13px;color:#666;margin-top:16px\">📊 Revisa el detalle en tu panel para gestionar los cobros. 💪</p>\n</div>",
-        "options": {}
+        "options": {
+          "appendAttribution": false
+        }
       },
       "id": "e1e1e1e1-1111-4111-8111-e1e1e1e1e1e1",
       "name": "Email: facturas pendientes",
@@ -688,7 +704,9 @@
         "subject": "={{ '💰 Resumen de caja — ' + ($json.data.fecha || 'hoy') }}",
         "emailFormat": "html",
         "html": "=<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 6px\">💰 Resumen de caja</h2>\n  <p style=\"margin:0 0 16px;color:#555\">Ventas del <b>{{ $json.data.safe.fecha }}</b> en <b>{{ $json.data.safe.businessName }}</b>.</p>\n  <table style=\"width:100%;border-collapse:collapse;font-size:14px\">\n    <thead>\n      <tr style=\"text-align:left;color:#64748b;border-bottom:2px solid #e2e8f0\">\n        <th style=\"padding:8px 6px\">Método</th><th style=\"padding:8px 6px;text-align:right\">Ventas e importe</th>\n      </tr>\n    </thead>\n    <tbody>\n      {{ $json.data.safe.detalle.trim() === 'Sin ventas' ? '<tr><td colspan=\"2\" style=\"padding:10px 6px;color:#94a3b8\">No se registraron ventas en la jornada.</td></tr>' : $json.data.safe.detalle.split('\\n').filter(l => l.trim()).map(l => '<tr style=\"border-bottom:1px solid #f1f5f9\"><td style=\"padding:8px 6px\">' + (l.split(':')[0] || '') + '</td><td style=\"padding:8px 6px;text-align:right;white-space:nowrap\">' + (l.split(':').slice(1).join(':').trim() || l) + '</td></tr>').join('') }}\n    </tbody>\n    <tfoot>\n      <tr><td style=\"padding:10px 6px;font-weight:700\">Total del día</td><td style=\"padding:10px 6px;text-align:right;font-weight:700;color:#1d4ed8\">{{ Number($json.data.total || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }) }}</td></tr>\n    </tfoot>\n  </table>\n  <p style=\"font-size:13px;color:#666;margin-top:16px\">📈 Desglose por método de pago. ¡Buen trabajo hoy! 🙌</p>\n</div>",
-        "options": {}
+        "options": {
+          "appendAttribution": false
+        }
       },
       "id": "e2e2e2e2-2222-4222-8222-e2e2e2e2e2e2",
       "name": "Email: resumen de caja",
@@ -713,7 +731,9 @@
         "subject": "={{ '📦 Stock bajo — ' + ($json.data.businessName || 'tu negocio') }}",
         "emailFormat": "html",
         "html": "=<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 6px\">📦 Stock bajo</h2>\n  <p style=\"margin:0 0 16px;color:#555\">En <b>{{ $json.data.safe.businessName }}</b> hay <b>{{ $json.data.safe.numProductos }}</b> producto(s) por debajo del mínimo:</p>\n  <table style=\"width:100%;border-collapse:collapse;font-size:14px\">\n    <thead>\n      <tr style=\"text-align:left;color:#64748b;border-bottom:2px solid #e2e8f0\">\n        <th style=\"padding:8px 6px\">Producto</th><th style=\"padding:8px 6px;text-align:right\">Existencias</th>\n      </tr>\n    </thead>\n    <tbody>\n      {{ $json.data.safe.detalle.split('\\n').filter(l => l.trim()).map(l => '<tr style=\"border-bottom:1px solid #f1f5f9\"><td style=\"padding:8px 6px\">' + (l.split(' — ')[0] || '') + '</td><td style=\"padding:8px 6px;text-align:right;white-space:nowrap\">' + (l.split(' — ')[1] || l) + '</td></tr>').join('') }}\n    </tbody>\n  </table>\n  <p style=\"font-size:13px;color:#666;margin-top:16px\">🛒 Revisa el inventario y planifica el reabastecimiento. 📋</p>\n</div>",
-        "options": {}
+        "options": {
+          "appendAttribution": false
+        }
       },
       "id": "e3e3e3e3-3333-4333-8333-e3e3e3e3e3e3",
       "name": "Email: stock bajo",
@@ -738,7 +758,9 @@
         "subject": "={{ '🎂 ¡Feliz cumpleaños' + ($json.data.customerName ? ', ' + $json.data.customerName : '') + '!' }}",
         "emailFormat": "html",
         "html": "=<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 12px\">🎂 ¡Feliz cumpleaños, {{ $json.data.safe.customerName }}!</h2>\n  <p>Desde <b>{{ $json.data.safe.businessName }}</b> queremos desearte un d&iacute;a estupendo. 🥳</p>\n  <p>Gracias por confiar en nosotros. ¡Que cumplas muchos m&aacute;s! 🎉</p>\n  <p style=\"font-size:13px;color:#666\">🎁 Con cari&ntilde;o, el equipo de {{ $json.data.safe.businessName }}.</p>\n</div>",
-        "options": {}
+        "options": {
+          "appendAttribution": false
+        }
       },
       "id": "e4e4e4e4-4444-4444-8444-e4e4e4e4e4e4",
       "name": "Email: cumpleaños",
@@ -763,7 +785,9 @@
         "subject": "={{ '📉 Clientes inactivos — ' + ($json.data.businessName || 'tu negocio') }}",
         "emailFormat": "html",
         "html": "=<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 6px\">📉 Clientes a reactivar</h2>\n  <p style=\"margin:0 0 16px;color:#555\">En <b>{{ $json.data.safe.businessName }}</b> hay <b>{{ $json.data.safe.numClientes }}</b> cliente(s) sin cita en los &uacute;ltimos 90 d&iacute;as:</p>\n  <table style=\"width:100%;border-collapse:collapse;font-size:14px\">\n    <thead>\n      <tr style=\"text-align:left;color:#64748b;border-bottom:2px solid #e2e8f0\">\n        <th style=\"padding:8px 6px\">Cliente</th><th style=\"padding:8px 6px;text-align:right\">Última cita</th>\n      </tr>\n    </thead>\n    <tbody>\n      {{ $json.data.safe.detalle.split('\\n').filter(l => l.trim()).map(l => '<tr style=\"border-bottom:1px solid #f1f5f9\"><td style=\"padding:8px 6px\">' + (l.split(' — ')[0] || '') + '</td><td style=\"padding:8px 6px;text-align:right;white-space:nowrap\">' + ((l.split(' — ')[1] || '').replace('última cita ', '') || l) + '</td></tr>').join('') }}\n    </tbody>\n  </table>\n  <p style=\"font-size:13px;color:#666;margin-top:16px\">💌 Buen momento para una campa&ntilde;a de reactivaci&oacute;n. 🚀</p>\n</div>",
-        "options": {}
+        "options": {
+          "appendAttribution": false
+        }
       },
       "id": "e5e5e5e5-5555-4555-8555-e5e5e5e5e5e5",
       "name": "Email: reactivación clientes",
@@ -788,7 +812,9 @@
         "subject": "={{ '🎟️ Tu bono está por agotarse — ' + ($json.data.businessName || 'tu negocio') }}",
         "emailFormat": "html",
         "html": "=<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 12px\">🎟️ Hola {{ $json.data.safe.customerName }},</h2>\n  <p>Tu bono en <b>{{ $json.data.safe.businessName }}</b> est&aacute; a punto de agotarse:</p>\n  <div style=\"background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0\">\n    <p style=\"margin:4px 0\">🎫 <b>Bono:</b> {{ $json.data.safe.packageName }}</p>\n    <p style=\"margin:4px 0\">⏳ <b>Sesiones restantes:</b> {{ $json.data.safe.sesionesRestantes }}</p>\n  </div>\n  <p style=\"font-size:13px;color:#666\">🔄 Cuando quieras renovarlo, cont&aacute;ctanos y lo dejamos listo. 🙌</p>\n</div>",
-        "options": {}
+        "options": {
+          "appendAttribution": false
+        }
       },
       "id": "e6e6e6e6-6666-4666-8666-e6e6e6e6e6e6",
       "name": "Email: renovación bono",
@@ -813,7 +839,9 @@
         "subject": "={{ '⏱️ Resumen semanal de fichajes — ' + ($json.data.businessName || 'tu negocio') }}",
         "emailFormat": "html",
         "html": "=<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 6px\">⏱️ Resumen semanal de fichajes</h2>\n  <p style=\"margin:0 0 16px;color:#555\">Horas registradas la semana pasada por el equipo de <b>{{ $json.data.safe.businessName }}</b>:</p>\n  <table style=\"width:100%;border-collapse:collapse;font-size:14px\">\n    <thead>\n      <tr style=\"text-align:left;color:#64748b;border-bottom:2px solid #e2e8f0\">\n        <th style=\"padding:8px 6px\">Empleado</th><th style=\"padding:8px 6px;text-align:right\">Horas</th>\n      </tr>\n    </thead>\n    <tbody>\n      {{ $json.data.safe.detalle.split('\\n').filter(l => l.trim()).map(l => '<tr style=\"border-bottom:1px solid #f1f5f9\"><td style=\"padding:8px 6px\">' + (l.split(':')[0] || '') + '</td><td style=\"padding:8px 6px;text-align:right;white-space:nowrap\">' + (l.split(':').slice(1).join(':').trim() || l) + '</td></tr>').join('') }}\n    </tbody>\n  </table>\n  <p style=\"font-size:13px;color:#666;margin-top:16px\">📋 Detalle de horas por empleado. 💼</p>\n</div>",
-        "options": {}
+        "options": {
+          "appendAttribution": false
+        }
       },
       "id": "e7e7e7e7-7777-4777-8777-e7e7e7e7e7e7",
       "name": "Email: resumen fichajes",
@@ -838,7 +866,9 @@
         "subject": "={{ '⭐ ¿Qué tal tu ' + ($json.data.serviceName || 'servicio') + '?' }}",
         "emailFormat": "html",
         "html": "=<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 12px\">⭐ Hola {{ $json.data.safe.customerName }},</h2>\n  <p>Esperamos que hayas disfrutado tu visita a <b>{{ $json.data.safe.businessName }}</b>. ¿Nos cuentas qu&eacute; tal fue?</p>\n  <div style=\"background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0\">\n    <p style=\"margin:4px 0\">💇 <b>Servicio:</b> {{ $json.data.safe.serviceName }}</p>\n    <p style=\"margin:4px 0\">📅 <b>Fecha:</b> {{ $json.data.safe.fecha }}</p>\n    <p style=\"margin:4px 0\">🕐 <b>Hora:</b> {{ $json.data.safe.hora }}</p>\n  </div>\n  <p style=\"font-size:13px;color:#666\">🙏 Tu opini&oacute;n nos ayuda a mejorar. ¡Gracias por tu confianza! 😊</p>\n</div>",
-        "options": {}
+        "options": {
+          "appendAttribution": false
+        }
       },
       "id": "e8e8e8e8-8888-4888-8888-e8e8e8e8e8e8",
       "name": "Email: reseña",
@@ -863,7 +893,9 @@
         "subject": "={{ '🏖️ Solicitud de vacaciones — ' + ($json.data.businessName || 'tu negocio') }}",
         "emailFormat": "html",
         "html": "=<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 12px\">🏖️ Solicitud de vacaciones</h2>\n  <p><b>{{ $json.data.safe.employeeName }}</b> ha solicitado una ausencia en <b>{{ $json.data.safe.businessName }}</b>:</p>\n  <div style=\"background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0\">\n    <p style=\"margin:4px 0\">🏷️ <b>Tipo:</b> {{ $json.data.safe.tipo }}</p>\n    <p style=\"margin:4px 0\">📅 <b>Desde:</b> {{ $json.data.safe.inicio }}</p>\n    <p style=\"margin:4px 0\">📅 <b>Hasta:</b> {{ $json.data.safe.fin }}</p>\n    <p style=\"margin:4px 0\">🗓️ <b>Días:</b> {{ $json.data.safe.dias }}</p>\n  </div>\n  <p style=\"font-size:13px;color:#666\">✅ Revisa y aprueba o rechaza la solicitud desde tu panel. 📋</p>\n</div>",
-        "options": {}
+        "options": {
+          "appendAttribution": false
+        }
       },
       "id": "e9e9e9e9-9999-4999-8999-e9e9e9e9e9e9",
       "name": "Email: solicitud vacaciones",
@@ -888,7 +920,9 @@
         "subject": "={{ '📋 Tu solicitud: ' + ($json.data.estado || 'actualizada') }}",
         "emailFormat": "html",
         "html": "=<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#222\">\n  <div style=\"text-align:center;margin-bottom:18px\">{{ $json.logoHtml }}</div>\n  <h2 style=\"margin:0 0 12px\">📋 Hola {{ $json.data.safe.employeeName }},</h2>\n  <p>Tu solicitud de ausencia en <b>{{ $json.data.safe.businessName }}</b> ha sido <b>{{ $json.data.safe.estado }}</b>:</p>\n  <div style=\"background:#f6f7f9;border-radius:12px;padding:16px 20px;margin:20px 0\">\n    <p style=\"margin:4px 0\">📌 <b>Estado:</b> {{ $json.data.safe.estado }}</p>\n    <p style=\"margin:4px 0\">📅 <b>Desde:</b> {{ $json.data.safe.inicio }}</p>\n    <p style=\"margin:4px 0\">📅 <b>Hasta:</b> {{ $json.data.safe.fin }}</p>\n  </div>\n  <p style=\"font-size:13px;color:#666\">🙌 Si tienes dudas, habla con tu responsable. Gracias.</p>\n</div>",
-        "options": {}
+        "options": {
+          "appendAttribution": false
+        }
       },
       "id": "eaeaeaea-aaaa-4aaa-8aaa-eaeaeaeaeaea",
       "name": "Email: resolución vacaciones",
