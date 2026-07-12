@@ -183,10 +183,4 @@ export interface AutomationEnvelope<N extends AutomationEventName = AutomationEv
   businessId: string;
   occurredAt: string;
   data: AutomationPayloads[N];
-  /**
-   * crm-email-templates: HTML del correo ya maquetado por el back (estilo plantilla).
-   * Si está presente, n8n debe usar `email.subject`/`email.html` para el envío en
-   * vez de maquetar desde `data.detalle`. Ausente → comportamiento anterior.
-   */
-  email?: { subject: string; html: string };
 }

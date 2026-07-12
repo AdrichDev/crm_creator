@@ -34,8 +34,6 @@ export interface EmitOptions {
    */
   url?: string;
   secret?: string;
-  /** crm-email-templates: HTML ya maquetado por el back; viaja en el envelope hacia n8n. */
-  email?: { subject: string; html: string };
 }
 
 // Memoria de eventos ya enviados en este proceso → idempotencia barata.
@@ -77,20 +75,14 @@ export async function emit<N extends AutomationEventName>(
   const eventId = opts.eventId ?? crypto.randomUUID();
   if (seen.has(eventId)) return { status: 'skipped', reason: 'duplicate' };
 
-  // El envelope FIRMADO excluye `email`: n8n reconstruye el envelope sin ese campo
-  // para verificar la firma HMAC, de modo que firmar con `email` rompería la
-  // verificación (auth_failed). `email` viaja como campo ADITIVO del body — n8n lo
-  // consume para el HTML del correo, pero queda fuera de la firma (contenido ya
-  // escapado en el back). Sin email → body === signedBody (comportamiento anterior).
-  const signed: AutomationEnvelope<N> = {
+  const envelope: AutomationEnvelope<N> = {
     eventId,
     name,
     businessId: opts.businessId,
     occurredAt: (opts.occurredAt ?? new Date()).toISOString(),
     data,
   };
-  const signedBody = JSON.stringify(signed);
-  const rawBody = opts.email ? JSON.stringify({ ...signed, email: opts.email }) : signedBody;
+  const rawBody = JSON.stringify(envelope);
 
   const maxAttempts = Math.max(1, env.automationMaxAttempts);
   let lastError = 'unknown';
@@ -108,7 +100,7 @@ export async function emit<N extends AutomationEventName>(
           'X-Automation-Event': name,
           'X-Automation-Id': eventId,
           'X-Automation-Timestamp': String(timestamp),
-          'X-Automation-Signature': sign(secret, timestamp, signedBody),
+          'X-Automation-Signature': sign(secret, timestamp, rawBody),
         },
         body: rawBody,
       });

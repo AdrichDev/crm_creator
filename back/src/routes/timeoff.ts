@@ -6,7 +6,6 @@ import { joinNombre } from '../lib/nombre.js';
 import { emit } from '../lib/automation/index.js';
 import { adminEmails } from '../lib/adminEmails.js';
 import { buildTimeoffRequested, buildTimeoffResolved } from '../lib/eventPayloads.js';
-import { timeoffRequestedEmail, timeoffResolvedEmail } from '../lib/email-templates.js';
 
 export const timeOffRouter = Router();
 
@@ -44,7 +43,7 @@ timeOffRouter.post('/', async (req: AuthedRequest, res: Response) => {
         adminEmails(req.businessId!),
       ]);
       for (const email of admins) {
-        const requestedPayload = buildTimeoffRequested({
+        await emit('timeoff.requested', buildTimeoffRequested({
           businessName: business?.nombre ?? '',
           email,
           employee,
@@ -52,12 +51,7 @@ timeOffRouter.post('/', async (req: AuthedRequest, res: Response) => {
           inicio: row.inicio,
           fin: row.fin,
           dias: row.dias,
-        });
-        await emit('timeoff.requested', requestedPayload, {
-          businessId: req.businessId!,
-          eventId: `${row.id}:requested:${email}`,
-          email: timeoffRequestedEmail(requestedPayload),
-        });
+        }), { businessId: req.businessId!, eventId: `${row.id}:requested:${email}` });
       }
     } catch (err) {
       console.error('[timeoff.requested] error en aviso a admins:', (err as Error).message);
@@ -80,19 +74,14 @@ async function decide(req: AuthedRequest, res: Response, estado: 'APPROVED' | 'R
         prisma.business.findFirst({ where: { id: req.businessId }, select: { nombre: true } }),
       ]);
       if (!employee?.email) return;
-      const resolvedPayload = buildTimeoffResolved({
+      await emit('timeoff.resolved', buildTimeoffResolved({
         businessName: business?.nombre ?? '',
         employee,
         email: employee.email,
         estadoLabel: ESTADO_LABEL[estado] ?? estado,
         inicio: row.inicio,
         fin: row.fin,
-      });
-      await emit('timeoff.resolved', resolvedPayload, {
-        businessId: req.businessId!,
-        eventId: `${row.id}:resolved:${estado}`,
-        email: timeoffResolvedEmail(resolvedPayload),
-      });
+      }), { businessId: req.businessId!, eventId: `${row.id}:resolved:${estado}` });
     } catch (err) {
       console.error('[timeoff.resolved] error en aviso al empleado:', (err as Error).message);
     }
