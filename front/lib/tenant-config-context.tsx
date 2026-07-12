@@ -98,43 +98,46 @@ export function TenantConfigProvider({ children }: { children: ReactNode }) {
 
   // Modo CRM (Supabase): los proyectos = Business del usuario, desde /api/projects.
   // La consola de tarjetas los pinta igual; cero localStorage de proyectos/mock.
+  // EXCEPCIÓN: Si es GENERATED_TENANT, somos el frontend exportado de un solo cliente;
+  // NO cargamos la lista de proyectos del back, pero SÍ usamos este effect para
+  // resolver el rol (getAuthProfile) y escuchar cambios de sesión.
   useEffect(() => {
     if (!apiMode) return;
     let alive = true;
-    // P.6 — migra una vez los proyectos del generador en localStorage a Supabase
-    // (se conservan en local como backup). Cada proyecto necesita un tenant válido
-    // (config.business.clienteId existente en aa.tenant); si no, se omite.
+    
     async function migrateLocalProjects() {
       if (localStorage.getItem(MIGRATED_KEY)) return;
       let locals: Project[] = [];
       try { locals = JSON.parse(localStorage.getItem(PROJECTS_KEY) ?? '[]') as Project[]; } catch { locals = []; }
       for (const p of locals) {
         const tenantId = p.config?.business?.clienteId;
-        if (!tenantId) continue; // sin cliente → no se puede crear proyecto
+        if (!tenantId) continue;
         try {
           await apiFetch('/projects', { method: 'POST', body: JSON.stringify({ tenantId, config: p.config }) });
-        } catch { /* 409 ya existe / 422 tenant inválido → omitir */ }
+        } catch { /* omitir */ }
       }
       try {
         if (localStorage.getItem(PROJECTS_KEY)) localStorage.setItem(PROJECTS_BACKUP_KEY, localStorage.getItem(PROJECTS_KEY)!);
         localStorage.setItem(MIGRATED_KEY, new Date().toISOString());
       } catch { /* noop */ }
     }
+
     async function loadProjects() {
       if (!(await isAuthed())) { if (alive) setReady(true); return; }
-      try {
-        await migrateLocalProjects();
-        const rows = await apiFetch<ApiProject[]>('/projects');
-        if (!alive) return;
-        setProjects(rows.map(projectFromApi));
-        const a = localStorage.getItem(ACTIVE_KEY);
-        if (a) setActiveId(a);
-      } catch { /* deja la lista como esté */ }
-      // La UI ya puede pintar: NO se bloquea esperando la resolución del rol (si el
-      // backend tarda/cuelga, la app cargaba en un spinner infinito). ready primero.
+      
+      if (!GENERATED_TENANT) {
+        try {
+          await migrateLocalProjects();
+          const rows = await apiFetch<ApiProject[]>('/projects');
+          if (!alive) return;
+          setProjects(rows.map(projectFromApi));
+          const a = localStorage.getItem(ACTIVE_KEY);
+          if (a) setActiveId(a);
+        } catch { /* deja la lista como esté */ }
+      }
+      
       if (alive) setReady(true);
-      // Rol REAL desde /auth/me (Membership) EN SEGUNDO PLANO — re-resuelto en cada
-      // carga para no quedar pegado a la caché 'trabajador' de un login previo caído.
+      
       try {
         const me = await getAuthProfile();
         if (alive) setRole(roleFromMembership(me.role as MemberRole | undefined));
@@ -143,31 +146,28 @@ export function TenantConfigProvider({ children }: { children: ReactNode }) {
         if (alive && (r === 'admin' || r === 'trabajador' || r === 'cliente')) setRoleState(r);
       }
     }
+    
     void loadProjects();
-    // Recargar al iniciar sesión (login en otra ruta) o refrescar token.
+    
     const unsub = onAuthStateChange((event) => {
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        // DEADLOCK GUARD: loadProjects() llama supabase.auth.getSession() (isAuthed).
-        // Invocar métodos de supabase.auth DENTRO del callback de onAuthStateChange
-        // bloquea supabase-js (lock reentrante) → login congelado "Entrando…" infinito
-        // (mismo bug que AA). setTimeout(0) sale del callback antes de tocar auth.
         setTimeout(() => { void loadProjects(); }, 0);
-      } else if (event === 'SIGNED_OUT' && alive) { setProjects([]); setActiveId(null); }
+      } else if (event === 'SIGNED_OUT' && alive) {
+        if (!GENERATED_TENANT) { setProjects([]); setActiveId(null); }
+      }
     });
     return () => { alive = false; unsub(); };
-  }, [apiMode]);
+  }, [apiMode, setRole]);
 
-  // Modo generador (sin API): proyectos en localStorage / tenant horneado.
+  // Modo generador (sin API) o App Exportada (GENERATED_TENANT).
   useEffect(() => {
-    if (apiMode) return;
+    if (apiMode && !GENERATED_TENANT) return;
+    let alive = true;
     try {
       const p = localStorage.getItem(PROJECTS_KEY);
-      if (p) {
+      if (p && !GENERATED_TENANT) {
         setProjects(JSON.parse(p) as Project[]);
       } else if (GENERATED_TENANT) {
-        // Build autónomo: sin proyectos en localStorage y con tenant horneado por
-        // generar.mjs → sembrar un único proyecto activo con su config (branding,
-        // terminología, módulos). deserialize normaliza modules/workerChips faltantes.
         const cfg = deserialize(JSON.stringify(GENERATED_TENANT));
         if (cfg) {
           const seeded: Project = {
@@ -181,13 +181,17 @@ export function TenantConfigProvider({ children }: { children: ReactNode }) {
           localStorage.setItem(ACTIVE_KEY, seeded.id);
         }
       }
+      
       const a = localStorage.getItem(ACTIVE_KEY);
       if (a) setActiveId(a);
-      const r = localStorage.getItem(ROLE_KEY);
-      if (r === 'admin' || r === 'trabajador' || r === 'cliente') setRoleState(r);
+      
+      if (!apiMode) {
+        const r = localStorage.getItem(ROLE_KEY);
+        if (r === 'admin' || r === 'trabajador' || r === 'cliente') setRoleState(r);
+        setReady(true);
+      }
     } catch { /* noop */ }
-    setReady(true);
-  }, []);
+  }, [apiMode]);
 
   const setRole = useCallback((r: Role) => {
     setRoleState(r);

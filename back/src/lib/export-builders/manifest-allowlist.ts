@@ -24,6 +24,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import type { TenantConfig } from '../../../../shared/generate/tenant-types.js';
+import { env } from '../../env.js';
 
 // ---------------------------------------------------------------------------
 // Allowlists por formato (design.md #1)
@@ -243,7 +244,17 @@ export function buildEnvContent(config: TenantConfig, options: BuildEnvOptions =
     lines.push('# NEXT_PUBLIC_API_URL sin configurar');
   }
 
-  if (options.extraLines?.length) lines.push(...options.extraLines);
+  const extraLines = options.extraLines ?? [];
+  const hasSupabase = extraLines.some((l) => l.startsWith('NEXT_PUBLIC_SUPABASE_URL='));
+  
+  if (!hasSupabase) {
+    if (env.supabaseUrl && env.supabaseAnonKey) {
+      lines.push(`NEXT_PUBLIC_SUPABASE_URL=${env.supabaseUrl}`);
+      lines.push(`NEXT_PUBLIC_SUPABASE_ANON_KEY=${env.supabaseAnonKey}`);
+    }
+  }
+
+  if (extraLines.length) lines.push(...extraLines);
 
   return lines;
 }

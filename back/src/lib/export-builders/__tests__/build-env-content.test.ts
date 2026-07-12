@@ -78,11 +78,13 @@ test('buildEnvContent: un BACKEND_SECRET nunca llega aquí (no hay ruta que lo c
   assert.ok(lines.some((l) => l === 'NEXT_PUBLIC_LEAKED_BACKEND_KEY=sk-live-should-not-be-here'));
 });
 
-test('buildEnvContent: sin secretos públicos → comportamiento previo intacto (solo líneas base)', () => {
+test('buildEnvContent: sin secretos públicos → comportamiento previo intacto (solo líneas base + Supabase fallback)', () => {
   const lines = buildEnvContent(config, { extraLines: buildPublicEnvSecretsLines([]) });
-  assert.equal(lines.length, 2);
-  assert.ok(lines[0].startsWith('NEXT_PUBLIC_TENANT_JSON='));
-  assert.equal(lines[1], '# NEXT_PUBLIC_API_URL sin configurar');
+  assert.strictEqual(lines.length, 4); // TENANT_JSON, API_URL, SUPABASE_URL, SUPABASE_ANON_KEY
+  assert.match(lines[0], /^NEXT_PUBLIC_TENANT_JSON=/);
+  assert.strictEqual(lines[1], '# NEXT_PUBLIC_API_URL sin configurar');
+  assert.match(lines[2], /^NEXT_PUBLIC_SUPABASE_URL=/);
+  assert.match(lines[3], /^NEXT_PUBLIC_SUPABASE_ANON_KEY=/);
 });
 
 test('buildEnvContent: secretos públicos + runtimeConfig-style extraLines conviven sin pisarse', () => {

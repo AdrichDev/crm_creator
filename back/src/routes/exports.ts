@@ -428,10 +428,20 @@ export function createExportHandler(deps: ExportsDeps) {
       }
     }
 
-    // NOTA (decisión 12/07/2026): el export NO bloquea por falta de las vars de BD.
-    // La configuración de BD/APIs vive en el onboarding (paso "BD, API y Keys"); el
-    // export hornea lo que el negocio haya guardado. Si faltan, el ZIP sale sin esas
-    // NEXT_PUBLIC_* y el destinatario las completa — no se corta la generación.
+    // Defaults de PLATAFORMA para Supabase (análogo a NEXT_PUBLIC_API_URL): el CRM
+    // exportado autentica contra el MISMO Supabase de plataforma, así que si el proyecto
+    // no guardó sus propias NEXT_PUBLIC_SUPABASE_*, se hornean las de plataforma
+    // (env.supabaseUrl / env.supabaseAnonKey) para que el login funcione out-of-the-box.
+    // Un valor propio del tenant (guardado arriba) SIEMPRE gana. Requiere SUPABASE_URL y
+    // SUPABASE_ANON_KEY reales en el env del backend (no placeholder).
+    const bakedVarNames = new Set(publicEnvSecrets.map((s) => s.envVarName));
+    const isRealEnv = (v: string) => Boolean(v) && !v.includes("placeholder");
+    if (!bakedVarNames.has("NEXT_PUBLIC_SUPABASE_URL") && isRealEnv(env.supabaseUrl)) {
+      publicEnvSecrets.push({ envVarName: "NEXT_PUBLIC_SUPABASE_URL", value: env.supabaseUrl });
+    }
+    if (!bakedVarNames.has("NEXT_PUBLIC_SUPABASE_ANON_KEY") && isRealEnv(env.supabaseAnonKey)) {
+      publicEnvSecrets.push({ envVarName: "NEXT_PUBLIC_SUPABASE_ANON_KEY", value: env.supabaseAnonKey });
+    }
 
     // --- Resolver runtimeConfig (crm-export-runtime-config, design.md §2) ---
     // platformApiUrl: env del propio backend de plataforma (NO del tenant).

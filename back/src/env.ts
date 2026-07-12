@@ -48,6 +48,7 @@ export const env = {
   // Supabase Auth — backend only. SERVICE_ROLE_KEY must NEVER reach the browser.
   // Placeholder values: replace with real Supabase project values before deploying.
   supabaseUrl: envOr('SUPABASE_URL', 'https://placeholder.supabase.co'),
+  supabaseAnonKey: envOr('SUPABASE_ANON_KEY', 'placeholder-anon-key'),
   supabaseServiceRoleKey: envOr('SUPABASE_SERVICE_ROLE_KEY', 'placeholder-service-role-key'),
   // SUPABASE_JWT_SECRET eliminado: los tokens se verifican vía JWKS (ES256), no con
   // un secreto HS256 compartido. Ya no se lee ningún secreto para verificar.
