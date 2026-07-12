@@ -1,5 +1,7 @@
 'use client';
+import { useEffect, useState } from 'react';
 import { useDialog } from '@/components/ui/dialog-provider';
+import { getAuthProfile } from '@/lib/api/profile';
 import { useTenantConfig, useTerm, useRole } from '@/lib/tenant-config-context';
 import { DEMO_USERS } from '@/lib/config/roles';
 import { Stat, Table, Td, Badge } from '@/components/ui/primitives';
@@ -18,11 +20,21 @@ function PanelDashboard() {
   const { role } = useRole();
   const termCitas = useTerm('citas', 'Citas');
 
+  // Saludo con el NOMBRE de la persona logueada (firstName de /auth/me), no el negocio.
+  const [firstName, setFirstName] = useState('');
+  useEffect(() => {
+    let alive = true;
+    getAuthProfile()
+      .then((p) => { if (alive) setFirstName((p.firstName || '').trim().split(/\s+/)[0] || ''); })
+      .catch(() => { /* API off: se queda el saludo sin nombre */ });
+    return () => { alive = false; };
+  }, []);
+
   return (
     <div className="panel-fill">
       <div className="panel-header">
         <div>
-          <h1>Hola, {config.business.name}</h1>
+          <h1>Hola{firstName ? `, ${firstName}` : ''}</h1>
           <p className="subtitle">Resumen de tu actividad — agenda y próximas {termCitas.toLowerCase()}.</p>
         </div>
       </div>
