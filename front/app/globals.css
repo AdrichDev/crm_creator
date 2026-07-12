@@ -673,6 +673,17 @@ body {
   .agenda-mes-con-panel, .agenda-semana-con-panel { grid-template-columns: 1fr; }
 }
 
+/* Móvil: la vista SEMANA (7 columnas) no cabe legible → cada día toma un ancho mínimo
+   usable y la rejilla se desliza horizontalmente (la cabecera va dentro de cada columna,
+   así que scrollea sincronizada). El calendario MES mantiene sus 7 columnas compactas. */
+@media (max-width: 640px) {
+  .agenda-week-grid {
+    grid-template-columns: repeat(7, minmax(84px, 1fr));
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
 /* Mosaico de widgets del inicio (panel/widget-grid.tsx) — gramática tipo widget
    de móvil: esquinas más redondeadas que el resto del chrome, tamaños fijos
    por catálogo, alto repartido (1fr) para rellenar el viewport disponible. */
