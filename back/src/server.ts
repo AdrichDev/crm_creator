@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import swaggerUi from 'swagger-ui-express';
 import { env, assertConfig } from './env.js';
+import { resolveCorsOrigins } from './lib/cors-origins.js';
 import { api } from './routes/index.js';
 import { serviceOperatorRouter } from './routes/service-operator.js';
 import { licenseRouter } from './routes/license.js';
@@ -18,7 +19,9 @@ const app = express();
 // Confiar en el proxy más cercano (configurable). Necesario para que req.ip
 // refleje la IP real del cliente cuando hay un reverse-proxy delante.
 app.set('trust proxy', env.trustProxy);
-app.use(cors({ origin: env.corsOrigin === '*' ? true : env.corsOrigin.split(',') }));
+// Incluye SIEMPRE los orígenes de WebView nativo (apk/ipa) además del CORS_ORIGIN web,
+// o los exports nativos rebotarían por CORS (su origin es https://localhost). Ver cors-origins.ts.
+app.use(cors({ origin: resolveCorsOrigins(env.corsOrigin) }));
 app.use(express.json({ limit: '2mb' }));
 
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'operaos-backend' }));
