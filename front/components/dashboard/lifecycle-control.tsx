@@ -166,7 +166,10 @@ export function LifecycleControl({ businessId }: { businessId: string }) {
               value={target}
               disabled={busy}
               onChange={(e) => setTarget(e.target.value as TenantLifecycle)}
-              className="rounded border border-[var(--line)] bg-transparent px-2 py-1 text-sm text-[var(--panel-text)]"
+              // bg sólido (--panel-card) para diferenciar el control del panel y opciones
+              // legibles: sin esto, en modo oscuro el desplegable nativo pinta las <option>
+              // con texto claro sobre fondo claro del UA y no se distinguen.
+              className="rounded border border-[var(--line)] bg-[var(--panel-card)] px-2 py-1 text-sm text-[var(--panel-text)] [&>option]:bg-[var(--panel-card)] [&>option]:text-[var(--panel-text)]"
             >
               <option value="ACTIVE">Operativo (reactivar)</option>
               <option value="GRACE">Periodo de gracia</option>
@@ -183,7 +186,8 @@ export function LifecycleControl({ businessId }: { businessId: string }) {
                 value={graceLocal}
                 disabled={busy}
                 onChange={(e) => setGraceLocal(e.target.value)}
-                className="rounded border border-[var(--line)] bg-transparent px-2 py-1 text-sm text-[var(--panel-text)]"
+                // bg sólido (--panel-card) para que el control se distinga del panel en modo oscuro.
+                className="rounded border border-[var(--line)] bg-[var(--panel-card)] px-2 py-1 text-sm text-[var(--panel-text)]"
               />
             </label>
           )}
