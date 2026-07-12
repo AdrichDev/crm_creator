@@ -157,7 +157,10 @@ export function TenantConfigProvider({ children }: { children: ReactNode }) {
       }
     });
     return () => { alive = false; unsub(); };
-  }, [apiMode, setRole]);
+    // setRole es un setter estable declarado más abajo; NO va en deps (causaría TDZ:
+    // 'used before declaration', que rompe el build de Next) y no debe re-disparar el efecto.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiMode]);
 
   // Modo generador (sin API) o App Exportada (GENERATED_TENANT).
   useEffect(() => {
