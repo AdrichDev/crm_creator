@@ -39,6 +39,7 @@ export function GeneradosTab() {
   }
 
   return (
+    <div className="overflow-x-auto">
     <table className="w-full text-sm">
       <thead>
         <tr className="text-left text-xs text-[var(--panel-muted)]">
@@ -69,5 +70,6 @@ export function GeneradosTab() {
         ))}
       </tbody>
     </table>
+    </div>
   );
 }
