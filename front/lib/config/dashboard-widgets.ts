@@ -17,7 +17,17 @@ export type WidgetId =
   | 'ventas-hoy'
   | 'facturacion-pendiente'
   | 'vacaciones-pendientes'
-  | 'ocupacion-semana';
+  | 'ocupacion-semana'
+  // Accesos rápidos genéricos: un widget-atajo por cada módulo habilitado que no
+  // tiene widget de datos dedicado. Abren el módulo directamente desde el inicio.
+  | 'acceso-servicios'
+  | 'acceso-empleados'
+  | 'acceso-fichaje'
+  | 'acceso-productos'
+  | 'acceso-pedidos'
+  | 'acceso-marketing'
+  | 'acceso-estadisticas'
+  | 'acceso-estudios-mercado';
 
 export type WidgetSize = 'sm' | 'md' | 'lg' | 'xl';
 
@@ -29,11 +39,13 @@ export interface WidgetDef {
   size: WidgetSize;
   /** Si está presente, el widget solo está disponible cuando este módulo está activo. */
   dependsOn?: ModuleId;
+  /** 'acceso' = atajo genérico que abre el módulo (sin datos); ausente/'data' = widget con contenido propio. */
+  kind?: 'data' | 'acceso';
 }
 
 export const MAX_DASHBOARD_WIDGETS = 6;
 
-export const DASHBOARD_WIDGETS: WidgetDef[] = [
+const DATA_WIDGETS: WidgetDef[] = [
   // Agenda es 'xl': misma gramática que /citas full-screen (calendario grande +
   // panel lateral con las citas del día), no la versión mini de antes.
   { id: 'agenda', label: 'Agenda', description: 'Calendario mes/semana/día con tus próximas citas.', icon: 'CalendarRange', size: 'xl', dependsOn: 'citas' },
@@ -48,6 +60,28 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
   { id: 'vacaciones-pendientes', label: 'Ausencias pendientes', description: 'Solicitudes de vacaciones a la espera de aprobación.', icon: 'Plane', size: 'sm', dependsOn: 'vacaciones' },
   { id: 'ocupacion-semana', label: 'Ocupación de la semana', description: 'Citas por día de la semana en curso.', icon: 'BarChart3', size: 'md', dependsOn: 'citas' },
 ];
+
+// Módulos habilitables sin widget de datos dedicado: se ofrecen como atajo de
+// acceso rápido en el inicio (icono + nombre + enlace directo al módulo). Se
+// derivan de MODULE_MAP para heredar label/icono/ruta y no duplicar metadatos.
+const ACCESS_MODULES: ModuleId[] = [
+  'servicios', 'empleados', 'fichaje', 'productos', 'pedidos', 'marketing', 'estadisticas', 'estudios-mercado',
+];
+
+const ACCESS_WIDGETS: WidgetDef[] = ACCESS_MODULES.map((m) => {
+  const mod = MODULE_MAP[m];
+  return {
+    id: `acceso-${m}` as WidgetId,
+    label: mod.defaultLabel,
+    description: mod.description,
+    icon: mod.icon,
+    size: 'sm' as WidgetSize,
+    dependsOn: m,
+    kind: 'acceso' as const,
+  };
+});
+
+export const DASHBOARD_WIDGETS: WidgetDef[] = [...DATA_WIDGETS, ...ACCESS_WIDGETS];
 
 export const DASHBOARD_WIDGET_MAP: Record<WidgetId, WidgetDef> = Object.fromEntries(
   DASHBOARD_WIDGETS.map((w) => [w.id, w]),

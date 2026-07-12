@@ -37,7 +37,12 @@ export function DashboardWidgetsGrid({ selected, modules, onToggle }: {
                   <Icon name={w.icon} className="h-4 w-4" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="font-medium text-white">{w.label}</p>
+                  <p className="flex items-center gap-2 font-medium text-white">
+                    {w.label}
+                    {w.kind === 'acceso' && (
+                      <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-normal text-[var(--panel-muted)]">Atajo</span>
+                    )}
+                  </p>
                   <p className="mt-0.5 text-xs text-[var(--panel-muted)]">{w.description}</p>
                   {blockedByModule && (
                     <p className="mt-1 text-[11px] text-amber-400">Requiere el módulo «{depLabel}» activo.</p>

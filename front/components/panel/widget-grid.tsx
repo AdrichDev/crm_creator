@@ -29,6 +29,7 @@ function WidgetBody({ id }: { id: WidgetId }) {
     case 'facturacion-pendiente': return <FacturacionWidget />;
     case 'vacaciones-pendientes': return <VacacionesWidget />;
     case 'ocupacion-semana': return <OcupacionSemanaWidget />;
+    default: return null; // accesos rápidos se renderizan como tile-enlace (abajo), no aquí
   }
 }
 
@@ -57,6 +58,26 @@ export function WidgetGrid({ selected, modules }: WidgetGridProps) {
     <div className="widget-grid">
       {widgets.map((w) => {
         const href = w.dependsOn ? MODULE_MAP[w.dependsOn]?.href : undefined;
+        // Atajo de acceso rápido: el tile entero enlaza al módulo (icono + nombre + descripción).
+        if (w.kind === 'acceso' && href) {
+          return (
+            <Link
+              key={w.id}
+              href={href}
+              title={`Abrir ${w.label}`}
+              className={`widget-tile widget-${w.size} group flex items-center gap-3 no-underline`}
+            >
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/5 text-[var(--acc)]">
+                <Icon name={w.icon} className="h-5 w-5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium text-white">{w.label}</span>
+                <span className="block truncate text-xs text-[var(--panel-muted)]">{w.description}</span>
+              </span>
+              <ArrowUpRight className="h-4 w-4 shrink-0 text-[var(--panel-muted)] transition group-hover:text-[var(--acc)]" />
+            </Link>
+          );
+        }
         return (
           <div key={w.id} className={`widget-tile widget-${w.size}`}>
             {href && (
