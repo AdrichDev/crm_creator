@@ -146,8 +146,13 @@ export function TenantConfigProvider({ children }: { children: ReactNode }) {
     void loadProjects();
     // Recargar al iniciar sesión (login en otra ruta) o refrescar token.
     const unsub = onAuthStateChange((event) => {
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') void loadProjects();
-      else if (event === 'SIGNED_OUT' && alive) { setProjects([]); setActiveId(null); }
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        // DEADLOCK GUARD: loadProjects() llama supabase.auth.getSession() (isAuthed).
+        // Invocar métodos de supabase.auth DENTRO del callback de onAuthStateChange
+        // bloquea supabase-js (lock reentrante) → login congelado "Entrando…" infinito
+        // (mismo bug que AA). setTimeout(0) sale del callback antes de tocar auth.
+        setTimeout(() => { void loadProjects(); }, 0);
+      } else if (event === 'SIGNED_OUT' && alive) { setProjects([]); setActiveId(null); }
     });
     return () => { alive = false; unsub(); };
   }, [apiMode]);
