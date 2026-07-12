@@ -30,6 +30,11 @@ export function buildRuntimeConfigEnvLines(runtimeConfig?: RuntimeConfig): strin
     `PLATFORM_API_URL=${runtimeConfig.platformApiUrl}`,
     `TENANT_ID=${runtimeConfig.tenantId}`,
     `TENANT_API_KEY=${runtimeConfig.tenantApiKey}`,
+    // NEXT_PUBLIC_ para que el CLIENTE estático fije el x-business-id al negocio
+    // EXPORTADO (getActiveBusinessId lee NEXT_PUBLIC_BUSINESS_ID). Sin esto, el CRM
+    // exportado (single-tenant) no sabía a qué negocio pedir datos y el backend caía a
+    // memberships[0] del usuario (otro negocio) → clientes/contactos incompletos.
+    `NEXT_PUBLIC_BUSINESS_ID=${runtimeConfig.tenantId}`,
   ];
 }
 
