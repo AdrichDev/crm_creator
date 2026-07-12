@@ -6,8 +6,8 @@ import assert from 'node:assert/strict';
 import { TENANT_SECRET_CATALOG, findSecretSlot, ENV_KEY_NAME_PATTERN, inferScope } from '../catalog.js';
 
 describe('TENANT_SECRET_CATALOG', () => {
-  test('tiene exactamente los 5 slots con scope/envVarName/provider exactos', () => {
-    assert.equal(TENANT_SECRET_CATALOG.length, 5);
+  test('tiene exactamente los 7 slots con scope/envVarName/provider exactos', () => {
+    assert.equal(TENANT_SECRET_CATALOG.length, 7);
 
     const byName = new Map(TENANT_SECRET_CATALOG.map((s) => [s.name, s]));
 
@@ -27,6 +27,24 @@ describe('TENANT_SECRET_CATALOG', () => {
     assert.deepEqual(byName.get('DATABASE_URL'), {
       name: 'DATABASE_URL', label: 'URL (BD)', scope: 'BACKEND_SECRET', provider: 'database', group: 'database',
     });
+    assert.deepEqual(byName.get('NEXT_PUBLIC_SUPABASE_URL'), {
+      name: 'NEXT_PUBLIC_SUPABASE_URL', label: 'Supabase URL', scope: 'FRONTEND_PUBLIC', provider: 'supabase_url',
+      envVarName: 'NEXT_PUBLIC_SUPABASE_URL', group: 'database',
+    });
+    assert.deepEqual(byName.get('NEXT_PUBLIC_SUPABASE_ANON_KEY'), {
+      name: 'NEXT_PUBLIC_SUPABASE_ANON_KEY', label: 'Supabase anon key', scope: 'FRONTEND_PUBLIC', provider: 'supabase_anon',
+      envVarName: 'NEXT_PUBLIC_SUPABASE_ANON_KEY', group: 'database',
+    });
+  });
+
+  test('findSecretSlot de los slots Supabase devuelve scope FRONTEND_PUBLIC, group database y envVarName == name', () => {
+    for (const name of ['NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY'] as const) {
+      const slot = findSecretSlot(name);
+      assert.ok(slot, `findSecretSlot(${name}) no debe ser undefined`);
+      assert.equal(slot?.scope, 'FRONTEND_PUBLIC');
+      assert.equal(slot?.group, 'database');
+      assert.equal(slot?.envVarName, name);
+    }
   });
 
   test('findSecretSlot devuelve el slot exacto para cada nombre del catálogo', () => {

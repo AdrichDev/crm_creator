@@ -128,6 +128,77 @@ describe('testProviderConnection — maps (fetch + status body de Google)', () =
   });
 });
 
+describe('testProviderConnection — supabase_url (fetch real a /auth/v1/health)', () => {
+  test('URL https válida + fetch 200 → { ok: true }', async () => {
+    const result = await testProviderConnection('supabase_url', 'https://x.supabase.co', {
+      fetchImpl: fakeFetch(async () => jsonResponse(200, {})),
+      createPool: unusedPool,
+    });
+    assert.deepEqual(result, { ok: true });
+  });
+
+  test('URL inválida (new URL lanza) → { ok: false, detail sin value, sin llamar fetch }', async () => {
+    const value = 'esto-no-es-una-url';
+    const result = await testProviderConnection('supabase_url', value, {
+      fetchImpl: fakeFetch(async () => { throw new Error('fetch no debería llamarse con URL inválida'); }),
+      createPool: unusedPool,
+    });
+    assert.equal(result.ok, false);
+    assertNoValueLeaked(result, value);
+  });
+
+  test('URL http (no https) → { ok: false, detail sin value, sin llamar fetch }', async () => {
+    const value = 'http://x.supabase.co';
+    const result = await testProviderConnection('supabase_url', value, {
+      fetchImpl: fakeFetch(async () => { throw new Error('fetch no debería llamarse con protocolo no-https'); }),
+      createPool: unusedPool,
+    });
+    assert.equal(result.ok, false);
+    assertNoValueLeaked(result, value);
+  });
+
+  test('fetch responde no-ok (404/500) → { ok: false, detail genérico sin value }', async () => {
+    const value = 'https://x.supabase.co';
+    const result = await testProviderConnection('supabase_url', value, {
+      fetchImpl: fakeFetch(async () => jsonResponse(500, {}, false)),
+      createPool: unusedPool,
+    });
+    assert.equal(result.ok, false);
+    assertNoValueLeaked(result, value);
+  });
+
+  test('fallo de red (fetch rechaza) → { ok: false, detail genérico sin value }', async () => {
+    const value = 'https://x.supabase.co';
+    const result = await testProviderConnection('supabase_url', value, {
+      fetchImpl: fakeFetch(async () => { throw new Error('network error'); }),
+      createPool: unusedPool,
+    });
+    assert.equal(result.ok, false);
+    assertNoValueLeaked(result, value);
+  });
+});
+
+describe('testProviderConnection — supabase_anon (validación de formato local, sin red)', () => {
+  test('anon key con forma JWT-ish → { ok: true }', async () => {
+    const value = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzb21lIjoicGF5bG9hZCJ9.signature';
+    const result = await testProviderConnection('supabase_anon', value, {
+      fetchImpl: fakeFetch(async () => { throw new Error('fetch no debería llamarse para supabase_anon'); }),
+      createPool: unusedPool,
+    });
+    assert.deepEqual(result, { ok: true });
+  });
+
+  test('string basura no-JWT → { ok: false, detail sin value, sin llamar fetch }', async () => {
+    const value = 'esto-no-es-una-key-valida';
+    const result = await testProviderConnection('supabase_anon', value, {
+      fetchImpl: fakeFetch(async () => { throw new Error('fetch no debería llamarse para supabase_anon'); }),
+      createPool: unusedPool,
+    });
+    assert.equal(result.ok, false);
+    assertNoValueLeaked(result, value);
+  });
+});
+
 describe('testProviderConnection — database (pg, doble de OneShotPool)', () => {
   function fakePool(impl: { query?: () => Promise<unknown>; end?: () => Promise<void> }): ProviderTestDeps['createPool'] {
     return () => ({

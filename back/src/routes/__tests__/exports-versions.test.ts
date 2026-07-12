@@ -78,7 +78,15 @@ function makeDb(overrides: Partial<ExportsDeps['db']> = {}): ExportsDeps['db'] {
       findFirst: async () => ({ id: 'm-1' }),
       findMany: async () => [{ businessId: 'proj-1' }],
     },
-    businessSetting: { findFirst: async () => ({ datos: { business: { name: 'Demo' } } }) },
+    // crm-onboarding-db-keys-export-connect T4: gate fail-closed exige
+    // `api.url` en config (junto con las 2 keys de Supabase, ver
+    // `okPublicEnvSecrets`) para que createExportHandler siga arrancando el
+    // job en los tests preexistentes que esperan 202.
+    businessSetting: {
+      findFirst: async () => ({
+        datos: { business: { name: 'Demo' }, api: { url: 'https://api.example.com' } },
+      }),
+    },
     exportVersion: {
       count: async () => 0,
       create: async () => ({
@@ -107,6 +115,14 @@ function fakeArtifactStorage(overrides: Partial<ExportsArtifactStorage> = {}): E
   };
 }
 
+/** Doble de `deps.publicEnvSecrets` con las 2 keys de Supabase horneadas (gate T4 en verde). */
+const okPublicEnvSecrets: ExportsDeps['publicEnvSecrets'] = {
+  read: async () => [
+    { envVarName: 'NEXT_PUBLIC_SUPABASE_URL', value: 'https://demo.supabase.co' },
+    { envVarName: 'NEXT_PUBLIC_SUPABASE_ANON_KEY', value: 'ey.anon.key' },
+  ],
+};
+
 // ── POST /exports — resolución de semver (3.3) ──────────────────────────────
 
 describe('POST /api/exports — versionado (crm-generator-versiones-historico)', () => {
@@ -119,6 +135,7 @@ describe('POST /api/exports — versionado (crm-generator-versiones-historico)',
         getActiveJob: () => undefined,
         cancelJob: () => false,
       },
+      publicEnvSecrets: okPublicEnvSecrets,
     };
     const req = {
       userId: 'u-1',
@@ -228,6 +245,7 @@ describe('POST /api/exports — versionado (crm-generator-versiones-historico)',
         getActiveJob: () => undefined,
         cancelJob: () => false,
       },
+      publicEnvSecrets: okPublicEnvSecrets,
     };
     const req = {
       userId: 'u-1',
@@ -261,6 +279,7 @@ describe('POST /api/exports — versionado (crm-generator-versiones-historico)',
         getActiveJob: () => undefined,
         cancelJob: () => false,
       },
+      publicEnvSecrets: okPublicEnvSecrets,
     };
     const req = {
       userId: 'u-1',
@@ -362,6 +381,7 @@ describe('POST /api/exports — versionado (crm-generator-versiones-historico)',
         getActiveJob: () => undefined,
         cancelJob: () => false,
       },
+      publicEnvSecrets: okPublicEnvSecrets,
     };
     const req = {
       userId: 'u-1',
@@ -421,6 +441,7 @@ describe('onComplete (crm-generator-versiones-historico WU3.4)', () => {
         cancelJob: () => false,
       },
       artifactStorage,
+      publicEnvSecrets: okPublicEnvSecrets,
     };
     const req = {
       userId: 'u-1',
@@ -474,6 +495,7 @@ describe('onComplete (crm-generator-versiones-historico WU3.4)', () => {
         cancelJob: () => false,
       },
       artifactStorage,
+      publicEnvSecrets: okPublicEnvSecrets,
     };
     const req = {
       userId: 'u-1',

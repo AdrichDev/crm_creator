@@ -5,7 +5,7 @@
 // `apiFetch` a `/tenant-keys/:businessId/secrets`. Estructura calcada de
 // `front/components/config/integraciones-panel.tsx`.
 import { useCallback, useEffect, useState } from 'react';
-import { apiFetch, ApiError } from '@/lib/api/client';
+import { ApiError } from '@/lib/api/client';
 import { useDialog } from '@/components/ui/dialog-provider';
 import { Card, CardBody, Badge, Button } from '@/components/ui/primitives';
 import {
@@ -19,18 +19,32 @@ import {
 } from '@/lib/api/tenant-keys';
 
 type SlotGroup = 'ai' | 'maps' | 'database';
+type SlotKind = 'ai' | 'maps' | 'database' | 'supabase';
 
-const CATALOG: Array<{ name: TenantSecretName; label: string; group: SlotGroup; kind: 'ai' | 'maps' | 'database' }> = [
+const CATALOG: Array<{ name: TenantSecretName; label: string; group: SlotGroup; kind: SlotKind }> = [
   { name: 'OPENAI_API_KEY', label: 'OpenAI', group: 'ai', kind: 'ai' },
   { name: 'GEMINI_API_KEY', label: 'Gemini', group: 'ai', kind: 'ai' },
   { name: 'ANTHROPIC_API_KEY', label: 'Anthropic', group: 'ai', kind: 'ai' },
   { name: 'GOOGLE_MAPS_API_KEY', label: 'Google Maps', group: 'maps', kind: 'maps' },
   { name: 'DATABASE_URL', label: 'URL (BD)', group: 'database', kind: 'database' },
+  { name: 'NEXT_PUBLIC_SUPABASE_URL', label: 'Supabase URL', group: 'database', kind: 'supabase' },
+  { name: 'NEXT_PUBLIC_SUPABASE_ANON_KEY', label: 'Supabase anon key', group: 'database', kind: 'supabase' },
 ];
 
 // crm-tenant-keys-freeform: mismo regex que back/src/lib/tenant-secrets/catalog.ts
 // (ENV_KEY_NAME_PATTERN) — duplicado a propósito para no importar código de back en el bundle.
 const ENV_KEY_NAME_PATTERN = /^[A-Z][A-Z0-9_]*$/;
+
+// crm-onboarding-db-keys-export-connect T5: placeholder de ejemplo por kind. Supabase tiene
+// dos slots (URL / anon key) con formatos muy distintos, así que se distingue por el nombre.
+function placeholderFor(kind: SlotKind, name: string): string {
+  if (kind === 'database') return 'postgresql://usuario:password@host:puerto/basedatos';
+  if (kind === 'supabase') {
+    if (name.includes('URL')) return 'https://xxxx.supabase.co';
+    if (name.includes('ANON')) return 'eyJhbGciOi...';
+  }
+  return 'Pegar valor…';
+}
 
 // Máscara de longitud FIJA para un slot ya configurado: el back nunca devuelve el
 // valor ni su longitud, así que estos puntos NO reflejan la clave real — solo indican
@@ -43,9 +57,14 @@ type TestOutcome = { tone: 'ok' | 'error'; texto: string } | null;
 export interface TenantKeysPanelProps {
   businessId: string;
   groups?: SlotGroup[];
+  // Las "Otras variables" (freeform, sin group) se muestran igual en cualquier
+  // instancia sin importar `groups`. Cuando se montan varios paneles en la misma
+  // pantalla (p.ej. onboarding paso "BD, API y Keys"), poner `showExtras={false}`
+  // en todos salvo uno evita que la sección aparezca duplicada. Default: true.
+  showExtras?: boolean;
 }
 
-export function TenantKeysPanel({ businessId, groups }: TenantKeysPanelProps) {
+export function TenantKeysPanel({ businessId, groups, showExtras = true }: TenantKeysPanelProps) {
   const dialog = useDialog();
   const [slots, setSlots] = useState<TenantSecretSlot[]>([]);
   const [inputs, setInputs] = useState<Record<string, string>>({});
@@ -104,32 +123,36 @@ export function TenantKeysPanel({ businessId, groups }: TenantKeysPanelProps) {
     }
   }
 
-  async function probar(name: TenantSecretName, kind: 'ai' | 'maps' | 'database') {
+  async function probar(name: TenantSecretName, kind: SlotKind) {
+    if (kind === 'maps') {
+      // crm-onboarding-db-keys-export-connect (fix code-review): Maps es una clave NEXT_PUBLIC
+      // de navegador — se restringe correctamente por HTTP-referrer, así que el back NO puede
+      // validarla server-side (geocodificar sin referer devuelve REQUEST_DENIED aunque la clave
+      // sea válida, marcando en rojo una clave correcta). "Probar" aquí solo confirma que el
+      // slot está `configured` y sin edición pendiente sin guardar — `slots` viene de
+      // listSecrets(businessId) (T1: businessId del PATH, correcto). Sin red, sin /test.
+      const slot = slots.find((s) => s.name === name);
+      const ok = Boolean(slot?.configured) && inputs[name] === undefined;
+      setTestResult((prev) => ({
+        ...prev,
+        [name]: ok
+          ? { tone: 'ok', texto: 'Clave guardada; se aplicará en el front y en el export.' }
+          : { tone: 'error', texto: 'Guarda la clave primero.' },
+      }));
+      setCardStatus(name, 'idle');
+      return;
+    }
     setCardStatus(name, 'testing');
     setTestResult((prev) => ({ ...prev, [name]: null }));
     try {
-      if (kind === 'maps') {
-        // Maps es FRONTEND_PUBLIC: se verifica propagación runtime vía /tenant-config,
-        // NO .../test — ver design.md §6/§8.
-        const config = await apiFetch<{ publicEnvSecrets?: Record<string, string> }>('/tenant-config');
-        const propagated = config.publicEnvSecrets?.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-        const ok = Boolean(propagated);
-        setTestResult((prev) => ({
-          ...prev,
-          [name]: ok
-            ? { tone: 'ok', texto: 'Clave activa en el runtime del front.' }
-            : { tone: 'error', texto: 'La clave aún no se refleja en el front. Guarda primero.' },
-        }));
-      } else {
-        const pending = inputs[name]?.trim();
-        const result = await testSecret(businessId, name, pending || undefined);
-        setTestResult((prev) => ({
-          ...prev,
-          [name]: result.ok
-            ? { tone: 'ok', texto: 'Conexión correcta.' }
-            : { tone: 'error', texto: result.detail ?? 'No se pudo conectar.' },
-        }));
-      }
+      const pending = inputs[name]?.trim();
+      const result = await testSecret(businessId, name, pending || undefined);
+      setTestResult((prev) => ({
+        ...prev,
+        [name]: result.ok
+          ? { tone: 'ok', texto: 'Conexión correcta.' }
+          : { tone: 'error', texto: result.detail ?? 'No se pudo conectar.' },
+      }));
     } catch (e) {
       const texto = e instanceof ApiError && e.code === 'no_value' ? 'Pega un valor o guarda uno antes de probar.' : 'No se pudo probar la conexión.';
       setTestResult((prev) => ({ ...prev, [name]: { tone: 'error', texto } }));
@@ -225,7 +248,7 @@ export function TenantKeysPanel({ businessId, groups }: TenantKeysPanelProps) {
                   <input
                     type="password"
                     aria-label={`Valor de ${label}`}
-                    placeholder={kind === 'database' ? 'postgresql://usuario:password@host:puerto/basedatos' : 'Pegar valor…'}
+                    placeholder={placeholderFor(kind, name)}
                     value={inputs[name] ?? ''}
                     onChange={(e) => setInputs((prev) => ({ ...prev, [name]: e.target.value }))}
                     className="min-w-[220px] flex-1 rounded-[8px] border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
@@ -236,7 +259,7 @@ export function TenantKeysPanel({ businessId, groups }: TenantKeysPanelProps) {
                 <Button onClick={() => void guardar(name)} disabled={st !== 'idle' || !(inputs[name]?.trim())}>
                   {st === 'saving' ? 'Guardando…' : 'Guardar'}
                 </Button>
-                <Button variant="outline" onClick={() => void probar(name, kind)} disabled={st !== 'idle' || (kind !== 'maps' && !configured && !(inputs[name]?.trim()))}>
+                <Button variant="outline" onClick={() => void probar(name, kind)} disabled={st !== 'idle' || (!configured && !(inputs[name]?.trim()))}>
                   {st === 'testing' ? 'Probando…' : 'Probar conexión'}
                 </Button>
               </div>
@@ -251,6 +274,7 @@ export function TenantKeysPanel({ businessId, groups }: TenantKeysPanelProps) {
         );
       })}
 
+      {showExtras && (
       <div className="space-y-3 pt-2">
         <p className="text-sm font-medium text-white/80">Otras variables</p>
         <p className="text-xs text-white/50">
@@ -359,6 +383,7 @@ export function TenantKeysPanel({ businessId, groups }: TenantKeysPanelProps) {
           </CardBody>
         </Card>
       </div>
+      )}
     </div>
   );
 }

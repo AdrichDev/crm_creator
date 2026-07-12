@@ -10,9 +10,18 @@ export type SecretSlotName =
   | 'GEMINI_API_KEY'
   | 'ANTHROPIC_API_KEY'
   | 'GOOGLE_MAPS_API_KEY'
-  | 'DATABASE_URL';
+  | 'DATABASE_URL'
+  | 'NEXT_PUBLIC_SUPABASE_URL'
+  | 'NEXT_PUBLIC_SUPABASE_ANON_KEY';
 
-export type SecretProvider = 'openai' | 'gemini' | 'anthropic' | 'maps' | 'database';
+export type SecretProvider =
+  | 'openai'
+  | 'gemini'
+  | 'anthropic'
+  | 'maps'
+  | 'database'
+  | 'supabase_url'
+  | 'supabase_anon';
 
 export interface SecretSlot {
   name: SecretSlotName;
@@ -37,6 +46,22 @@ export const TENANT_SECRET_CATALOG: SecretSlot[] = [
     group: 'maps',
   },
   { name: 'DATABASE_URL', label: 'URL (BD)', scope: 'BACKEND_SECRET', provider: 'database', group: 'database' },
+  {
+    name: 'NEXT_PUBLIC_SUPABASE_URL',
+    label: 'Supabase URL',
+    scope: 'FRONTEND_PUBLIC',
+    provider: 'supabase_url',
+    envVarName: 'NEXT_PUBLIC_SUPABASE_URL',
+    group: 'database',
+  },
+  {
+    name: 'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+    label: 'Supabase anon key',
+    scope: 'FRONTEND_PUBLIC',
+    provider: 'supabase_anon',
+    envVarName: 'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+    group: 'database',
+  },
 ];
 
 const CATALOG_BY_NAME = new Map(TENANT_SECRET_CATALOG.map((slot) => [slot.name, slot]));
