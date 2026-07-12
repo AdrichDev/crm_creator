@@ -100,6 +100,22 @@ test('1.2 DESKTOP_ALLOWLIST incluye electron, SIN android ni capacitor', () => {
   assert.ok(!DESKTOP_ALLOWLIST.includes('capacitor.config.ts'));
 });
 
+// crm-export-legacy-peer-deps: el `.npmrc` (legacy-peer-deps=true) debe viajar en TODOS
+// los formatos, o `npm install` del artefacto rompe por React 19 ↔ @emoji-mart/react.
+test('.npmrc pasa el filtro en las 4 allowlists (legacy-peer-deps viaja al artefacto)', () => {
+  for (const list of [WEB_ALLOWLIST, ANDROID_ALLOWLIST, IOS_ALLOWLIST, DESKTOP_ALLOWLIST]) {
+    assert.deepEqual(allowlistFilter({ name: '.npmrc' }, list), { name: '.npmrc' });
+  }
+});
+
+test('los README de los 4 builders instruyen `npm install --legacy-peer-deps`', () => {
+  const dir = path.resolve(process.cwd(), 'src/lib/export-builders');
+  for (const f of ['web-zip.ts', 'apk.ts', 'exe.ts', 'ipa.ts']) {
+    const src = fs.readFileSync(path.join(dir, f), 'utf8');
+    assert.ok(src.includes('npm install --legacy-peer-deps'), `${f} debe usar --legacy-peer-deps`);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // buildEnvContent / writeFreshEnvLocal (single-writer, design.md §3)
 // ---------------------------------------------------------------------------
