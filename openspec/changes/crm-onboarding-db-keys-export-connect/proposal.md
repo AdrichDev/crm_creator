@@ -37,10 +37,11 @@ Elimina el caso especial `/tenant-config`.
    Aparecen como campos dedicados en la card "Base de datos" del paso 3 del onboarding.
 2. El export ya hornea `FRONTEND_PUBLIC` con `envVarName` → al ser slots de catálogo,
    entran solos en el `.env.local` del artefacto cuando el operador los rellena.
-3. **Gate de export (fail-closed)**: si al exportar faltan `config.api.url`,
-   `NEXT_PUBLIC_SUPABASE_URL` o `NEXT_PUBLIC_SUPABASE_ANON_KEY`, el export responde
-   **422 `export_missing_db_config`** con mensaje claro, en vez de generar un artefacto
-   muerto. (Hoy es fail-open: `exports.ts:428-442`.)
+3. ~~Gate de export (fail-closed)~~ **RETIRADO (decisión 12/07/2026)**: el export NO
+   bloquea por config de BD. La responsabilidad de configurar BD/APIs vive en el
+   onboarding ("BD, API y Keys"); al guardar quedan seteadas y el export **hornea lo
+   que haya** (fail-open). Un gate 422 bloqueaba re-exports legítimos de proyectos
+   que aún no tenían las 3 vars, así que se eliminó junto al 503 de read-fail.
 
 ## Out of Scope
 - Inyección automática de creds de plataforma / tocar env de Render.

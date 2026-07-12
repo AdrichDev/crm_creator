@@ -334,232 +334,64 @@ describe('POST /api/exports — runtimeConfig (crm-export-runtime-config)', () =
   });
 });
 
-// ── crm-onboarding-db-keys-export-connect T4: gate fail-closed BD/keys ──────
+// ── crm-onboarding-db-keys-export-connect: el export NO bloquea por config de BD ──
+// Decisión 12/07/2026: la BD/APIs se configuran en el onboarding ("BD, API y Keys");
+// el export hornea lo que el negocio haya guardado y arranca SIEMPRE (fail-open).
+// No hay gate 422/503: exportar nunca se corta por vars de conexión faltantes.
 
-describe('POST /api/exports — gate BD/keys (crm-onboarding-db-keys-export-connect T4)', () => {
-  test('422 export_missing_db_config si faltan las keys de Supabase (publicEnvSecrets sin ellas)', async () => {
+describe('POST /api/exports — fail-open de config BD/keys', () => {
+  test('arranca (202) aunque falten las keys de Supabase (publicEnvSecrets vacío)', async () => {
     const deps: ExportsDeps = {
-      db: okDb, // api.url presente
-      jobs: {
-        startJob: () => fakeJob('job-gate-1'),
-        getJob: () => undefined,
-        getActiveJob: () => undefined,
-        cancelJob: () => false,
-      },
-      publicEnvSecrets: { read: async () => [] }, // sin las 2 keys de Supabase
+      db: okDb,
+      jobs: { startJob: () => fakeJob('job-fo-1'), getJob: () => undefined, getActiveJob: () => undefined, cancelJob: () => false },
+      publicEnvSecrets: { read: async () => [] },
     };
-    const req = {
-      userId: 'u-1',
-      body: { projectId: 'proj-1', formats: ['web-zip'] },
-    } as unknown as AuthedRequest;
+    const req = { userId: 'u-1', body: { projectId: 'proj-1', formats: ['web-zip'] } } as unknown as AuthedRequest;
     const res = mockRes();
-
     await createExportHandler(deps)(req, res);
-
-    assert.equal(res.statusCode, 422);
-    const body = res.body as { error: { code: string }; missing: string[] };
-    assert.equal(body.error.code, 'export_missing_db_config');
-    assert.deepEqual(body.missing, ['NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY']);
+    assert.equal(res.statusCode, 202);
+    assert.deepEqual(res.body, { jobId: 'job-fo-1' });
   });
 
-  test('422 export_missing_db_config si falta api.url aunque las 2 keys de Supabase estén presentes', async () => {
+  test('arranca (202) aunque falte api.url', async () => {
     const dbSinApiUrl: ExportsDeps['db'] = {
       ...okDb,
       businessSetting: { findFirst: async () => ({ datos: { business: { name: 'Demo' } } }) },
     };
     const deps: ExportsDeps = {
       db: dbSinApiUrl,
-      jobs: {
-        startJob: () => fakeJob('job-gate-2'),
-        getJob: () => undefined,
-        getActiveJob: () => undefined,
-        cancelJob: () => false,
-      },
+      jobs: { startJob: () => fakeJob('job-fo-2'), getJob: () => undefined, getActiveJob: () => undefined, cancelJob: () => false },
       publicEnvSecrets: okPublicEnvSecrets,
     };
-    const req = {
-      userId: 'u-1',
-      body: { projectId: 'proj-1', formats: ['web-zip'] },
-    } as unknown as AuthedRequest;
+    const req = { userId: 'u-1', body: { projectId: 'proj-1', formats: ['web-zip'] } } as unknown as AuthedRequest;
     const res = mockRes();
-
     await createExportHandler(deps)(req, res);
-
-    assert.equal(res.statusCode, 422);
-    const body = res.body as { error: { code: string }; missing: string[] };
-    assert.equal(body.error.code, 'export_missing_db_config');
-    assert.deepEqual(body.missing, ['NEXT_PUBLIC_API_URL']);
-  });
-
-  test('202 cuando las 3 vars (api.url + 2 keys de Supabase) están presentes', async () => {
-    const deps: ExportsDeps = {
-      db: okDb,
-      jobs: {
-        startJob: () => fakeJob('job-gate-3'),
-        getJob: () => undefined,
-        getActiveJob: () => undefined,
-        cancelJob: () => false,
-      },
-      publicEnvSecrets: okPublicEnvSecrets,
-    };
-    const req = {
-      userId: 'u-1',
-      body: { projectId: 'proj-1', formats: ['web-zip'] },
-    } as unknown as AuthedRequest;
-    const res = mockRes();
-
-    await createExportHandler(deps)(req, res);
-
     assert.equal(res.statusCode, 202);
-    assert.deepEqual(res.body, { jobId: 'job-gate-3' });
   });
 
-  // code-review fix: el gate debe correr ANTES de mintear la TenantApiKey —
-  // si no, cada export bloqueado con 422 fugaba una key huérfana (nunca usada).
-  test('422: NO se llama a tenantKeys.issueKey cuando el gate bloquea', async () => {
-    const issueKey = mock.fn(async () => ({ token: 'tk_leaked' }));
+  test('arranca (202) con las 3 vars presentes', async () => {
     const deps: ExportsDeps = {
       db: okDb,
-      jobs: {
-        startJob: () => fakeJob('job-gate-4'),
-        getJob: () => undefined,
-        getActiveJob: () => undefined,
-        cancelJob: () => false,
-      },
-      tenantKeys: { issueKey },
-      publicEnvSecrets: { read: async () => [] }, // sin las 2 keys de Supabase → 422
-    };
-    const req = {
-      userId: 'u-1',
-      body: { projectId: 'proj-1', formats: ['web-zip'] },
-    } as unknown as AuthedRequest;
-    const res = mockRes();
-
-    await createExportHandler(deps)(req, res);
-
-    assert.equal(res.statusCode, 422);
-    assert.equal(issueKey.mock.calls.length, 0, 'issueKey NO debe llamarse si el gate bloquea el export');
-  });
-
-  // code-review fix: el gate valida las LÍNEAS REALMENTE HORNEADAS
-  // (`buildPublicEnvSecretsLines`), no el array crudo de `publicEnvSecrets.read`.
-  test('422: value con salto de línea no se hornea → cuenta como faltante aunque esté en BD', async () => {
-    const issueKey = mock.fn(async () => ({ token: 'tk_leaked' }));
-    const deps: ExportsDeps = {
-      db: okDb,
-      jobs: {
-        startJob: () => fakeJob('job-gate-5'),
-        getJob: () => undefined,
-        getActiveJob: () => undefined,
-        cancelJob: () => false,
-      },
-      tenantKeys: { issueKey },
-      publicEnvSecrets: {
-        read: async () => [
-          { envVarName: 'NEXT_PUBLIC_SUPABASE_URL', value: 'https://demo.supabase.co\r\nEVIL=1' },
-          { envVarName: 'NEXT_PUBLIC_SUPABASE_ANON_KEY', value: 'ey.anon.key' },
-        ],
-      },
-    };
-    const req = {
-      userId: 'u-1',
-      body: { projectId: 'proj-1', formats: ['web-zip'] },
-    } as unknown as AuthedRequest;
-    const res = mockRes();
-
-    await createExportHandler(deps)(req, res);
-
-    assert.equal(res.statusCode, 422);
-    const body = res.body as { error: { code: string }; missing: string[] };
-    assert.equal(body.error.code, 'export_missing_db_config');
-    assert.deepEqual(body.missing, ['NEXT_PUBLIC_SUPABASE_URL']);
-    assert.equal(issueKey.mock.calls.length, 0);
-  });
-
-  test('422: value vacío no se hornea con contenido → cuenta como faltante', async () => {
-    const deps: ExportsDeps = {
-      db: okDb,
-      jobs: {
-        startJob: () => fakeJob('job-gate-6'),
-        getJob: () => undefined,
-        getActiveJob: () => undefined,
-        cancelJob: () => false,
-      },
-      publicEnvSecrets: {
-        read: async () => [
-          { envVarName: 'NEXT_PUBLIC_SUPABASE_URL', value: '' },
-          { envVarName: 'NEXT_PUBLIC_SUPABASE_ANON_KEY', value: 'ey.anon.key' },
-        ],
-      },
-    };
-    const req = {
-      userId: 'u-1',
-      body: { projectId: 'proj-1', formats: ['web-zip'] },
-    } as unknown as AuthedRequest;
-    const res = mockRes();
-
-    await createExportHandler(deps)(req, res);
-
-    assert.equal(res.statusCode, 422);
-    const body = res.body as { error: { code: string }; missing: string[] };
-    assert.deepEqual(body.missing, ['NEXT_PUBLIC_SUPABASE_URL']);
-  });
-
-  test('202: value válido (sin saltos de línea, no vacío) pasa el gate', async () => {
-    const deps: ExportsDeps = {
-      db: okDb,
-      jobs: {
-        startJob: () => fakeJob('job-gate-7'),
-        getJob: () => undefined,
-        getActiveJob: () => undefined,
-        cancelJob: () => false,
-      },
+      jobs: { startJob: () => fakeJob('job-fo-3'), getJob: () => undefined, getActiveJob: () => undefined, cancelJob: () => false },
       publicEnvSecrets: okPublicEnvSecrets,
     };
-    const req = {
-      userId: 'u-1',
-      body: { projectId: 'proj-1', formats: ['web-zip'] },
-    } as unknown as AuthedRequest;
+    const req = { userId: 'u-1', body: { projectId: 'proj-1', formats: ['web-zip'] } } as unknown as AuthedRequest;
     const res = mockRes();
-
     await createExportHandler(deps)(req, res);
-
     assert.equal(res.statusCode, 202);
-    assert.deepEqual(res.body, { jobId: 'job-gate-7' });
+    assert.deepEqual(res.body, { jobId: 'job-fo-3' });
   });
 
-  // code-review fix: un fallo al LEER los secretos ya no es fail-open (no se
-  // puede garantizar el gate sin saber qué hay realmente horneado) — responde
-  // 503 reintentable, distinto del 422 de onboarding (sería engañoso).
-  test('503 export_config_check_failed si falla la lectura de publicEnvSecrets', async () => {
-    const issueKey = mock.fn(async () => ({ token: 'tk_leaked' }));
+  test('un fallo al leer publicEnvSecrets NO bloquea: arranca 202 (fail-open)', async () => {
     const deps: ExportsDeps = {
       db: okDb,
-      jobs: {
-        startJob: () => fakeJob('job-gate-8'),
-        getJob: () => undefined,
-        getActiveJob: () => undefined,
-        cancelJob: () => false,
-      },
-      tenantKeys: { issueKey },
-      publicEnvSecrets: {
-        read: async () => {
-          throw new Error('kms down');
-        },
-      },
+      jobs: { startJob: () => fakeJob('job-fo-4'), getJob: () => undefined, getActiveJob: () => undefined, cancelJob: () => false },
+      publicEnvSecrets: { read: async () => { throw new Error('kms down'); } },
     };
-    const req = {
-      userId: 'u-1',
-      body: { projectId: 'proj-1', formats: ['web-zip'] },
-    } as unknown as AuthedRequest;
+    const req = { userId: 'u-1', body: { projectId: 'proj-1', formats: ['web-zip'] } } as unknown as AuthedRequest;
     const res = mockRes();
-
     await createExportHandler(deps)(req, res);
-
-    assert.equal(res.statusCode, 503);
-    const body = res.body as { error: { code: string } };
-    assert.equal(body.error.code, 'export_config_check_failed');
-    assert.equal(issueKey.mock.calls.length, 0, 'issueKey NO debe llamarse si falló la lectura');
+    assert.equal(res.statusCode, 202);
   });
 });
 
