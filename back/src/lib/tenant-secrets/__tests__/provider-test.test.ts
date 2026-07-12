@@ -157,14 +157,15 @@ describe('testProviderConnection — supabase_url (fetch real a /auth/v1/health)
     assertNoValueLeaked(result, value);
   });
 
-  test('fetch responde no-ok (404/500) → { ok: false, detail genérico sin value }', async () => {
+  test('fetch responde 401 (gateway sin apikey) → { ok: true }: el host respondió = URL alcanzable', async () => {
     const value = 'https://x.supabase.co';
     const result = await testProviderConnection('supabase_url', value, {
-      fetchImpl: fakeFetch(async () => jsonResponse(500, {}, false)),
+      fetchImpl: fakeFetch(async () => jsonResponse(401, {}, false)),
       createPool: unusedPool,
     });
-    assert.equal(result.ok, false);
-    assertNoValueLeaked(result, value);
+    // El gateway Kong de Supabase responde 401 a /auth/v1/health sin `apikey`; ese 401
+    // ya confirma que la URL apunta a un Supabase real y alcanzable → no debe fallar.
+    assert.equal(result.ok, true);
   });
 
   test('fallo de red (fetch rechaza) → { ok: false, detail genérico sin value }', async () => {

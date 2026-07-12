@@ -130,10 +130,12 @@ export async function testProviderConnection(
       case 'database':
         return await testDatabaseUrl(value, timeoutMs, createPool);
       case 'supabase_url':
-        // NEXT_PUBLIC_SUPABASE_URL es pública (va al bundle del front) y SÍ se
-        // puede probar con una llamada real: valida que la URL responda como
-        // proyecto Supabase de verdad (no solo que "parezca" una URL). Nunca
-        // se interpola `value` en `detail`.
+        // NEXT_PUBLIC_SUPABASE_URL es pública (va al bundle del front). Se valida
+        // formato (https) + ALCANZABILIDAD del host. Basta con que el host RESPONDA:
+        // el gateway de Supabase (Kong) contesta 401 a /auth/v1/health cuando no se
+        // manda `apikey`, pero ese 401 ya confirma que la URL apunta a un Supabase
+        // real y alcanzable. Solo un fallo de red/DNS/timeout (throw → catch general)
+        // significa que la URL no responde. Nunca se interpola `value` en `detail`.
         return await testWithTimeout(timeoutMs, async (signal) => {
           let parsed: URL;
           try {
@@ -144,8 +146,9 @@ export async function testProviderConnection(
           if (parsed.protocol !== 'https:') {
             return { ok: false, detail: 'URL de Supabase inválida' };
           }
-          const r = await fetchImpl(`${value.replace(/\/$/, '')}/auth/v1/health`, { signal });
-          return r.ok ? { ok: true } : { ok: false, detail: 'Supabase no responde en esa URL' };
+          // Cualquier respuesta HTTP (200, 401, 404…) = host alcanzable → ok.
+          await fetchImpl(`${value.replace(/\/$/, '')}/auth/v1/health`, { signal });
+          return { ok: true };
         });
       case 'supabase_anon':
         // NEXT_PUBLIC_SUPABASE_ANON_KEY: sin la URL del proyecto no hay endpoint
