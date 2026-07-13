@@ -86,6 +86,12 @@ export default function LoginPage() {
           <Link href="/registro" className="hover:text-gray-800">¿No tienes cuenta? <span className="font-medium text-gray-700">Regístrate</span></Link>
           <Link href="/forgot-password" className="hover:text-gray-800">¿Olvidaste tu contraseña?</Link>
         </div>
+
+        <div className="mt-5 flex items-center justify-center gap-3 border-t border-gray-100 pt-4 text-[11px] text-gray-400">
+          <Link href="/privacidad" className="hover:text-gray-700">Privacidad</Link>
+          <span aria-hidden>·</span>
+          <Link href="/aviso-legal" className="hover:text-gray-700">Aviso legal</Link>
+        </div>
       </form>
     </div>
   );

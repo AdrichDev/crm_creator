@@ -320,6 +320,11 @@ export function Sidebar({ mobileOpen = false, onNavigate }: { mobileOpen?: boole
                   <span className="text-base">👤</span> Mi Cuenta
                 </Link>
               </div>
+              <div className="py-1 flex items-center justify-center gap-3 text-[11px] text-gray-400" style={{ borderTop: '1px solid var(--line)' }}>
+                <Link href="/privacidad" className="transition hover:text-[var(--acc)]">Privacidad</Link>
+                <span aria-hidden>·</span>
+                <Link href="/aviso-legal" className="transition hover:text-[var(--acc)]">Aviso legal</Link>
+              </div>
               <div className="py-1" style={{ borderTop: '1px solid var(--line)' }}>
                 <button
                   onClick={salir}
