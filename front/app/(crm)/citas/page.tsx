@@ -144,31 +144,65 @@ export default function Page() {
   useEffect(() => { refreshStats(); }, [refreshStats]);
 
   const dialog = useDialog();
+  const searchParams = useSearchParams();
 
-  // Google Calendar: el botón "Sincronizar Calendar" solo aparece cuando hay una cuenta
-  // conectada. El sync es COMPLETO — trae TODAS las citas del calendario (no solo las
-  // nuevas de la ventana incremental del poller) y recarga la agenda.
+  // ── Google Calendar (toggle conectar/desconectar, UX igual que AA) ────────────────
+  // Desconectado → "📅 Sincronizar Calendar" inicia el OAuth y vuelve a /citas.
+  // Conectado    → "✕ Cancelar sincronización" (rojo) revoca la credencial.
+  // Al volver del OAuth se hace un sync COMPLETO (trae TODAS las citas de Google).
   const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null);
-  const [syncingCal, setSyncingCal] = useState(false);
+  const [calBusy, setCalBusy] = useState(false);
+
   useEffect(() => {
     if (!apiEnabled) { setCalendarConnected(false); return; }
     apiFetch<{ items: { servicio: string; estado: string | null }[] }>('/integrations')
       .then((r) => setCalendarConnected(r.items?.some((i) => i.servicio === 'calendar' && i.estado === 'connected') ?? false))
       .catch(() => setCalendarConnected(false));
   }, [apiEnabled]);
-  const syncCalendar = useCallback(async () => {
-    setSyncingCal(true);
-    try {
-      await apiFetch('/integrations/calendar/sync', { method: 'POST' });
-      paged.refresh();
-      refreshStats();
-      await dialog.alert('Calendario sincronizado. Se han importado tus citas de Google Calendar.');
-    } catch {
-      await dialog.alert('No se pudo sincronizar el calendario. Inténtalo de nuevo.');
-    } finally {
-      setSyncingCal(false);
+
+  const syncCalendarFull = useCallback(async () => {
+    await apiFetch('/integrations/calendar/sync', { method: 'POST' }).catch(() => {});
+    paged.refresh();
+    refreshStats();
+  }, [paged, refreshStats]);
+
+  // Retorno del OAuth (?servicio=calendar&estado=conectado): marca conectado, sincroniza
+  // todo y limpia la URL. Espejo del patrón de AA (vuelve a la agenda ya conectado).
+  useEffect(() => {
+    if (!apiEnabled) return;
+    if (searchParams.get('servicio') === 'calendar' && searchParams.get('estado') === 'conectado') {
+      setCalendarConnected(true);
+      window.history.replaceState(null, '', '/citas');
+      void syncCalendarFull().finally(() => void dialog.alert('Google Calendar conectado. Se han importado tus citas.'));
     }
-  }, [paged, refreshStats, dialog]);
+  }, [apiEnabled, searchParams, syncCalendarFull, dialog]);
+
+  const connectCalendar = useCallback(async () => {
+    setCalBusy(true);
+    try {
+      const { url } = await apiFetch<{ url: string }>('/integrations/calendar/connect', {
+        method: 'POST', body: JSON.stringify({ returnTo: '/citas' }),
+      });
+      window.location.href = url;
+    } catch {
+      setCalBusy(false);
+      await dialog.alert('No se pudo iniciar la conexión con Google. Inténtalo de nuevo.');
+    }
+  }, [dialog]);
+
+  const disconnectCalendar = useCallback(async () => {
+    const ok = await dialog.confirm({ message: '¿Cancelar la sincronización con Google Calendar?', danger: true });
+    if (!ok) return;
+    setCalBusy(true);
+    try {
+      await apiFetch('/integrations/calendar/revoke', { method: 'POST' });
+      setCalendarConnected(false);
+    } catch {
+      await dialog.alert('No se pudo desconectar. Inténtalo de nuevo.');
+    } finally {
+      setCalBusy(false);
+    }
+  }, [dialog]);
 
   const [open, setOpen] = useState(false);
   const [openNueva, setOpenNueva] = useState(false);
@@ -255,7 +289,6 @@ export default function Page() {
   const displayItems = (apiEnabled ? paged.items : collectionItems) as unknown as (Cita & Partial<CitaApiRow>)[];
 
   // Deep-link desde el widget Agenda del inicio: /citas?edit=<id> abre la ficha directamente.
-  const searchParams = useSearchParams();
   const router = useRouter();
   useEffect(() => {
     const editId = searchParams.get('edit');
@@ -359,9 +392,15 @@ export default function Page() {
         <PageHeader title={term} subtitle="Agenda y reservas con estados."
           action={
             <div className="flex items-center gap-2">
-              {apiEnabled && calendarConnected && (
-                <Button variant="outline" onClick={syncCalendar} disabled={syncingCal}>
-                  {syncingCal ? 'Sincronizando…' : '📅 Sincronizar Calendar'}
+              {apiEnabled && calendarConnected === true && (
+                <Button variant="outline" onClick={disconnectCalendar} disabled={calBusy}
+                  className="border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20">
+                  {calBusy ? '…' : '✕ Cancelar sincronización'}
+                </Button>
+              )}
+              {apiEnabled && calendarConnected === false && (
+                <Button variant="outline" onClick={connectCalendar} disabled={calBusy}>
+                  {calBusy ? 'Conectando…' : '📅 Sincronizar Calendar'}
                 </Button>
               )}
               <Button onClick={onNueva}><CalendarPlus className="h-4 w-4" /> Añadir</Button>

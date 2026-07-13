@@ -47,9 +47,15 @@ function parseServicio(raw: string): Servicio | null {
 }
 
 /** Redirect de vuelta al front tras el callback. El `estado` es el contrato con la UI. */
-function frontRedirect(servicio: string, estado: string): string {
+/** Path same-origin válido para volver tras el OAuth (evita open-redirect). */
+function isSafeReturnPath(p: unknown): p is string {
+  return typeof p === 'string' && p.startsWith('/') && !p.startsWith('//');
+}
+
+function frontRedirect(servicio: string, estado: string, returnTo?: string | null): string {
   const params = new URLSearchParams({ servicio, estado });
-  return `${env.frontUrl}/ajustes/integraciones?${params}`;
+  const path = isSafeReturnPath(returnTo) ? returnTo : '/ajustes/integraciones';
+  return `${env.frontUrl}${path}?${params}`;
 }
 
 // ── Estado de integraciones (GET /) ──────────────────────────────────────────
@@ -111,7 +117,9 @@ integrationsRouter.post('/:servicio/connect', authenticate, staffOnly, (req: Aut
     return res.status(400).json({ error: { code: 'no_business', message: 'La sesión no tiene un negocio activo' } });
   }
   try {
-    const url = authorizationUrl(servicio, req.businessId);
+    const rawReturn = (req.body as { returnTo?: unknown } | undefined)?.returnTo;
+    const returnTo = isSafeReturnPath(rawReturn) ? rawReturn : null;
+    const url = authorizationUrl(servicio, req.businessId, returnTo);
     res.json({ url });
   } catch {
     // authorizationUrl lanza si faltan GOOGLE_OAUTH_* en el entorno.
@@ -138,7 +146,7 @@ integrationsRouter.get('/:servicio/callback', async (req: AuthedRequest, res: Re
 
   try {
     await handleCallback(entry.servicio, code, entry.businessId);
-    res.redirect(frontRedirect(servicio, 'conectado'));
+    res.redirect(frontRedirect(servicio, 'conectado', entry.returnTo));
   } catch (err) {
     if (err instanceof ScopeInsufficientError) {
       // Telemetría (Decisión 6): scope insuficiente. Soft-fail — no rompe el redirect.
@@ -147,10 +155,10 @@ integrationsRouter.get('/:servicio/callback', async (req: AuthedRequest, res: Re
         { servicio, requerido: err.required, concedidos: err.granted },
         { businessId: entry.businessId ?? '' },
       ).catch(() => {});
-      return res.redirect(frontRedirect(servicio, 'scope_insuficiente'));
+      return res.redirect(frontRedirect(servicio, 'scope_insuficiente', entry.returnTo));
     }
     console.error(`[integrations] callback ${servicio} falló:`, (err as Error).message);
-    res.redirect(frontRedirect(servicio, 'error'));
+    res.redirect(frontRedirect(servicio, 'error', entry.returnTo));
   }
 });
 

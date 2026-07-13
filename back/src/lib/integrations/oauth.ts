@@ -249,18 +249,19 @@ async function doRefresh(
 
 const STATE_TTL_MS = 10 * 60 * 1000;
 
-interface StateEntry { businessId: string | null; servicio: Servicio; exp: number }
+interface StateEntry { businessId: string | null; servicio: Servicio; returnTo?: string | null; exp: number }
 const stateStore = new Map<string, StateEntry>();
 
 function purgeExpiredStates(now: number): void {
   for (const [nonce, entry] of stateStore) if (now > entry.exp) stateStore.delete(nonce);
 }
 
-/** Crea y registra un nonce de un solo uso (anti-CSRF) para el flujo OAuth. */
-export function createOAuthState(businessId: string | null, servicio: Servicio, now = Date.now()): string {
+/** Crea y registra un nonce de un solo uso (anti-CSRF) para el flujo OAuth. `returnTo`
+ *  (path same-origin) permite volver a la página que inició el flujo (p.ej. /citas). */
+export function createOAuthState(businessId: string | null, servicio: Servicio, returnTo: string | null = null, now = Date.now()): string {
   purgeExpiredStates(now);
   const nonce = randomBytes(16).toString('hex');
-  stateStore.set(nonce, { businessId, servicio, exp: now + STATE_TTL_MS });
+  stateStore.set(nonce, { businessId, servicio, returnTo, exp: now + STATE_TTL_MS });
   return nonce;
 }
 
@@ -273,12 +274,12 @@ export function takeOAuthState(nonce: string, now = Date.now()): StateEntry | nu
 }
 
 /** Genera la URL OAuth de Google con nonce anti-CSRF y el scope mínimo del servicio. */
-export function authorizationUrl(servicio: Servicio, businessId: string | null): string {
+export function authorizationUrl(servicio: Servicio, businessId: string | null, returnTo: string | null = null): string {
   const cfg = googleOAuthConfig(asGoogleService(servicio));
   if (!cfg.clientId || !cfg.clientSecret || !cfg.redirectUri) {
     throw new Error('Faltan credenciales OAuth de Google en back/.env (GOOGLE_OAUTH_CLIENT_ID/SECRET/REDIRECT_URI)');
   }
-  const nonce = createOAuthState(businessId, servicio);
+  const nonce = createOAuthState(businessId, servicio, returnTo);
   const params = new URLSearchParams({
     client_id: cfg.clientId,
     redirect_uri: cfg.redirectUri,
