@@ -332,7 +332,7 @@ export default function Page() {
       <div className="panel-fill">
         <PageHeader title={term} subtitle="Agenda y reservas con estados."
           action={<Button onClick={onNueva}><CalendarPlus className="h-4 w-4" /> Añadir</Button>} />
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-3 gap-2 sm:gap-4">
           <Stat label="Total" value={apiEnabled ? (stats?.total ?? paged.total) : displayItems.length} />
           <Stat label="Confirmadas" value={apiEnabled ? (stats?.confirmadas ?? 0) : displayItems.filter(c => c.estado === 'Confirmada').length} />
           <Stat label="Pendientes" value={apiEnabled ? (stats?.pendientes ?? 0) : displayItems.filter(c => c.estado === 'Pendiente').length} />
