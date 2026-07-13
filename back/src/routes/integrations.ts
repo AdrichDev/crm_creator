@@ -15,6 +15,7 @@ import {
   type EstadoCredencial,
   type Servicio,
 } from '../lib/integrations/oauth.js';
+import { syncBusinessNow } from '../lib/calendarSync.js';
 
 // ---------------------------------------------------------------------------
 // crm-integraciones-comunicacion (WU1, T1.5): rutas HTTP del flujo OAuth.
@@ -164,6 +165,26 @@ integrationsRouter.post('/:servicio/revoke', authenticate, staffOnly, async (req
   }
   await disconnectIntegration(req.businessId, servicio);
   res.status(204).end();
+});
+
+// POST /:servicio/sync — sincronización COMPLETA e inmediata (botón "Sincronizar
+// Calendar" en /citas). Solo Calendar. Trae TODAS las citas del Google Calendar del
+// negocio desde hoy, no solo las de la ventana incremental del poller.
+integrationsRouter.post('/:servicio/sync', authenticate, staffOnly, async (req: AuthedRequest, res: Response) => {
+  const servicio = parseServicio(req.params.servicio);
+  if (servicio !== 'calendar') {
+    return res.status(404).json({ error: { code: 'not_found', message: 'La sincronización manual solo aplica a Calendar' } });
+  }
+  if (!req.businessId) {
+    return res.status(400).json({ error: { code: 'no_business', message: 'La sesión no tiene un negocio activo' } });
+  }
+  try {
+    await syncBusinessNow(req.businessId);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[integrations] sync calendar falló:', (err as Error).message);
+    res.status(500).json({ error: { code: 'sync_failed', message: 'No se pudo sincronizar el calendario' } });
+  }
 });
 
 // ── Credencial ADMIN (businessId=null) — solo operador (WU3, T3.1/T3.2) ───────

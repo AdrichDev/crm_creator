@@ -7,6 +7,7 @@ import {
 } from './integrations/oauth.js';
 import {
   listCalendarEventsWithToken,
+  listAllEventsWithToken,
   linkEventToBookingWithToken,
   CRM_BOOKING_ID_KEY,
   type GoogleCalendarEvent,
@@ -247,6 +248,13 @@ function updatedMinWindow(now = Date.now()): Date {
   return new Date(now - 2 * CALENDAR_SYNC_INTERVAL_MS);
 }
 
+/** Inicio del día actual: punto de partida del sync COMPLETO (importa desde hoy en adelante). */
+function startOfDay(now = Date.now()): Date {
+  const d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
 /** Busca (o crea) el servicio marcador donde cuelgan las reservas importadas de Google. */
 async function getOrCreateSyncService(businessId: string): Promise<{ id: string }> {
   const existing = await defaultPrisma.service.findFirst({
@@ -268,7 +276,7 @@ async function getOrCreateSyncService(businessId: string): Promise<{ id: string 
   });
 }
 
-function buildProdDeps(): CalendarSyncDeps {
+function buildProdDeps(full = false): CalendarSyncDeps {
   const prisma = defaultPrisma;
   return {
     listCredentials: async () => {
@@ -282,7 +290,9 @@ function buildProdDeps(): CalendarSyncDeps {
     },
     getToken: (businessId) => getValidToken(businessId, 'calendar'),
     listEvents: (businessId, token) =>
-      listCalendarEventsWithToken(businessId, token, { updatedMin: updatedMinWindow() }),
+      full
+        ? listAllEventsWithToken(businessId, token, { timeMin: startOfDay() })
+        : listCalendarEventsWithToken(businessId, token, { updatedMin: updatedMinWindow() }),
     findBooking: (businessId, bookingId) =>
       prisma.booking.findFirst({
         where: { id: bookingId, businessId, eliminadoEn: null },
@@ -349,6 +359,16 @@ function buildProdDeps(): CalendarSyncDeps {
 
 async function runCalendarSync(): Promise<void> {
   await runCalendarSyncWithDeps(buildProdDeps());
+}
+
+/**
+ * Sincronización COMPLETA e inmediata de un negocio (botón manual "Sincronizar Calendar"
+ * en /citas). Trae TODAS las citas del calendario desde el inicio de hoy en adelante, no
+ * solo las modificadas en la última ventana como el poller. Soft-fail: si la credencial
+ * no existe o requiere reconexión, syncCredential lo captura y no lanza.
+ */
+export async function syncBusinessNow(businessId: string): Promise<void> {
+  await syncCredential(businessId, buildProdDeps(true));
 }
 
 let _intervalId: ReturnType<typeof setInterval> | null = null;

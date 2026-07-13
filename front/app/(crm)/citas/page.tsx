@@ -144,6 +144,32 @@ export default function Page() {
   useEffect(() => { refreshStats(); }, [refreshStats]);
 
   const dialog = useDialog();
+
+  // Google Calendar: el botón "Sincronizar Calendar" solo aparece cuando hay una cuenta
+  // conectada. El sync es COMPLETO — trae TODAS las citas del calendario (no solo las
+  // nuevas de la ventana incremental del poller) y recarga la agenda.
+  const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null);
+  const [syncingCal, setSyncingCal] = useState(false);
+  useEffect(() => {
+    if (!apiEnabled) { setCalendarConnected(false); return; }
+    apiFetch<{ items: { servicio: string; estado: string | null }[] }>('/integrations')
+      .then((r) => setCalendarConnected(r.items?.some((i) => i.servicio === 'calendar' && i.estado === 'connected') ?? false))
+      .catch(() => setCalendarConnected(false));
+  }, [apiEnabled]);
+  const syncCalendar = useCallback(async () => {
+    setSyncingCal(true);
+    try {
+      await apiFetch('/integrations/calendar/sync', { method: 'POST' });
+      paged.refresh();
+      refreshStats();
+      await dialog.alert('Calendario sincronizado. Se han importado tus citas de Google Calendar.');
+    } catch {
+      await dialog.alert('No se pudo sincronizar el calendario. Inténtalo de nuevo.');
+    } finally {
+      setSyncingCal(false);
+    }
+  }, [paged, refreshStats, dialog]);
+
   const [open, setOpen] = useState(false);
   const [openNueva, setOpenNueva] = useState(false);
   const [editing, setEditing] = useState<(Cita & Partial<Omit<CitaApiRow, 'id'>>) | null>(null);
@@ -331,7 +357,16 @@ export default function Page() {
     <ModuleGuard module="citas">
       <div className="panel-fill">
         <PageHeader title={term} subtitle="Agenda y reservas con estados."
-          action={<Button onClick={onNueva}><CalendarPlus className="h-4 w-4" /> Añadir</Button>} />
+          action={
+            <div className="flex items-center gap-2">
+              {apiEnabled && calendarConnected && (
+                <Button variant="outline" onClick={syncCalendar} disabled={syncingCal}>
+                  {syncingCal ? 'Sincronizando…' : '📅 Sincronizar Calendar'}
+                </Button>
+              )}
+              <Button onClick={onNueva}><CalendarPlus className="h-4 w-4" /> Añadir</Button>
+            </div>
+          } />
         <div className="grid grid-cols-3 gap-2 sm:gap-4">
           <Stat label="Total" value={apiEnabled ? (stats?.total ?? paged.total) : displayItems.length} />
           <Stat label="Confirmadas" value={apiEnabled ? (stats?.confirmadas ?? 0) : displayItems.filter(c => c.estado === 'Confirmada').length} />

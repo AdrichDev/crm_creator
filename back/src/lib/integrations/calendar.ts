@@ -290,6 +290,44 @@ export async function listCalendarEventsWithToken(
 }
 
 /**
+ * Sincronización COMPLETA (botón manual de /citas): lista TODOS los eventos desde
+ * `timeMin` en adelante, paginando con nextPageToken. A diferencia de
+ * listCalendarEventsWithToken (poller incremental por updatedMin), aquí NO se filtra
+ * por fecha de modificación: trae también los eventos antiguos ya existentes en el
+ * calendario, que es justo lo que el poller nunca importaría. orderBy=startTime exige
+ * singleEvents=true (expande recurrencias). Tope de páginas para acotar (250/pág).
+ */
+export async function listAllEventsWithToken(
+  businessId: string,
+  token: string,
+  opts: { timeMin?: Date; maxPages?: number } = {},
+  deps: Pick<CalendarDeps, 'fetch'> = { fetch: (...a) => fetch(...a) },
+): Promise<GoogleCalendarEvent[]> {
+  const out: GoogleCalendarEvent[] = [];
+  const maxPages = opts.maxPages ?? 20;
+  let pageToken: string | undefined;
+  for (let i = 0; i < maxPages; i++) {
+    const params = new URLSearchParams({
+      singleEvents: 'true',
+      orderBy: 'startTime',
+      maxResults: '250',
+    });
+    if (opts.timeMin) params.set('timeMin', opts.timeMin.toISOString());
+    if (pageToken) params.set('pageToken', pageToken);
+
+    const res = await deps.fetch(`${EVENTS_URL}?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throwForStatus(businessId, res.status);
+    const data = (await res.json()) as { items?: GoogleCalendarEvent[]; nextPageToken?: string };
+    out.push(...(data.items ?? []));
+    if (!data.nextPageToken) break;
+    pageToken = data.nextPageToken;
+  }
+  return out;
+}
+
+/**
  * Escribe el vínculo crmBookingId en un evento externo ya importado (write-back), para
  * que la próxima pasada del poller lo reconozca como propio y no lo duplique. Best-effort:
  * lanza en error para que el caller decida (el poller lo captura y sigue).
