@@ -248,9 +248,11 @@ function updatedMinWindow(now = Date.now()): Date {
   return new Date(now - 2 * CALENDAR_SYNC_INTERVAL_MS);
 }
 
-/** Inicio del día actual: punto de partida del sync COMPLETO (importa desde hoy en adelante). */
-function startOfDay(now = Date.now()): Date {
+/** 1 de enero del año actual: punto de partida del sync COMPLETO. Importa todas las citas
+ *  del año presente en adelante, incluidas las ya pasadas (atrasadas). */
+function startOfYear(now = Date.now()): Date {
   const d = new Date(now);
+  d.setMonth(0, 1);
   d.setHours(0, 0, 0, 0);
   return d;
 }
@@ -291,7 +293,7 @@ function buildProdDeps(full = false): CalendarSyncDeps {
     getToken: (businessId) => getValidToken(businessId, 'calendar'),
     listEvents: (businessId, token) =>
       full
-        ? listAllEventsWithToken(businessId, token, { timeMin: startOfDay() })
+        ? listAllEventsWithToken(businessId, token, { timeMin: startOfYear() })
         : listCalendarEventsWithToken(businessId, token, { updatedMin: updatedMinWindow() }),
     findBooking: (businessId, bookingId) =>
       prisma.booking.findFirst({
