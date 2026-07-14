@@ -43,7 +43,7 @@ function segmentoDe(visitas: number, gastoTotal: number, ultima: Date | null): s
 // Columnas editables (los derivados se ignoran al escribir). Incluye comercial de campo
 // y dirección estructurada (numero/piso, crm-operaos 9.2).
 const INPUT = [
-  'razonSocial', 'email', 'telefono', 'direccion', 'numero', 'piso', 'notas',
+  'nombreComercial', 'razonSocial', 'email', 'telefono', 'direccion', 'numero', 'piso', 'notas',
   'localidad', 'provincia', 'codigoPostal',
   'categoriaAbc', 'estadoVisitaId', 'tipoRegistro', 'proximaAccionEn',
 ] as const;
@@ -80,7 +80,7 @@ export function buildListFilters(q: Record<string, unknown>): Record<string, unk
 // Ordenación por cabecera de la Cartera de Clientes. Whitelist de campos ordenables
 // (columnas Id Cliente/Empresa/Contacto/Email de la tabla). Sin `sort` válido → orden
 // por defecto (createdAt desc, sin cambiar el comportamiento previo). Exportada para tests.
-const CUSTOMER_SORTABLE = new Set(['id', 'razonSocial', 'nombre', 'email']);
+const CUSTOMER_SORTABLE = new Set(['id', 'nombreComercial', 'razonSocial', 'nombre', 'email']);
 export function buildCustomersOrderBy(q: Record<string, unknown>): Record<string, 'asc' | 'desc'> {
   const sort = typeof q.sort === 'string' && CUSTOMER_SORTABLE.has(q.sort) ? q.sort : null;
   if (!sort) return { createdAt: 'desc' };
@@ -350,6 +350,7 @@ function shapeCustomer(c: CustomerRow, aggs: Aggregates, distanciaKm?: number): 
   return {
     id: c.id,
     nombre: nombreCompleto,
+    nombreComercial: c.nombreComercial ?? '',
     razonSocial: c.razonSocial ?? '',
     email: c.email ?? '',
     telefono: c.telefono ?? '',

@@ -59,7 +59,7 @@ bookingsRouter.get('/', async (req: AuthedRequest, res: Response) => {
   const [rows, total] = await Promise.all([
     prisma.booking.findMany({
       where,
-      include: { customer: true, service: true, employee: true, team: true, resources: true, location: true },
+      include: { customer: true, contacto: true, service: true, employee: true, team: true, resources: true, location: true },
       orderBy: { startAt: 'asc' },
       skip: (page - 1) * limit,
       take: limit,
@@ -70,13 +70,16 @@ bookingsRouter.get('/', async (req: AuthedRequest, res: Response) => {
   res.json({
     items: rows.map((b) => ({
       id: b.id,
-      // Si es una reserva de equipo (entrenamiento), "cliente" muestra el nombre del equipo.
-      cliente: b.team ? b.team.nombre : joinNombre(b.customer),
-      // Nombre COMERCIAL (razón social) del cliente visitado, distinto de la persona de
-      // contacto (`cliente`, arriba): en el detalle de cita, comerciales necesita ver ambos
-      // por separado. Fallback al nombre de la persona si no hay razón social registrada
-      // (o si es una cita de equipo, sin cliente vinculado).
-      clienteComercial: b.team ? b.team.nombre : (b.customer?.razonSocial || joinNombre(b.customer)),
+      // "cliente" muestra: equipo (entrenamiento) → contacto/lead → persona de contacto del cliente.
+      cliente: b.team ? b.team.nombre : b.contacto ? b.contacto.nombre : joinNombre(b.customer),
+      // Nombre COMERCIAL del cliente visitado, distinto de la persona de contacto (`cliente`,
+      // arriba): comerciales necesita ver ambos por separado. Prioridad nombre comercial →
+      // razón social → persona. Para contacto/equipo se usa su propio nombre.
+      clienteComercial: b.team
+        ? b.team.nombre
+        : b.contacto
+        ? b.contacto.nombre
+        : (b.customer?.nombreComercial || b.customer?.razonSocial || joinNombre(b.customer)),
       servicio: b.service?.nombre ?? '',
       empleado: joinNombre(b.employee),
       fecha: b.startAt.toISOString().slice(0, 10),
@@ -144,7 +147,7 @@ bookingsRouter.get('/stats', async (req: AuthedRequest, res: Response) => {
 });
 
 bookingsRouter.get('/:id', async (req: AuthedRequest, res: Response) => {
-  const row = await prisma.booking.findFirst({ where: { id: req.params.id, businessId: req.businessId }, include: { customer: true, service: true, employee: true, resources: true, history: true, team: true } });
+  const row = await prisma.booking.findFirst({ where: { id: req.params.id, businessId: req.businessId }, include: { customer: true, contacto: true, service: true, employee: true, resources: true, history: true, team: true } });
   if (!row) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
   res.json(row);
 });
@@ -165,10 +168,13 @@ bookingsRouter.post('/check-availability', async (req: AuthedRequest, res: Respo
 });
 
 bookingsRouter.post('/', async (req: AuthedRequest, res: Response) => {
-  const { locationId, serviceId, customerId, teamId, employeeId, resourceIds = [], start, channel = 'MANUAL', notes } = req.body ?? {};
+  const { locationId, serviceId, customerId, teamId, contactoId, employeeId, resourceIds = [], start, channel = 'MANUAL', notes } = req.body ?? {};
   if (!locationId || !serviceId || !start) return res.status(422).json({ error: { code: 'validation', message: 'locationId, serviceId y start requeridos' } });
-  // XOR: una reserva es de un cliente O de un equipo (entrenamiento), nunca ambos.
-  if (customerId && teamId) return res.status(400).json({ error: { code: 'XOR_REQUIRED', message: 'Solo uno de customerId o teamId' } });
+  // XOR: una reserva es de un cliente O de un equipo (entrenamiento) O de un contacto/lead,
+  // a lo sumo uno de los tres (o ninguno = cita personal sin cliente).
+  if ([customerId, teamId, contactoId].filter(Boolean).length > 1) {
+    return res.status(400).json({ error: { code: 'XOR_REQUIRED', message: 'Solo uno de customerId, teamId o contactoId' } });
+  }
 
   // Gate tenancy: ningún FK puede apuntar a otro negocio.
   try {
@@ -177,6 +183,7 @@ bookingsRouter.post('/', async (req: AuthedRequest, res: Response) => {
       { model: 'service', id: serviceId, field: 'serviceId' },
       { model: 'customer', id: customerId, field: 'customerId' },
       { model: 'team', id: teamId, field: 'teamId' },
+      { model: 'contacto', id: contactoId, field: 'contactoId' },
       { model: 'employee', id: employeeId, field: 'employeeId' },
       ...(resourceIds as string[]).map((id) => ({ model: 'resource' as const, id, field: 'resourceIds' })),
     ]);
@@ -192,6 +199,7 @@ bookingsRouter.post('/', async (req: AuthedRequest, res: Response) => {
       data: {
         businessId: req.businessId!, locationId, serviceId, customerId: customerId ?? null,
         teamId: teamId ?? null,
+        contactoId: contactoId ?? null,
         employeeId: employeeId ?? null, startAt: avail.startAt!, endAt: avail.endAt!,
         status: 'PENDING', channel, notes, createdById: req.userId,
         resources: resourceIds.length ? { connect: resourceIds.map((id: string) => ({ id })) } : undefined,

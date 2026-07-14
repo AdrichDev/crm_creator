@@ -9,8 +9,8 @@ import Page from '@/app/(crm)/clientes/page';
 // En modo generador (sin API) el orden se aplica client-side sobre la colección.
 
 const CLIENTES: Cliente[] = [
-  { id: 1, nombre: 'Bruno', email: 'b@mail.com', telefono: '600000001', visitas: 1, gastoTotal: 10, segmento: 'Nuevo', ultimaVisita: '2026-06-01', razonSocial: 'Zeta SL' },
-  { id: 2, nombre: 'Ana', email: 'a@mail.com', telefono: '600000002', visitas: 2, gastoTotal: 20, segmento: 'Nuevo', ultimaVisita: '2026-06-02', razonSocial: 'Alfa SL' },
+  { id: 1, nombre: 'Bruno', email: 'b@mail.com', telefono: '600000001', visitas: 1, gastoTotal: 10, segmento: 'Nuevo', ultimaVisita: '2026-06-01', nombreComercial: 'Zeta Marca', razonSocial: 'Zeta SL' },
+  { id: 2, nombre: 'Ana', email: 'a@mail.com', telefono: '600000002', visitas: 2, gastoTotal: 20, segmento: 'Nuevo', ultimaVisita: '2026-06-02', nombreComercial: 'Alfa Marca', razonSocial: 'Alfa SL' },
 ];
 
 vi.mock('@/lib/data/use-collection', () => ({
@@ -81,7 +81,7 @@ describe('clientes/page — ordenación por cabecera (modo generador)', () => {
     expect(screen.getByRole('columnheader', { name: /Contacto/ })).toHaveAttribute('aria-sort', 'descending');
   });
 
-  it('ordena por Empresa (razonSocial) asc: Alfa SL (Ana) antes que Zeta SL (Bruno)', () => {
+  it('ordena por Empresa (nombreComercial) asc: Alfa Marca (Ana) antes que Zeta Marca (Bruno)', () => {
     render(<Page />);
     fireEvent.click(screen.getByRole('button', { name: 'Ordenar por Empresa' }));
     expect(nombres()).toEqual(['Ana', 'Bruno']);

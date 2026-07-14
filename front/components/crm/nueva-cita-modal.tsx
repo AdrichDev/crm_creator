@@ -8,6 +8,13 @@ import { ServicioSelect, type ServiceOpt } from '@/components/crm/servicio-selec
 import { Loader2, CalendarPlus } from 'lucide-react';
 
 interface Opt { id: string; nombre: string }
+// Cliente enriquecido: en el picker se muestra el nombre comercial de la empresa
+// (fallback a razón social o persona de contacto), no la persona (crm-cita-cliente-contacto).
+interface ClienteOpt { id: string; nombre: string; nombreComercial?: string; razonSocial?: string }
+/** Etiqueta del cliente en el picker: nombre comercial → razón social → persona. */
+function labelCliente(c: ClienteOpt): string {
+  return c.nombreComercial || c.razonSocial || c.nombre;
+}
 
 export const CANALES = ['Presencial', 'Videollamada', 'Llamada'];
 
@@ -44,12 +51,14 @@ export function buildCitaNotes(accion: string, canal: string, comentarios = ''):
 // `canal`: solo visible en el vertical `comerciales` (reunión presencial/video);
 // se guarda en `notes` con un prefijo — ver Open Question en design.md de
 // crm-citas-por-sector sobre si merece columna propia en el futuro.
-export function NuevaCitaModal({ open, onClose, onCreated, mostrarCanal = false }: { open: boolean; onClose: () => void; onCreated: () => void; mostrarCanal?: boolean }) {
-  const [customers, setCustomers] = useState<Opt[]>([]);
+export function NuevaCitaModal({ open, onClose, onCreated, mostrarCanal = false, fechaInicial = '' }: { open: boolean; onClose: () => void; onCreated: () => void; mostrarCanal?: boolean; fechaInicial?: string }) {
+  const [customers, setCustomers] = useState<ClienteOpt[]>([]);
+  const [contactos, setContactos] = useState<Opt[]>([]);
   const [services, setServices] = useState<ServiceOpt[]>([]);
   const [employees, setEmployees] = useState<Opt[]>([]);
   const [locationId, setLocationId] = useState('');
-  const [form, setForm] = useState({ customerId: '', serviceId: '', employeeId: '', fecha: '', hora: '', canal: CANALES[0], accion: '', comentarios: '' });
+  // customerId XOR contactoId: la cita es de un cliente O de un contacto/lead, nunca ambos.
+  const [form, setForm] = useState({ customerId: '', contactoId: '', serviceId: '', employeeId: '', fecha: '', hora: '', canal: CANALES[0], accion: '', comentarios: '' });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   // Fallback WU3: si GET /bookings/slots falla, se degrada al <input type="time"> de siempre.
@@ -60,18 +69,20 @@ export function NuevaCitaModal({ open, onClose, onCreated, mostrarCanal = false 
   useEffect(() => {
     if (!open) return;
     setError(''); setChipsFallback(false);
-    setForm({ customerId: '', serviceId: '', employeeId: '', fecha: '', hora: '', canal: CANALES[0], accion: '', comentarios: '' });
+    // Prellena la fecha con el día seleccionado en la agenda (editable). Vacío → sin fecha.
+    setForm({ customerId: '', contactoId: '', serviceId: '', employeeId: '', fecha: fechaInicial, hora: '', canal: CANALES[0], accion: '', comentarios: '' });
     // Los endpoints devuelven { items, total, page, limit } tras añadir paginación server-side.
     // `limit=100` en servicios y empleados: el catálogo real del negocio supera las 20 filas
     // por defecto (22 servicios sembrados) y el vertical comerciales materializa al admin como
     // empleado — sin subir el límite, la página 1 dejaría fuera servicios o al propio admin.
     Promise.all([
-      apiFetch<{ items: Opt[] }>('/customers').then(r => r.items ?? []).catch(() => [] as Opt[]),
+      apiFetch<{ items: ClienteOpt[] }>('/customers').then(r => r.items ?? []).catch(() => [] as ClienteOpt[]),
       apiFetch<{ items: ServiceOpt[] }>('/services?limit=100').then(r => r.items ?? []).catch(() => [] as ServiceOpt[]),
       apiFetch<{ items: Opt[] }>('/employees?limit=100').then(r => r.items ?? []).catch(() => [] as Opt[]),
       apiFetch<{ items: { id: string }[] }>('/locations').then(r => r.items ?? []).catch(() => [] as { id: string }[]),
-    ]).then(([c, s, e, l]) => { setCustomers(c); setServices(s); setEmployees(e); setLocationId(l[0]?.id ?? ''); });
-  }, [open]);
+      apiFetch<{ items: Opt[] }>('/contactos?limit=100').then(r => r.items ?? []).catch(() => [] as Opt[]),
+    ]).then(([c, s, e, l, ct]) => { setCustomers(c); setServices(s); setEmployees(e); setLocationId(l[0]?.id ?? ''); setContactos(ct); });
+  }, [open, fechaInicial]);
 
   if (!open) return null;
 
@@ -94,6 +105,7 @@ export function NuevaCitaModal({ open, onClose, onCreated, mostrarCanal = false 
         method: 'POST',
         body: JSON.stringify({
           locationId, serviceId: form.serviceId, customerId: form.customerId || undefined,
+          contactoId: form.contactoId || undefined,
           employeeId: form.employeeId || undefined, start: `${form.fecha}T${form.hora}:00`,
           // Comentarios/Anotaciones: única fuente `form.comentarios`, rellenada desde el
           // textarea que esté visible (bajo Canal en comerciales, o el de "Otros" en el resto).
@@ -112,11 +124,34 @@ export function NuevaCitaModal({ open, onClose, onCreated, mostrarCanal = false 
       <form onClick={(e) => e.stopPropagation()} onSubmit={submit} className="crm-modal-panel crm-cita-modal w-full max-w-md rounded-2xl bg-[var(--panel-bg,#fff)] p-6 shadow-xl">
         <p className="mb-4 font-display text-lg font-semibold text-[var(--panel-text)]">Nueva cita</p>
 
-        {/* Opcional: se puede agendar sin cliente (visita médica, comida, recado personal…). */}
+        {/* Opcional: se puede agendar sin cliente (visita médica, comida, recado personal…).
+            Dos grupos: Clientes (empresa, por nombre comercial) y Contactos (leads/prospectos,
+            por nombre del contacto). El valor lleva prefijo cliente:/contacto: → customerId XOR
+            contactoId (crm-cita-cliente-contacto). */}
         <label className="block text-xs font-medium text-[var(--panel-muted)]">{termCliente}</label>
-        <select className={inputCls} value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })}>
+        <select
+          className={inputCls}
+          value={form.customerId ? `cliente:${form.customerId}` : form.contactoId ? `contacto:${form.contactoId}` : ''}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (!v) { setForm({ ...form, customerId: '', contactoId: '' }); return; }
+            const sep = v.indexOf(':');
+            const tipo = v.slice(0, sep);
+            const id = v.slice(sep + 1);
+            setForm({ ...form, customerId: tipo === 'cliente' ? id : '', contactoId: tipo === 'contacto' ? id : '' });
+          }}
+        >
           <option value="">— Sin {termCliente.toLowerCase()} (cita personal) —</option>
-          {customers.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          {customers.length > 0 && (
+            <optgroup label="Clientes">
+              {customers.map((c) => <option key={`cliente:${c.id}`} value={`cliente:${c.id}`}>{labelCliente(c)}</option>)}
+            </optgroup>
+          )}
+          {contactos.length > 0 && (
+            <optgroup label="Contactos">
+              {contactos.map((c) => <option key={`contacto:${c.id}`} value={`contacto:${c.id}`}>{c.nombre}</option>)}
+            </optgroup>
+          )}
         </select>
 
         <label className="mt-3 block text-xs font-medium text-[var(--panel-muted)]">Servicio *</label>
