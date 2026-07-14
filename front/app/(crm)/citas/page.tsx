@@ -206,6 +206,9 @@ export default function Page() {
 
   const [open, setOpen] = useState(false);
   const [openNueva, setOpenNueva] = useState(false);
+  // Día seleccionado en la agenda (default hoy dentro de AgendaGrid). Se prellena en el
+  // form de nueva cita al pulsar "Añadir" — editable después. Igual que agents-agency.
+  const [selectedDay, setSelectedDay] = useState('');
   const [editing, setEditing] = useState<(Cita & Partial<Omit<CitaApiRow, 'id'>>) | null>(null);
   const [clienteId, setClienteId] = useState<string | null>(null);
   // Detalle de cita al pulsar la tarjeta (paridad con AgendaWidget.editarCita).
@@ -423,6 +426,7 @@ export default function Page() {
           getKey={(c) => c.id}
           emptyLabel={`Sin ${term.toLowerCase()} este día.`}
           sidePanel
+          onSelectedChange={setSelectedDay}
           onRangeChange={(from, to) => {
             // `to` de AgendaGrid es inclusivo (último día visible); el back filtra
             // startAt con `lte: new Date(to)`, que parsea a medianoche — sin el +1
@@ -467,6 +471,7 @@ export default function Page() {
       {(!sector || sector.formComponent === 'reunion') && (
         <NuevaCitaModal
           open={openNueva}
+          fechaInicial={selectedDay}
           mostrarCanal={sector?.formComponent === 'reunion'}
           onClose={() => setOpenNueva(false)}
           onCreated={() => { void collectionRefresh(); paged.refresh(); refreshStats(); }}

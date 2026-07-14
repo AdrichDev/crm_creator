@@ -419,8 +419,11 @@ model Customer {
   user        User?    @relation(fields: [userId], references: [id])
   nombre      String   @map("nombre")
   apellido    String?  @map("apellido")
-  // Empresa/razón social del cliente (crm-clientes-empresa-vs-contacto). Nullable/aditivo:
+  // Empresa del cliente (crm-clientes-empresa-vs-contacto). Nullable/aditivo:
   // `nombre`+`apellido` siguen siendo la PERSONA de contacto, sin cambios.
+  // nombreComercial = nombre de marca/comercial (se muestra en la lista de clientes);
+  // razonSocial = nombre legal, solo visible en ficha/edición (crm-cliente-nombre-comercial).
+  nombreComercial String? @map("nombre_comercial")
   razonSocial String?  @map("razon_social")
   telefono    String?  @map("telefono")
   email       String?  @map("email")
@@ -556,6 +559,10 @@ model Booking {
   // Reserva de equipo (entrenamiento): alternativa a customerId, XOR validado en el router.
   teamId      String?  @map("equipo_id")
   team        Team?    @relation(fields: [teamId], references: [id])
+  // Cita de un contacto/lead (crm-cita-cliente-contacto): alternativa a customerId/teamId.
+  // XOR validado en el router (a lo sumo uno de los tres). Optional → onDelete SET NULL.
+  contactoId  String?   @map("contacto_id")
+  contacto    Contacto? @relation(fields: [contactoId], references: [id])
   serviceId   String   @map("servicio_id")
   service     Service  @relation(fields: [serviceId], references: [id])
   employeeId  String?  @map("empleado_id")
@@ -577,6 +584,7 @@ model Booking {
   @@index([employeeId, startAt])
   @@index([customerId])
   @@index([teamId])
+  @@index([contactoId])
   @@index([status])
   eliminadoEn DateTime? @map("eliminado_en")
   @@map("reserva")
@@ -1122,6 +1130,8 @@ model Contacto {
   contactadoEn DateTime? @map("contactado_en")
   clienteId    String?   @map("cliente_id")
   cliente      Customer? @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  // Citas asociadas a este contacto/lead (crm-cita-cliente-contacto).
+  bookings     Booking[]
   createdAt    DateTime  @default(now()) @map("creado_en")
   updatedAt    DateTime  @updatedAt @map("actualizado_en")
   eliminadoEn  DateTime? @map("eliminado_en")

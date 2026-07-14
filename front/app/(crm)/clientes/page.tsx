@@ -26,6 +26,7 @@ import { buildGoogleMapsSearchUrl } from '@/lib/citas/google-maps-url';
 type ClienteApiRow = {
   id: string;
   nombre: string;
+  nombreComercial?: string;
   razonSocial?: string;
   email: string;
   telefono: string;
@@ -45,7 +46,8 @@ type ClienteApiRow = {
 
 const FIELDS: Field[] = [
   { name: 'nombre', label: 'Persona de contacto', required: true },
-  { name: 'razonSocial', label: 'Empresa (razón social)' },
+  { name: 'nombreComercial', label: 'Nombre comercial' },
+  { name: 'razonSocial', label: 'Razón social' },
   { name: 'contacto', label: 'Otro contacto' },
   { name: 'cif', label: 'NIF / CIF' },
   { name: 'email', label: 'Email', type: 'email' },
@@ -75,7 +77,7 @@ export default function Page() {
   // Ordenación por cabecera (asc/desc toggle). Columnas ordenables: Id Cliente (id),
   // Empresa (razonSocial), Contacto (nombre) y Email. Server-side en modo API, client-side
   // en modo generador. `sortKey` vacío = orden por defecto del back (createdAt desc).
-  type SortKey = 'id' | 'razonSocial' | 'nombre' | 'email';
+  type SortKey = 'id' | 'nombreComercial' | 'razonSocial' | 'nombre' | 'email';
   const [sortKey, setSortKey] = useState<'' | SortKey>('');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   function onSort(key: string) {
@@ -96,6 +98,7 @@ export default function Page() {
     const valueOf = (c: Cliente): string | number => {
       switch (sortKey) {
         case 'id': return c.id;
+        case 'nombreComercial': return (c as unknown as { nombreComercial?: string }).nombreComercial ?? '';
         case 'razonSocial': return (c as unknown as { razonSocial?: string }).razonSocial ?? '';
         case 'nombre': return c.nombre ?? '';
         case 'email': return c.email ?? '';
@@ -219,14 +222,14 @@ export default function Page() {
 
       <Table sort={{ key: sortKey, dir: sortDir, onSort }}
         head={([
-          { label: 'Id Cliente', sortKey: 'id' }, { label: 'Empresa', sortKey: 'razonSocial' },
+          { label: 'Id Cliente', sortKey: 'id' }, { label: 'Empresa', sortKey: 'nombreComercial' },
           { label: 'Contacto', sortKey: 'nombre' }, 'Teléfono', { label: 'Email', sortKey: 'email' },
           'Facturas', 'Acciones',
         ]) as TableHeadCell[]}>
         {displayItems.map((c) => (
           <tr key={c.id}>
             <Td className="font-mono text-xs text-[var(--acc)]">{shortClienteId(c.id)}</Td>
-            <Td className="text-white">{(c as unknown as { razonSocial?: string }).razonSocial || '—'}</Td>
+            <Td className="text-white">{(c as unknown as { nombreComercial?: string; razonSocial?: string }).nombreComercial || (c as unknown as { razonSocial?: string }).razonSocial || '—'}</Td>
             <Td className="font-medium text-white">{c.nombre}</Td>
             <Td>{c.telefono}</Td>
             <Td>{c.email}</Td>
@@ -277,7 +280,7 @@ export default function Page() {
           <div className="space-y-4">
             <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
               {/* Dirección estructurada agrupada: calle → número → piso → código postal (crm-operaos 9.2). */}
-              {([['razonSocial', 'Empresa'], ['contacto', 'Otro contacto'], ['cif', 'NIF / CIF'], ['email', 'Email'], ['telefono', 'Teléfono'],
+              {([['nombreComercial', 'Nombre comercial'], ['razonSocial', 'Razón social'], ['contacto', 'Otro contacto'], ['cif', 'NIF / CIF'], ['email', 'Email'], ['telefono', 'Teléfono'],
                  ['direccion', 'Dirección'], ['numero', 'Número'], ['piso', 'Piso'], ['codigoPostal', 'Código postal'],
                  ['segmento', 'Segmento'], ['visitas', 'Visitas'],
                  ['gastoTotal', 'Gasto total'], ['ultimaVisita', 'Última visita']] as const).map(([k, label]) => (
