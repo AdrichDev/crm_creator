@@ -5,6 +5,7 @@ import { useTerm } from '@/lib/tenant-config-context';
 import { Button } from '@/components/ui/primitives';
 import { HoraChips } from '@/components/crm/hora-chips';
 import { ServicioSelect, type ServiceOpt } from '@/components/crm/servicio-select';
+import { recurrenceDates, REPETICIONES, RECURRENCE_CAP, type RepeticionFreq } from '@/lib/citas/recurrence';
 import { Loader2, CalendarPlus } from 'lucide-react';
 
 interface Opt { id: string; nombre: string }
@@ -59,6 +60,9 @@ export function NuevaCitaModal({ open, onClose, onCreated, mostrarCanal = false,
   const [locationId, setLocationId] = useState('');
   // customerId XOR contactoId: la cita es de un cliente O de un contacto/lead, nunca ambos.
   const [form, setForm] = useState({ customerId: '', contactoId: '', serviceId: '', employeeId: '', fecha: '', hora: '', canal: CANALES[0], accion: '', comentarios: '' });
+  // Recurrencia (S4): 'puntual' = 1 cita; el resto genera N ocurrencias acotadas (front).
+  const [repeticion, setRepeticion] = useState<RepeticionFreq>('puntual');
+  const [repeticiones, setRepeticiones] = useState(4);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   // Fallback WU3: si GET /bookings/slots falla, se degrada al <input type="time"> de siempre.
@@ -71,6 +75,7 @@ export function NuevaCitaModal({ open, onClose, onCreated, mostrarCanal = false,
     setError(''); setChipsFallback(false);
     // Prellena la fecha con el día seleccionado en la agenda (editable). Vacío → sin fecha.
     setForm({ customerId: '', contactoId: '', serviceId: '', employeeId: '', fecha: fechaInicial, hora: '', canal: CANALES[0], accion: '', comentarios: '' });
+    setRepeticion('puntual'); setRepeticiones(4);
     // Los endpoints devuelven { items, total, page, limit } tras añadir paginación server-side.
     // `limit=100` en servicios y empleados: el catálogo real del negocio supera las 20 filas
     // por defecto (22 servicios sembrados) y el vertical comerciales materializa al admin como
@@ -100,21 +105,39 @@ export function NuevaCitaModal({ open, onClose, onCreated, mostrarCanal = false,
     if (!form.serviceId || !form.fecha || !form.hora) { setError('Servicio, fecha y hora son obligatorios.'); return; }
     if (!locationId) { setError('El negocio no tiene sucursal configurada.'); return; }
     setSaving(true); setError('');
+    // Comentarios/Anotaciones: única fuente `form.comentarios`, rellenada desde el textarea
+    // visible (bajo Canal en comerciales, o el de "Otros" en el resto).
+    const notes = mostrarCanal || esOtros ? buildCitaNotes(form.accion, form.canal, form.comentarios) : undefined;
+    // Recurrencia: expande a N fechas (puntual = 1). Cada ocurrencia se crea como cita
+    // independiente (disponibilidad + side-effects propios). Las que choquen se saltan.
+    const fechas = recurrenceDates(form.fecha, repeticion, repeticiones);
+    let creadas = 0;
+    const fallos: string[] = [];
     try {
-      await apiFetch('/bookings', {
-        method: 'POST',
-        body: JSON.stringify({
-          locationId, serviceId: form.serviceId, customerId: form.customerId || undefined,
-          contactoId: form.contactoId || undefined,
-          employeeId: form.employeeId || undefined, start: `${form.fecha}T${form.hora}:00`,
-          // Comentarios/Anotaciones: única fuente `form.comentarios`, rellenada desde el
-          // textarea que esté visible (bajo Canal en comerciales, o el de "Otros" en el resto).
-          notes: mostrarCanal || esOtros ? buildCitaNotes(form.accion, form.canal, form.comentarios) : undefined,
-        }),
-      });
-      onCreated(); onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo crear la cita.');
+      for (const fecha of fechas) {
+        try {
+          await apiFetch('/bookings', {
+            method: 'POST',
+            body: JSON.stringify({
+              locationId, serviceId: form.serviceId, customerId: form.customerId || undefined,
+              contactoId: form.contactoId || undefined,
+              employeeId: form.employeeId || undefined, start: `${fecha}T${form.hora}:00`,
+              notes,
+            }),
+          });
+          creadas++;
+        } catch { fallos.push(fecha); }
+      }
+      if (creadas > 0) onCreated();
+      if (creadas === 0) {
+        setError('No se pudo crear ninguna cita (horas ocupadas o solape).');
+      } else if (fallos.length > 0) {
+        // Éxito parcial: se crearon algunas ocurrencias; las que chocaron quedan fuera.
+        // No cerramos, informamos; las creadas ya están en la agenda (onCreated ya refrescó).
+        setError(`Creadas ${creadas} de ${fechas.length}. ${fallos.length} no se pudieron crear (horas ocupadas o solape).`);
+      } else {
+        onClose();
+      }
     } finally { setSaving(false); }
   }
 
@@ -198,6 +221,28 @@ export function NuevaCitaModal({ open, onClose, onCreated, mostrarCanal = false,
               />
             )}
           </div>
+        </div>
+
+        {/* Recurrencia (S4): puntual = 1 cita; el resto genera N ocurrencias (misma hora,
+            fecha desplazada por frecuencia). Las que choquen con otra cita se saltan. */}
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-[var(--panel-muted)]">Repetición</label>
+            <select className={inputCls} value={repeticion} onChange={(e) => setRepeticion(e.target.value as RepeticionFreq)}>
+              {REPETICIONES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+            </select>
+          </div>
+          {repeticion !== 'puntual' && (
+            <div>
+              <label className="block text-xs font-medium text-[var(--panel-muted)]">Nº de citas</label>
+              <input
+                type="number" min={2} max={RECURRENCE_CAP} className={inputCls}
+                value={repeticiones}
+                onChange={(e) => setRepeticiones(Math.max(2, Math.min(RECURRENCE_CAP, Number(e.target.value) || 2)))}
+                aria-label="Número de citas de la serie"
+              />
+            </div>
+          )}
         </div>
 
         {mostrarCanal && (

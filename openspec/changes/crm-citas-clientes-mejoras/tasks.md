@@ -10,9 +10,11 @@
       shaping cliente/clienteComercial) + picker 2 grupos en el modal.
       Verify: back tsc + tenant (22); front tsc + modal/citas (27). GREEN. (bookings route
       tests e2e → skipped, requieren DB.)
-- [ ] S4 recurrencia (generar N acotadas): schema (agrupación de serie en Booking) +
-      migración + generación por ocurrencia con chequeo de disponibilidad + campo UI
-      puntual/diaria/mensual/anual + horizonte. Verify: back tsc + tests + front tsc.
+- [x] S4 recurrencia (generar N acotadas): implementado SIN migración — expansión en el
+      front. `lib/citas/recurrence.ts` (puro, clamp mes/año + cap 60) genera las fechas; el
+      modal ofrece puntual/diaria/mensual/anual + nº de citas y hace N POST independientes
+      (disponibilidad + side-effects propios; las que chocan se saltan y se informa).
+      Verify: front tsc + recurrence (10) + modal (21) + citas (6). GREEN.
 
 ## Deploy / migraciones (HITL)
 - `cd back && npm run migrate:deploy` aplica `customer_nombre_comercial` + `booking_contacto_id`.
