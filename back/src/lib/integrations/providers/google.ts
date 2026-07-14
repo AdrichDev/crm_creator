@@ -1,8 +1,10 @@
 // ---------------------------------------------------------------------------
 // Configuración OAuth2 de Google para el CRM (crm-integraciones-comunicacion).
 // Dos providers SEPARADOS (no unificado como AA): cada servicio pide SOLO su scope
-// mínimo — gmail.modify para Gmail, calendar.events para Calendar. Sin scopes extra
+// mínimo — gmail.send para Gmail, calendar.events para Calendar. Sin scopes extra
 // (Decisión 5 del design: sin calendar.settings, sin scopes de más).
+// gmail.send es scope "sensible" (verificación estándar de Google, sin CASA);
+// gmail.modify sería "restringido" (CASA anual) y el código solo envía, nunca lee.
 // ---------------------------------------------------------------------------
 
 export type GoogleService = 'gmail' | 'calendar';
@@ -29,7 +31,7 @@ export const GOOGLE_TOKENINFO_URL = 'https://oauth2.googleapis.com/tokeninfo';
 
 /** Scope mínimo por servicio (URL completa del scope de Google). */
 const SCOPE_BY_SERVICE: Record<GoogleService, string> = {
-  gmail: 'https://www.googleapis.com/auth/gmail.modify',
+  gmail: 'https://www.googleapis.com/auth/gmail.send',
   calendar: 'https://www.googleapis.com/auth/calendar.events',
 };
 

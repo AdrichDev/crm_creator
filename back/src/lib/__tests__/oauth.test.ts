@@ -19,7 +19,7 @@ import type { OAuthDeps, CredentialRow, CredentialUpdate, CredentialCreate } fro
 
 process.env.CRM_OAUTH_ENCRYPTION_KEY ??= randomBytes(32).toString('hex');
 
-const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.modify';
+const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
 
 // ── Fake repo + fetch en memoria ─────────────────────────────────────────────
 interface Stored extends CredentialRow {
@@ -179,7 +179,7 @@ describe('handleCallback', () => {
   test('scope insuficiente → ScopeInsufficientError, no persiste', async () => {
     const badScope: FetchStub = (url) => {
       if (String(url).includes('/tokeninfo')) {
-        return jsonRes(200, { scope: 'openid email' }); // falta gmail.modify
+        return jsonRes(200, { scope: 'openid email' }); // falta gmail.send
       }
       return jsonRes(200, { access_token: 'acc', expires_in: 3600 });
     };
