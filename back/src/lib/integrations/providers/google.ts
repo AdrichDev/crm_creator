@@ -38,6 +38,11 @@ const SCOPE_BY_SERVICE: Record<GoogleService, string> = {
 /**
  * Devuelve la config OAuth de Google para el servicio pedido. Lee client id/secret/redirect
  * de env en cada llamada (no cachea): así los tests pueden fijar el entorno sin recargar módulo.
+ * GOOGLE_OAUTH_REDIRECT_URI admite el placeholder `{servicio}` (p.ej.
+ * `https://host/api/integrations/{servicio}/callback`): el callback valida que el
+ * servicio de la URL coincida con el del state, así que cada servicio necesita su
+ * propia redirect URI (ambas registradas en la consola de Google). Sin placeholder,
+ * el valor se usa tal cual y solo el servicio de esa ruta puede completar el flujo.
  */
 export function googleOAuthConfig(service: GoogleService): GoogleOAuthConfig {
   return {
@@ -47,7 +52,7 @@ export function googleOAuthConfig(service: GoogleService): GoogleOAuthConfig {
     tokenInfoUrl: GOOGLE_TOKENINFO_URL,
     clientId: process.env.GOOGLE_OAUTH_CLIENT_ID ?? '',
     clientSecret: process.env.GOOGLE_OAUTH_SECRET ?? '',
-    redirectUri: process.env.GOOGLE_OAUTH_REDIRECT_URI ?? '',
+    redirectUri: (process.env.GOOGLE_OAUTH_REDIRECT_URI ?? '').replace('{servicio}', service),
     scope: SCOPE_BY_SERVICE[service],
     extraAuthParams: { access_type: 'offline', prompt: 'consent' },
     supportsRefresh: true,

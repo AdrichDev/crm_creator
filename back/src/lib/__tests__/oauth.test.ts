@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import {
   encryptToken, decryptToken, isEncrypted,
-  getValidToken, handleCallback, disconnectIntegration,
+  getValidToken, handleCallback, disconnectIntegration, authorizationUrl,
   resetRefreshLocks,
   ReauthRequiredError, ScopeInsufficientError, IntegrationMissingError,
 } from '../integrations/oauth.js';
@@ -224,5 +224,48 @@ describe('disconnectIntegration', () => {
     const deps = makeDeps(null, () => jsonRes(200, {}));
     await disconnectIntegration('biz-1', 'gmail', deps);
     assert.equal(deps.store.row, null);
+  });
+});
+
+// ── authorizationUrl: redirect URI por servicio ────────────────────────────────
+// El callback exige que el servicio de la URL coincida con el del state; con una
+// redirect URI única solo un servicio podría completar el flujo. El placeholder
+// {servicio} resuelve una URI distinta por servicio.
+describe('authorizationUrl — placeholder {servicio} en GOOGLE_OAUTH_REDIRECT_URI', () => {
+  const ENV_KEYS = ['GOOGLE_OAUTH_CLIENT_ID', 'GOOGLE_OAUTH_SECRET', 'GOOGLE_OAUTH_REDIRECT_URI'] as const;
+  const saved: Record<string, string | undefined> = {};
+
+  test('resuelve una redirect URI distinta por servicio', () => {
+    for (const k of ENV_KEYS) saved[k] = process.env[k];
+    process.env.GOOGLE_OAUTH_CLIENT_ID = 'client-id';
+    process.env.GOOGLE_OAUTH_SECRET = 'client-secret';
+    process.env.GOOGLE_OAUTH_REDIRECT_URI = 'https://crm.test/api/integrations/{servicio}/callback';
+    try {
+      const gmailUrl = new URL(authorizationUrl('gmail', 'biz-1'));
+      const calendarUrl = new URL(authorizationUrl('calendar', 'biz-1'));
+      assert.equal(gmailUrl.searchParams.get('redirect_uri'), 'https://crm.test/api/integrations/gmail/callback');
+      assert.equal(calendarUrl.searchParams.get('redirect_uri'), 'https://crm.test/api/integrations/calendar/callback');
+    } finally {
+      for (const k of ENV_KEYS) {
+        if (saved[k] === undefined) delete process.env[k];
+        else process.env[k] = saved[k];
+      }
+    }
+  });
+
+  test('sin placeholder → valor tal cual (retrocompatible)', () => {
+    for (const k of ENV_KEYS) saved[k] = process.env[k];
+    process.env.GOOGLE_OAUTH_CLIENT_ID = 'client-id';
+    process.env.GOOGLE_OAUTH_SECRET = 'client-secret';
+    process.env.GOOGLE_OAUTH_REDIRECT_URI = 'https://crm.test/api/integrations/calendar/callback';
+    try {
+      const url = new URL(authorizationUrl('calendar', 'biz-1'));
+      assert.equal(url.searchParams.get('redirect_uri'), 'https://crm.test/api/integrations/calendar/callback');
+    } finally {
+      for (const k of ENV_KEYS) {
+        if (saved[k] === undefined) delete process.env[k];
+        else process.env[k] = saved[k];
+      }
+    }
   });
 });
