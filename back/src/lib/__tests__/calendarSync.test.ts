@@ -36,6 +36,7 @@ function makeDeps(overrides: Partial<CalendarSyncDeps> = {}): { deps: CalendarSy
     createBooking: async (businessId, input) => { rec.creates.push({ businessId, input }); return { id: 'new-bk' }; },
     linkEvent: async (businessId, _t, eventId, bookingId) => { rec.links.push({ businessId, eventId, bookingId }); },
     findImportedBooking: async (): Promise<SyncBookingRow | null> => null,
+    getTimeZone: async () => 'UTC', // por defecto sin desplazamiento; los tests de TZ lo sobreescriben
     ...overrides,
   };
   return { deps, rec };
@@ -240,5 +241,41 @@ describe('runCalendarSyncWithDeps', () => {
   test('un fallo global (listCredentials lanza) no propaga', async () => {
     const { deps } = makeDeps({ listCredentials: async () => { throw new Error('db down'); } });
     await runCalendarSyncWithDeps(deps); // no lanza
+  });
+});
+
+describe('reconcileEvent — conversión de zona horaria del negocio (crm-calendar-tz-fix)', () => {
+  test('evento Google con offset +02:00 y tz Europe/Madrid → startAt wall-clock-como-UTC', async () => {
+    const { deps, rec } = makeDeps({ findBooking: async () => ({ id: 'bk-tz', status: 'CONFIRMED' }) });
+    const ev = crmEvent('bk-tz', {
+      start: { dateTime: '2026-07-10T11:00:00+02:00' }, // 11:00 Madrid = instante 09:00Z
+      end: { dateTime: '2026-07-10T11:30:00+02:00' },
+    });
+    await reconcileEvent('biz-1', 'tok', ev, deps, 'Europe/Madrid');
+    assert.equal(rec.updates.length, 1);
+    // 11:00 Madrid se guarda como 11:00Z: la agenda lo lee con getUTCHours() → muestra 11:00.
+    assert.deepEqual(rec.updates[0].data.startAt, new Date('2026-07-10T11:00:00.000Z'));
+    assert.deepEqual(rec.updates[0].data.endAt, new Date('2026-07-10T11:30:00.000Z'));
+  });
+
+  test('syncCredential resuelve la TZ vía getTimeZone y la aplica al importar', async () => {
+    const external: GoogleCalendarEvent = {
+      id: 'ext-tz', status: 'confirmed', summary: 'Externo',
+      start: { dateTime: '2026-07-11T12:00:00+02:00' }, // 12:00 Madrid
+      end: { dateTime: '2026-07-11T13:00:00+02:00' },
+    };
+    const { deps, rec } = makeDeps({
+      listEvents: async () => [external],
+      getTimeZone: async () => 'Europe/Madrid',
+    });
+    await syncCredential('biz-1', deps);
+    assert.equal(rec.creates.length, 1);
+    assert.deepEqual(rec.creates[0].input.startAt, new Date('2026-07-11T12:00:00.000Z'));
+  });
+
+  test('sin tz (default UTC) NO desplaza: 09:00Z se guarda 09:00Z', async () => {
+    const { deps, rec } = makeDeps({ findBooking: async () => ({ id: 'bk-utc', status: 'CONFIRMED' }) });
+    await reconcileEvent('biz-1', 'tok', crmEvent('bk-utc'), deps); // tz default 'UTC'
+    assert.deepEqual(rec.updates[0].data.startAt, new Date('2026-07-10T09:00:00.000Z'));
   });
 });

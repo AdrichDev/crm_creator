@@ -12,6 +12,7 @@ import {
   CRM_BOOKING_ID_KEY,
   type GoogleCalendarEvent,
 } from './integrations/calendar.js';
+import { instantToWallClockUtc } from './timezone.js';
 
 // ---------------------------------------------------------------------------
 // Poller de sincronización Google Calendar → crm.reserva (crm-integraciones-
@@ -96,17 +97,31 @@ export interface CalendarSyncDeps {
     startAt: Date,
     endAt: Date,
   ): Promise<SyncBookingRow | null>;
+  /**
+   * Zona horaria IANA del negocio (Location.zonaHoraria, default Europe/Madrid). Google
+   * manda instantes con offset; el CRM guarda wall-clock-como-UTC. Esta TZ es la que usa
+   * la conversión del borde (ver lib/timezone.ts) para no desfasar las horas importadas.
+   */
+  getTimeZone(businessId: string): Promise<string>;
 }
 
 // ---------------------------------------------------------------------------
 // Parseo de eventos de Google.
 // ---------------------------------------------------------------------------
 
-/** Fecha de un extremo del evento. null si es evento de día completo (sin dateTime). */
-function parseEndpoint(ep: { dateTime?: string; date?: string } | undefined): Date | null {
+/**
+ * Fecha de un extremo del evento, convertida de instante-con-offset (Google) a
+ * wall-clock-como-UTC (convención CRM) usando la TZ del negocio. null si es evento de día
+ * completo (sin dateTime) o fecha inválida. Ej.: `2026-07-10T10:00:00+02:00` con tz
+ * Europe/Madrid → Date `2026-07-10T10:00:00.000Z` (la agenda lo lee con getUTC* → 10:00).
+ */
+function parseEndpoint(
+  ep: { dateTime?: string; date?: string } | undefined,
+  timeZone: string,
+): Date | null {
   if (!ep?.dateTime) return null; // eventos de día completo (date) no mapean a una cita con hora
   const d = new Date(ep.dateTime);
-  return Number.isNaN(d.getTime()) ? null : d;
+  return Number.isNaN(d.getTime()) ? null : instantToWallClockUtc(d, timeZone);
 }
 
 // ---------------------------------------------------------------------------
@@ -118,6 +133,9 @@ export async function reconcileEvent(
   token: string,
   event: GoogleCalendarEvent,
   deps: CalendarSyncDeps,
+  // TZ del negocio para convertir instante-con-offset (Google) → wall-clock-como-UTC (CRM).
+  // Default 'UTC' = identidad (no desplaza); producción siempre pasa la TZ real vía syncCredential.
+  timeZone: string = 'UTC',
 ): Promise<void> {
   const crmBookingId = event.extendedProperties?.private?.[CRM_BOOKING_ID_KEY];
   const isCancelled = event.status === 'cancelled';
@@ -135,8 +153,8 @@ export async function reconcileEvent(
     }
 
     // Evento activo: refleja una posible reprogramación externa (start/end).
-    const startAt = parseEndpoint(event.start);
-    const endAt = parseEndpoint(event.end);
+    const startAt = parseEndpoint(event.start, timeZone);
+    const endAt = parseEndpoint(event.end, timeZone);
     if (startAt && endAt) {
       await deps.updateBooking(booking.id, { startAt, endAt });
     }
@@ -146,8 +164,8 @@ export async function reconcileEvent(
   // ── Caso B: evento externo (sin etiqueta) ──────────────────────────────────
   if (isCancelled) return; // externo y cancelado: nunca lo importamos, nada que hacer
 
-  const startAt = parseEndpoint(event.start);
-  const endAt = parseEndpoint(event.end);
+  const startAt = parseEndpoint(event.start, timeZone);
+  const endAt = parseEndpoint(event.end, timeZone);
   if (!startAt || !endAt) return; // día completo o fechas inválidas → no se importa
 
   const target = await deps.resolveTarget(businessId);
@@ -215,9 +233,13 @@ export async function syncCredential(businessId: string, deps: CalendarSyncDeps)
     return;
   }
 
+  // TZ del negocio resuelta UNA vez por credencial (no por evento): la usa la conversión
+  // de instante-con-offset (Google) a wall-clock-como-UTC (CRM) en parseEndpoint.
+  const timeZone = await deps.getTimeZone(businessId);
+
   for (const event of events) {
     try {
-      await reconcileEvent(businessId, token, event, deps);
+      await reconcileEvent(businessId, token, event, deps, timeZone);
     } catch (err) {
       console.error(`[calendar-sync] evento ${event.id} (business=${businessId}) falló:`, (err as Error).message);
     }
@@ -356,6 +378,15 @@ function buildProdDeps(full = false): CalendarSyncDeps {
         where: { businessId, serviceId, startAt, endAt, eliminadoEn: null },
         select: { id: true, status: true },
       }),
+    getTimeZone: async (businessId) => {
+      // TZ de la primera ubicación activa del negocio; default Europe/Madrid si no hay.
+      const location = await prisma.location.findFirst({
+        where: { businessId, activo: true, eliminadoEn: null },
+        select: { zonaHoraria: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      return location?.zonaHoraria || 'Europe/Madrid';
+    },
   };
 }
 

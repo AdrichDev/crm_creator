@@ -86,7 +86,8 @@ describe('createCalendarEvent (idempotente por bookingId, WU2)', () => {
     const sent = JSON.parse(fetchSpy.calls[1].init!.body as string);
     assert.equal(sent.extendedProperties.private[CRM_BOOKING_ID_KEY], 'bk-1');
     assert.equal(sent.extendedProperties.private[CRM_BUSINESS_ID_KEY], 'biz-1');
-    assert.equal(sent.start.dateTime, '2026-07-10T09:00:00.000Z');
+    assert.equal(sent.start.dateTime, '2026-07-10T09:00:00'); // naive local (sin Z)
+    assert.equal(sent.start.timeZone, 'Europe/Madrid'); // TZ explícita → Google coloca la hora de pared
   });
 
   test('idempotencia: evento activo ya enlazado → exists, SIN segundo POST', async () => {
@@ -148,7 +149,8 @@ describe('updateCalendarEvent (WU2)', () => {
     assert.match(fetchSpy.calls[1].url, /events\/gev-7$/);
     assert.equal(fetchSpy.calls[1].init!.method, 'PATCH');
     const sent = JSON.parse(fetchSpy.calls[1].init!.body as string);
-    assert.equal(sent.start.dateTime, '2026-07-10T09:00:00.000Z');
+    assert.equal(sent.start.dateTime, '2026-07-10T09:00:00'); // naive local (sin Z)
+    assert.equal(sent.start.timeZone, 'Europe/Madrid'); // TZ explícita → Google coloca la hora de pared
     assert.equal(sent.extendedProperties.private[CRM_BOOKING_ID_KEY], 'bk-1');
   });
 

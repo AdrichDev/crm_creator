@@ -29,6 +29,10 @@ import {
 } from './oauth.js';
 import { ProviderError } from './gmail.js';
 import { emit as defaultEmit } from '../automation/index.js';
+import { wallClockUtcToNaive } from '../timezone.js';
+
+/** TZ por defecto si el negocio no aportó zonaHoraria (toda la operación es España). */
+const DEFAULT_TIME_ZONE = 'Europe/Madrid';
 
 /** Calendario primario de la cuenta conectada (el CRM no gestiona calendarios secundarios). */
 const CALENDAR_ID = 'primary';
@@ -50,6 +54,12 @@ export interface NewCalendarEvent {
   /** Se graba en extendedProperties.private → el poller reconoce el evento como propio. */
   crmBookingId: string;
   businessId: string;
+  /**
+   * Zona horaria IANA del negocio (Location.zonaHoraria). start/end son wall-clock-como-UTC
+   * (convención CRM); se envían a Google como dateTime naive + esta timeZone para que caigan
+   * a la hora de pared correcta. Default Europe/Madrid si el caller no la aporta.
+   */
+  timeZone?: string;
 }
 
 /** Evento tal cual lo devuelve la Calendar API (subconjunto que consume el poller). */
@@ -97,14 +107,20 @@ function defaultDeps(): CalendarDeps {
   };
 }
 
-/** Cuerpo de la Calendar API para un evento nuevo (RFC3339 en UTC). */
+/**
+ * Cuerpo de la Calendar API para un evento nuevo. start/end del CRM son wall-clock-como-UTC;
+ * se mandan como dateTime naive (sin offset) + timeZone explícita, así Google los coloca a la
+ * hora de pared correcta del negocio y gestiona el DST (ver lib/timezone.ts). Enviar el
+ * .toISOString() crudo desfasaría el evento por el offset de la zona (bug crm-calendar-tz-fix).
+ */
 function toGoogleEventBody(event: NewCalendarEvent): Record<string, unknown> {
+  const timeZone = event.timeZone || DEFAULT_TIME_ZONE;
   return {
     summary: event.summary,
     ...(event.description ? { description: event.description } : {}),
     ...(event.location ? { location: event.location } : {}),
-    start: { dateTime: event.start.toISOString() },
-    end: { dateTime: event.end.toISOString() },
+    start: { dateTime: wallClockUtcToNaive(event.start), timeZone },
+    end: { dateTime: wallClockUtcToNaive(event.end), timeZone },
     extendedProperties: {
       private: {
         [CRM_BOOKING_ID_KEY]: event.crmBookingId,
@@ -362,6 +378,8 @@ export interface BookingCalendarData {
   location?: string;
   start: Date;
   end: Date;
+  /** Zona horaria IANA del negocio (Location.zonaHoraria). Default Europe/Madrid. */
+  timeZone?: string;
 }
 
 /** Dependencias inyectables del hook de confirmación (sin red ni emit real en tests). */
@@ -409,6 +427,7 @@ function toNewCalendarEvent(data: BookingCalendarData): NewCalendarEvent {
     end: data.end,
     crmBookingId: data.bookingId,
     businessId: data.businessId,
+    timeZone: data.timeZone,
   };
 }
 
