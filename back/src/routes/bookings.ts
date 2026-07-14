@@ -293,7 +293,7 @@ bookingsRouter.post('/', async (req: AuthedRequest, res: Response) => {
       // El evento queda etiquetado con crmBookingId → el poller de sync no lo re-importa.
       const bizLocation = await prisma.location.findUnique({
         where: { id: booking.locationId },
-        select: { direccion: true },
+        select: { direccion: true, zonaHoraria: true },
       });
       void createBookingCalendarEvent({
         businessId,
@@ -303,6 +303,7 @@ bookingsRouter.post('/', async (req: AuthedRequest, res: Response) => {
         location: bizLocation?.direccion ?? undefined,
         start: booking.startAt,
         end: booking.endAt,
+        timeZone: bizLocation?.zonaHoraria,
       }).catch(() => { /* soft-fail ya logueado */ });
     } catch (err) {
       console.error('[booking.confirmed] error en post-create email/notificaciones:', (err as Error).message);
