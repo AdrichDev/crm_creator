@@ -129,6 +129,12 @@ bookingsRouter.get('/slots', async (req: AuthedRequest, res: Response) => {
 // no aparecían en "Total/Confirmadas/Pendientes"). Registrado antes de "/:id" para que
 // Express no interprete "stats" como un id.
 bookingsRouter.get('/stats', async (req: AuthedRequest, res: Response) => {
+  // Guard obligatorio: sin negocio activo, `businessId: undefined` haría que Prisma
+  // ignore el filtro y agregue TODOS los tenants (fuga cross-tenant + total inflado).
+  // Mismo criterio que GET / .
+  if (!req.businessId) {
+    return res.status(400).json({ error: { code: 'no_business', message: 'La sesión no tiene un negocio activo' } });
+  }
   const grouped = await prisma.booking.groupBy({
     by: ['status'],
     where: { businessId: req.businessId, eliminadoEn: null },
