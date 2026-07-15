@@ -17,7 +17,9 @@
     "test": "node --import tsx --test \"src/**/!(*.e2e).test.ts\"",
     "test:unit": "node --import tsx --test \"src/lib/__tests__/*.test.ts\"",
     "test:e2e": "node --import tsx --test \"src/**/*.e2e.test.ts\"",
-    "test:all": "node --import tsx --test \"src/**/*.test.ts\""
+    "test:e2e:local": "node -r dotenv/config --import tsx --test \"src/**/*.e2e.test.ts\" dotenv_config_path=.env.test",
+    "test:all": "node --import tsx --test \"src/**/*.test.ts\"",
+    "start:test": "node -r dotenv/config --import tsx src/server.ts dotenv_config_path=.env.test"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
