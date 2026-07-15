@@ -57,7 +57,13 @@ process.on('unhandledRejection', (reason) => {
 
 app.listen(env.port, () => {
   console.log(`OperaOS backend escuchando en http://localhost:${env.port}`);
-  startReminderDrainer();
-  startDigestScheduler();
-  startCalendarSync();
+  // Kill-switch de crons de fondo: ENABLE_CRONS=false los apaga (util en demo/pre-launch
+  // para no consumir egress de Supabase pinchando la BD 24/7). Default: habilitados.
+  if (process.env.ENABLE_CRONS === 'false') {
+    console.log('[crons] deshabilitados via ENABLE_CRONS=false (drainer/digest/calendar-sync no arrancan)');
+  } else {
+    startReminderDrainer();
+    startDigestScheduler();
+    startCalendarSync();
+  }
 });
