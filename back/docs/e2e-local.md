@@ -30,14 +30,19 @@ npx supabase status
 #    SUPABASE_URL=http://127.0.0.1:54321
 #    SUPABASE_SERVICE_ROLE_KEY=<service_role key from step 2>
 #    SUPABASE_ANON_KEY=<anon key from step 2>
-#    DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
-#    DIRECT_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
+#    DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres?schema=crm
+#    DIRECT_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres?schema=crm
 #    TEST_API_URL=http://localhost:4001
+#    PORT=4001
 #    ENABLE_CRONS=false
 
-# 4. Apply the schema to the local DB
-node -r dotenv/config node_modules/prisma/build/index.js migrate deploy dotenv_config_path=.env.test
-#    (or: DOTENV_CONFIG_PATH=.env.test npm run migrate:deploy)
+# 4. Bootstrap the schema on the local DB.
+#    The repo's migration history assumes the crm/aa schemas already exist (they
+#    were created out-of-band in prod), so `prisma migrate deploy` fails on a clean
+#    DB. For a DISPOSABLE local DB, create the schemas and push the schema state.
+#    The ?schema=crm on DATABASE_URL is REQUIRED (single-schema; sets search_path).
+psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -c 'CREATE SCHEMA IF NOT EXISTS crm; CREATE SCHEMA IF NOT EXISTS aa;'
+DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres?schema=crm" npx prisma db push --accept-data-loss
 
 # 5. Start the back against local Supabase (separate terminal)
 npm run start:test
