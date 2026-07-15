@@ -37,6 +37,19 @@ const PLACEHOLDER_PATTERNS = ['CHANGE_ME', 'placeholder', 'fake', 'hardening-fak
 // Live Supabase tests are gated behind a non-placeholder SUPABASE_SERVICE_ROLE_KEY.
 export const SUPABASE_LIVE = !!SB_SRK && !PLACEHOLDER_PATTERNS.some((p) => SB_SRK.toLowerCase().includes(p));
 
+// Guard anti-produccion: los e2e crean usuarios auth REALES (admin.createUser).
+// Correrlos contra un proyecto remoto contamina MAU y egress del org. El target
+// previsto es Supabase local (supabase start). Abortamos al importar si la URL no
+// es local, salvo opt-in explicito E2E_ALLOW_REMOTE=1. Ver README "e2e local".
+const IS_LOCAL_SB = /^(https?:\/\/)?(127\.0\.0\.1|localhost|host\.docker\.internal)(:\d+)?(\/|$)/.test(SB_URL);
+if (SUPABASE_LIVE && SB_URL && !IS_LOCAL_SB && process.env.E2E_ALLOW_REMOTE !== '1') {
+  throw new Error(
+    `[e2e guard] SUPABASE_URL apunta a un proyecto remoto (${SB_URL}). Los e2e crean ` +
+    `usuarios auth reales y contaminan MAU/egress. Usa Supabase local (supabase start) ` +
+    `o exporta E2E_ALLOW_REMOTE=1 para forzarlo conscientemente.`,
+  );
+}
+
 export const uniq = (): string => crypto.randomBytes(4).toString('hex');
 
 export type Auth = { token: string; businessId: string; userId: string };
