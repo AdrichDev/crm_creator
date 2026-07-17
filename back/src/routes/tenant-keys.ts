@@ -310,11 +310,24 @@ export async function testSecretHandler(
 // (botón "ver"). Gate ADMIN/MANAGER del `:businessId` del path (mismo scoping que el
 // resto: un no-miembro cae en 404, cross-tenant cerrado). Inseguro por diseño y a
 // petición explícita del producto: el admin ve sus propias keys. El value NUNCA se loguea.
+//
+// Rate limit calcado del endpoint `test` (mismo bucket por businessId:name, 5/min):
+// ahora que hay secretos de alto valor revelables en claro (GOOGLE_OAUTH_CLIENT_SECRET,
+// MAIL_APP_PASSWORD) se acota el goteo de plaintext descifrado igual que "Probar".
+const REVEAL_RATE_BUCKET = 'secret-reveal';
+const REVEAL_RATE_WINDOW_MS = 60_000;
+const REVEAL_RATE_MAX = 5;
+
 export async function revealSecretHandler(db: TenantKeysDb, req: AuthedRequest, res: Response) {
   try {
     if (!(await requireMemberAdmin(db, req, res))) return;
     const businessId = req.params.businessId;
     const name = req.params.name;
+    // Rate limit DESPUÉS del gate (mismo criterio N3 que /test): solo un miembro
+    // ADMIN/MANAGER del negocio consume el contador; un no-miembro ya salió por 404 arriba.
+    if (!consume(REVEAL_RATE_BUCKET, `${businessId}:${name}`, REVEAL_RATE_WINDOW_MS, REVEAL_RATE_MAX)) {
+      return res.status(429).json({ error: { code: 'rate_limited', message: 'Demasiados intentos, espera unos minutos' } });
+    }
     const row = await db.tenantSecret.findUnique({ where: { businessId_name: { businessId, name } } });
     if (!row) return res.status(404).json({ error: { code: 'secret_not_found', message: 'Secreto no encontrado' } });
     const value = decryptSecret({ ciphertext: row.valueCiphertext, iv: row.iv, authTag: row.authTag, keyVersion: row.keyVersion });

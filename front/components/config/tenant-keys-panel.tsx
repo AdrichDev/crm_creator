@@ -5,7 +5,7 @@
 // `apiFetch` a `/tenant-keys/:businessId/secrets`. Estructura calcada de
 // `front/components/config/integraciones-panel.tsx`.
 import { useCallback, useEffect, useState } from 'react';
-import { ApiError } from '@/lib/api/client';
+import { ApiError, apiFetch } from '@/lib/api/client';
 import { useDialog } from '@/components/ui/dialog-provider';
 import { Card, CardBody, Badge, Button } from '@/components/ui/primitives';
 import { Eye, EyeOff } from 'lucide-react';
@@ -20,8 +20,8 @@ import {
   type TenantSecretSlot,
 } from '@/lib/api/tenant-keys';
 
-type SlotGroup = 'ai' | 'maps' | 'database';
-type SlotKind = 'ai' | 'maps' | 'database' | 'supabase';
+type SlotGroup = 'ai' | 'maps' | 'database' | 'google' | 'mail';
+type SlotKind = 'ai' | 'maps' | 'database' | 'supabase' | 'google' | 'mail';
 
 const CATALOG: Array<{ name: TenantSecretName; label: string; group: SlotGroup; kind: SlotKind }> = [
   { name: 'OPENAI_API_KEY', label: 'OpenAI', group: 'ai', kind: 'ai' },
@@ -31,7 +31,77 @@ const CATALOG: Array<{ name: TenantSecretName; label: string; group: SlotGroup; 
   { name: 'DATABASE_URL', label: 'URL (BD)', group: 'database', kind: 'database' },
   { name: 'NEXT_PUBLIC_SUPABASE_URL', label: 'Supabase URL', group: 'database', kind: 'supabase' },
   { name: 'NEXT_PUBLIC_SUPABASE_ANON_KEY', label: 'Supabase anon key', group: 'database', kind: 'supabase' },
+  // crm-tenant-oauth-creds: proyecto Google Cloud propio del tenant. Opt-in (grupo
+  // 'google', excluido de la vista "todo" por defecto): solo se pinta cuando el caller
+  // pide explícitamente `groups={['google', ...]}`.
+  { name: 'GOOGLE_OAUTH_CLIENT_ID', label: 'Google OAuth Client ID', group: 'google', kind: 'google' },
+  { name: 'GOOGLE_OAUTH_CLIENT_SECRET', label: 'Google OAuth Client Secret', group: 'google', kind: 'google' },
+  // crm-tenant-oauth-creds-and-mail-connector (Fase 2): conector IMAP/SMTP genérico para
+  // buzones fuera de Google/Microsoft. Opt-in (grupo 'mail'), mismo patrón que 'google'.
+  { name: 'MAIL_ADDRESS', label: 'Dirección de correo', group: 'mail', kind: 'mail' },
+  { name: 'MAIL_APP_PASSWORD', label: 'Contraseña de aplicación', group: 'mail', kind: 'mail' },
+  { name: 'IMAP_HOST', label: 'Servidor IMAP', group: 'mail', kind: 'mail' },
+  { name: 'IMAP_PORT', label: 'Puerto IMAP', group: 'mail', kind: 'mail' },
+  { name: 'SMTP_HOST', label: 'Servidor SMTP', group: 'mail', kind: 'mail' },
+  { name: 'SMTP_PORT', label: 'Puerto SMTP', group: 'mail', kind: 'mail' },
 ];
+
+// crm-tenant-oauth-creds-and-mail-connector (Fase 2): proveedores de correo comunes
+// FUERA de Google/Microsoft (esos usan el botón OAuth, no IMAP/SMTP) — autocompleta
+// host/puerto a partir del dominio de `MAIL_ADDRESS`. cPanel no tiene un host fijo:
+// se usa la convención habitual `mail.<dominio>` como fallback genérico.
+interface MailProviderPreset {
+  label: string;
+  domains: string[];
+  imapHost: string;
+  imapPort: number;
+  smtpHost: string;
+  smtpPort: number;
+}
+
+export const COMMON_MAIL_PROVIDERS: MailProviderPreset[] = [
+  { label: 'Hostinger', domains: ['hostinger.com'], imapHost: 'imap.hostinger.com', imapPort: 993, smtpHost: 'smtp.hostinger.com', smtpPort: 465 },
+  { label: 'Zoho Mail', domains: ['zoho.com', 'zohomail.com', 'zoho.eu'], imapHost: 'imap.zoho.com', imapPort: 993, smtpHost: 'smtp.zoho.com', smtpPort: 465 },
+  { label: 'IONOS', domains: ['ionos.com', 'ionos.es', '1and1.com'], imapHost: 'imap.ionos.com', imapPort: 993, smtpHost: 'smtp.ionos.com', smtpPort: 465 },
+  { label: 'GoDaddy', domains: ['secureserver.net', 'godaddy.com'], imapHost: 'imap.secureserver.net', imapPort: 993, smtpHost: 'smtpout.secureserver.net', smtpPort: 465 },
+];
+
+// Dominios de Google/Microsoft: estos SIEMPRE deben usar el botón OAuth (Gmail/Outlook),
+// nunca el conector IMAP/SMTP — devolver `null` para no autocompletar ni sugerirlos aquí.
+const OAUTH_ONLY_DOMAINS = new Set(['gmail.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'live.com', 'msn.com']);
+
+export interface MailHostSuggestion {
+  providerLabel: string;
+  imapHost: string;
+  imapPort: number;
+  smtpHost: string;
+  smtpPort: number;
+}
+
+/**
+ * Sugiere host/puerto de IMAP/SMTP a partir del dominio de un email. `null` si el
+ * email es inválido o pertenece a un dominio de Google/Microsoft (esos van por OAuth).
+ * Con dominio propio no reconocido, cae al patrón habitual de cPanel `mail.<dominio>`.
+ */
+export function suggestMailHosts(email: string): MailHostSuggestion | null {
+  const at = email.lastIndexOf('@');
+  if (at < 0 || at === email.length - 1) return null;
+  const domain = email.slice(at + 1).trim().toLowerCase();
+  if (!domain || !domain.includes('.')) return null;
+  if (OAUTH_ONLY_DOMAINS.has(domain)) return null;
+
+  const known = COMMON_MAIL_PROVIDERS.find((p) => p.domains.includes(domain));
+  if (known) {
+    return { providerLabel: known.label, imapHost: known.imapHost, imapPort: known.imapPort, smtpHost: known.smtpHost, smtpPort: known.smtpPort };
+  }
+  return {
+    providerLabel: 'cPanel / genérico',
+    imapHost: `mail.${domain}`,
+    imapPort: 993,
+    smtpHost: `mail.${domain}`,
+    smtpPort: 465,
+  };
+}
 
 // crm-tenant-keys-freeform: mismo regex que back/src/lib/tenant-secrets/catalog.ts
 // (ENV_KEY_NAME_PATTERN) — duplicado a propósito para no importar código de back en el bundle.
@@ -45,8 +115,24 @@ function placeholderFor(kind: SlotKind, name: string): string {
     if (name.includes('URL')) return 'https://xxxx.supabase.co';
     if (name.includes('ANON')) return 'eyJhbGciOi...';
   }
+  if (kind === 'google') {
+    if (name.includes('SECRET')) return 'GOCSPX-...';
+    return '1234567890-xxxx.apps.googleusercontent.com';
+  }
+  if (kind === 'mail') {
+    if (name === 'MAIL_ADDRESS') return 'nombre@tudominio.com';
+    if (name === 'MAIL_APP_PASSWORD') return 'Contraseña de aplicación';
+    if (name === 'IMAP_HOST') return 'imap.tudominio.com (vacío = autodetectar por dominio)';
+    if (name === 'IMAP_PORT') return '993 (por defecto)';
+    if (name === 'SMTP_HOST') return 'smtp.tudominio.com (vacío = autodetectar por dominio)';
+    if (name === 'SMTP_PORT') return '465 (por defecto)';
+  }
   return 'Pegar valor…';
 }
+
+// crm-tenant-oauth-creds-and-mail-connector (Fase 2): los 6 slots del conector, en el
+// orden en que se prueban/autocompletan.
+const MAIL_SLOT_NAMES = ['MAIL_ADDRESS', 'MAIL_APP_PASSWORD', 'IMAP_HOST', 'IMAP_PORT', 'SMTP_HOST', 'SMTP_PORT'] as const;
 
 // Máscara de longitud FIJA para un slot ya configurado: el back nunca devuelve el
 // valor ni su longitud, así que estos puntos NO reflejan la clave real — solo indican
@@ -81,6 +167,9 @@ export function TenantKeysPanel({ businessId, groups, showExtras = true }: Tenan
   const [draftValue, setDraftValue] = useState('');
   const [draftStatus, setDraftStatus] = useState<'idle' | 'saving'>('idle');
   const [draftError, setDraftError] = useState<string | null>(null);
+  // crm-tenant-oauth-creds: estado del botón "Conectar Google Calendar" (grupo google).
+  const [connecting, setConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -97,7 +186,14 @@ export function TenantKeysPanel({ businessId, groups, showExtras = true }: Tenan
 
   useEffect(() => { void load(); }, [load]);
 
-  const visible = groups ? CATALOG.filter((c) => groups.includes(c.group)) : CATALOG;
+  // Los grupos 'google' y 'mail' son opt-in: se excluyen de la vista "todo" (sin
+  // `groups`) para no sumar tarjetas a las instancias que no los piden — solo aparecen
+  // con `groups` explícito.
+  const visible = groups
+    ? CATALOG.filter((c) => groups.includes(c.group))
+    : CATALOG.filter((c) => c.group !== 'google' && c.group !== 'mail');
+  const showGoogleConnect = visible.some((c) => c.group === 'google');
+  const showMailGroup = visible.some((c) => c.group === 'mail');
   // crm-tenant-keys-freeform: filas fuera de los 5 presets — no tienen `group`, así que se
   // muestran siempre en "Otras variables" sin importar el filtro `groups` de esta instancia.
   const extraSecrets = slots.filter((s) => !(KNOWN_PRESET_NAMES as readonly string[]).includes(s.name));
@@ -182,6 +278,70 @@ export function TenantKeysPanel({ businessId, groups, showExtras = true }: Tenan
     }
   }
 
+  // crm-tenant-oauth-creds-and-mail-connector (Fase 2): el conector necesita los 6
+  // campos juntos (dirección+contraseña+hosts/puertos), pero el endpoint de test solo
+  // admite UN `value` por slot — se serializan los 6 en JSON y se prueban contra el
+  // slot ancla 'MAIL_ADDRESS' (provider 'mail' en el catálogo). Los campos no editados
+  // pero ya guardados se resuelven vía `revealSecret` (nunca se re-piden al usuario).
+  // Estado reusado de `status`/`testResult` bajo la clave 'MAIL_ADDRESS'.
+  async function probarCorreo() {
+    setCardStatus('MAIL_ADDRESS', 'testing');
+    setTestResult((prev) => ({ ...prev, MAIL_ADDRESS: null }));
+    try {
+      const fields: Record<string, string> = {};
+      for (const name of MAIL_SLOT_NAMES) {
+        const pending = inputs[name]?.trim();
+        if (pending) {
+          fields[name] = pending;
+          continue;
+        }
+        const slot = slots.find((s) => s.name === name);
+        if (slot?.configured) {
+          fields[name] = await revealSecret(businessId, name);
+        }
+      }
+      const cfg = {
+        address: fields.MAIL_ADDRESS ?? '',
+        appPassword: fields.MAIL_APP_PASSWORD ?? '',
+        imapHost: fields.IMAP_HOST || undefined,
+        imapPort: fields.IMAP_PORT ? Number(fields.IMAP_PORT) : undefined,
+        smtpHost: fields.SMTP_HOST || undefined,
+        smtpPort: fields.SMTP_PORT ? Number(fields.SMTP_PORT) : undefined,
+      };
+      const result = await testSecret(businessId, 'MAIL_ADDRESS', JSON.stringify(cfg));
+      setTestResult((prev) => ({
+        ...prev,
+        MAIL_ADDRESS: result.ok
+          ? { tone: 'ok', texto: 'Conexión correcta (IMAP y SMTP).' }
+          : { tone: 'error', texto: result.detail ?? 'No se pudo conectar.' },
+      }));
+    } catch {
+      setTestResult((prev) => ({ ...prev, MAIL_ADDRESS: { tone: 'error', texto: 'No se pudo probar la conexión.' } }));
+    } finally {
+      setCardStatus('MAIL_ADDRESS', 'idle');
+    }
+  }
+
+  // crm-tenant-oauth-creds-and-mail-connector (Fase 2): al escribir la dirección de
+  // correo, autocompleta host/puerto de IMAP/SMTP por dominio (solo si esos campos aún
+  // no tienen valor propio ni guardado) — nunca pisa un valor ya configurado.
+  function onMailAddressBlur(value: string) {
+    const suggestion = suggestMailHosts(value.trim());
+    if (!suggestion) return;
+    setInputs((prev) => {
+      const next = { ...prev };
+      const setIfEmpty = (name: string, val: string) => {
+        const slot = slots.find((s) => s.name === name);
+        if (!slot?.configured && !(prev[name] ?? '').trim()) next[name] = val;
+      };
+      setIfEmpty('IMAP_HOST', suggestion.imapHost);
+      setIfEmpty('IMAP_PORT', String(suggestion.imapPort));
+      setIfEmpty('SMTP_HOST', suggestion.smtpHost);
+      setIfEmpty('SMTP_PORT', String(suggestion.smtpPort));
+      return next;
+    });
+  }
+
   async function quitar(name: TenantSecretName, label: string) {
     const ok = await dialog.confirm({
       message: `¿Quitar la clave de ${label}? Las funciones que dependen de ella dejarán de operar hasta que la vuelvas a configurar.`,
@@ -196,6 +356,26 @@ export function TenantKeysPanel({ businessId, groups, showExtras = true }: Tenan
       setTestResult((prev) => ({ ...prev, [name]: { tone: 'error', texto: 'No se pudo quitar. Inténtalo de nuevo.' } }));
     } finally {
       setCardStatus(name, 'idle');
+    }
+  }
+
+  // Lanza el consentimiento OAuth de Google Calendar reutilizando el flujo ya existente
+  // (POST /integrations/calendar/connect). El back resuelve las creds del tenant si las
+  // configuró, o cae a la app central del operador (nota UX debajo del botón).
+  async function conectarCalendar() {
+    setConnecting(true);
+    setConnectError(null);
+    try {
+      const { url } = await apiFetch<{ url: string }>('/integrations/calendar/connect', { method: 'POST' });
+      // Consentimiento en la MISMA pestaña: Google redirige al callback del back.
+      window.location.href = url;
+    } catch (e) {
+      const texto =
+        e instanceof ApiError && e.code === 'oauth_no_configurado'
+          ? 'No hay credenciales OAuth configuradas (ni propias ni centrales). Pega tu client_id/secret o pide al operador que configure la app central.'
+          : 'No se pudo iniciar la conexión. Inténtalo de nuevo.';
+      setConnectError(texto);
+      setConnecting(false);
     }
   }
 
@@ -286,6 +466,7 @@ export function TenantKeysPanel({ businessId, groups, showExtras = true }: Tenan
                       placeholder={placeholderFor(kind, name)}
                       value={inputs[name] ?? ''}
                       onChange={(e) => setInputs((prev) => ({ ...prev, [name]: e.target.value }))}
+                      onBlur={(e) => { if (name === 'MAIL_ADDRESS') onMailAddressBlur(e.target.value); }}
                       className="w-full rounded-[8px] border border-white/10 bg-black/20 px-3 py-2 pr-9 text-sm text-white"
                       autoComplete="new-password"
                       autoFocus={configured}
@@ -307,9 +488,14 @@ export function TenantKeysPanel({ businessId, groups, showExtras = true }: Tenan
                       ? 'Guardado'
                       : 'Guardar'}
                 </Button>
-                <Button variant="outline" onClick={() => void probar(name, kind)} disabled={st !== 'idle' || (!configured && !(inputs[name]?.trim()))}>
-                  {st === 'testing' ? 'Probando…' : 'Probar conexión'}
-                </Button>
+                {/* crm-tenant-oauth-creds-and-mail-connector (Fase 2): el conector necesita los
+                    6 campos juntos — el test se hace desde el botón dedicado más abajo, no
+                    por-campo aquí (probar un solo host/puerto suelto no dice nada). */}
+                {kind !== 'mail' && (
+                  <Button variant="outline" onClick={() => void probar(name, kind)} disabled={st !== 'idle' || (!configured && !(inputs[name]?.trim()))}>
+                    {st === 'testing' ? 'Probando…' : 'Probar conexión'}
+                  </Button>
+                )}
               </div>
 
               {outcome && (
@@ -321,6 +507,51 @@ export function TenantKeysPanel({ businessId, groups, showExtras = true }: Tenan
           </Card>
         );
       })}
+
+      {showMailGroup && (
+        <Card>
+          <CardBody className="space-y-3">
+            <p className="font-medium text-white">Correo (IMAP/SMTP)</p>
+            <p className="text-xs text-amber-400">
+              Gmail y Outlook/Hotmail → usa el botón OAuth (Google Calendar/Gmail), NO este
+              conector IMAP/SMTP.
+            </p>
+            <p className="text-xs text-white/60">
+              Para buzones propios (Hostinger, Zoho, cPanel, IONOS, GoDaddy…): rellena la
+              dirección y la contraseña de aplicación; el servidor y puerto de IMAP/SMTP se
+              autocompletan por el dominio del correo (editable si tu proveedor usa otros).
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => void probarCorreo()}
+              disabled={status.MAIL_ADDRESS === 'testing'}
+            >
+              {status.MAIL_ADDRESS === 'testing' ? 'Probando…' : 'Probar conexión de correo'}
+            </Button>
+            {testResult.MAIL_ADDRESS && (
+              <p role="status" className={testResult.MAIL_ADDRESS.tone === 'ok' ? 'text-sm text-emerald-400' : 'text-sm text-red-400'}>
+                {testResult.MAIL_ADDRESS.texto}
+              </p>
+            )}
+          </CardBody>
+        </Card>
+      )}
+
+      {showGoogleConnect && (
+        <Card>
+          <CardBody className="space-y-3">
+            <p className="font-medium text-white">Google Calendar</p>
+            <p className="text-xs text-white/60">
+              Deja el Client ID y el Client Secret vacíos para usar la app central de la plataforma.
+              Rellénalos solo si quieres conectar con tu propio proyecto de Google Cloud.
+            </p>
+            <Button onClick={() => void conectarCalendar()} disabled={connecting}>
+              {connecting ? 'Conectando…' : 'Conectar Google Calendar'}
+            </Button>
+            {connectError && <p className="text-sm text-red-400">{connectError}</p>}
+          </CardBody>
+        </Card>
+      )}
 
       {showExtras && (
       <div className="space-y-3 pt-2">

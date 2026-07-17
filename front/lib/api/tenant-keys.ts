@@ -33,7 +33,7 @@ export interface TenantSecretSlot {
 
 export interface TenantSecretTestResult {
   ok: boolean;
-  provider: 'openai' | 'gemini' | 'anthropic' | 'maps' | 'database' | 'supabase_url' | 'supabase_anon';
+  provider: 'openai' | 'gemini' | 'anthropic' | 'maps' | 'database' | 'supabase_url' | 'supabase_anon' | 'google' | 'mail';
   detail?: string;
 }
 

@@ -2,9 +2,12 @@
  * back/src/lib/__tests__/export-manifest-cruft.test.ts
  *
  * WU7.1: cruft de desarrollo (openspec/, e2e/, tests/, test-results/, configs
- * de vitest/playwright/eslint, .gitignore, .npmrc, tsconfig.tsbuildinfo) nunca
- * debe llegar a ningun ZIP de exportacion, sea cual sea el formato. Busqueda
- * por ruta completa (no solo primer nivel) para atrapar cruft anidado.
+ * de vitest/playwright/eslint, .gitignore, tsconfig.tsbuildinfo) nunca debe
+ * llegar a ningun ZIP de exportacion, sea cual sea el formato. Busqueda por
+ * ruta completa (no solo primer nivel) para atrapar cruft anidado.
+ *
+ * Nota: `.npmrc` (legacy-peer-deps=true) NO es cruft — es config intencional
+ * en las 4 allowlists (crm-export-legacy-peer-deps) y viaja al artefacto.
  */
 
 import { test, afterEach } from 'node:test';

@@ -15,6 +15,7 @@ import {
 } from '../notify.js';
 import { ReauthRequiredError } from '../integrations/oauth.js';
 import { ProviderError } from '../integrations/gmail.js';
+import { MailNotConfiguredError } from '../mail-connector.js';
 
 // ---------------------------------------------------------------------------
 // Espías inyectables: capturan las llamadas a emit y sendEmail por separado.
@@ -228,5 +229,73 @@ describe('notify — Gmail del negocio', () => {
     assert.equal(gmailCalls, 0);
     assert.equal(deps.emitCalls.length, 1);
     assert.equal(deps.emitCalls[0].name, 'booking.confirmed');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SMTP del tenant (T2.3, crm-tenant-oauth-creds-and-mail-connector Fase 2): en la vía
+// SMTP directa (webhook vacío), cadena Gmail OAuth → SMTP tenant → SMTP central.
+// ---------------------------------------------------------------------------
+describe('notify — SMTP del tenant (Fase 2)', () => {
+  function makeTenantMailDeps(
+    sendViaTenantMail: NotifyDeps['sendViaTenantMail'],
+    opts: { gmail?: NotifyDeps['sendViaGmail']; webhookUrl?: string } = {},
+  ) {
+    const emitCalls: EmitCall[] = [];
+    const mailCalls: MailCall[] = [];
+    const deps: NotifyDeps = {
+      webhookUrl: opts.webhookUrl ?? '',
+      emit: (async (name: string, data: unknown, o: { businessId: string; eventId?: string }) => {
+        emitCalls.push({ name, data, eventId: o.eventId, businessId: o.businessId });
+        return { status: 'sent', eventId: o.eventId ?? 'auto' };
+      }) as NotifyDeps['emit'],
+      sendEmail: async (msg: MailCall) => { mailCalls.push(msg); return true; },
+      sendViaGmail: opts.gmail,
+      sendViaTenantMail,
+    };
+    return Object.assign(deps, { emitCalls, mailCalls });
+  }
+
+  test('tenant con MAIL_* configurado (sin Gmail) → SMTP tenant, 0 sendEmail central', async () => {
+    let tenantCalls = 0;
+    const deps = makeTenantMailDeps(async () => { tenantCalls++; });
+    const ok = await notifyBookingConfirmed(baseData, deps);
+    assert.equal(ok, true);
+    assert.equal(tenantCalls, 1);
+    assert.equal(deps.mailCalls.length, 0);
+  });
+
+  test('Gmail conectado tiene prioridad sobre SMTP tenant', async () => {
+    let tenantCalls = 0;
+    const deps = makeTenantMailDeps(async () => { tenantCalls++; }, { gmail: async () => 'sent' });
+    const ok = await notifyBookingConfirmed(baseData, deps);
+    assert.equal(ok, true);
+    assert.equal(tenantCalls, 0);
+    assert.equal(deps.mailCalls.length, 0);
+  });
+
+  test('sin sendViaTenantMail (dep ausente) → SMTP central, regresión intacta', async () => {
+    const deps: NotifyDeps = {
+      webhookUrl: '',
+      emit: (async () => ({ status: 'sent', eventId: 'x' })) as NotifyDeps['emit'],
+      sendEmail: async () => true,
+    };
+    const ok = await notifyBookingConfirmed(baseData, deps);
+    assert.equal(ok, true);
+  });
+
+  test('tenant SIN MAIL_* (MailNotConfiguredError) → fallback a SMTP central, sin telemetría de fallo', async () => {
+    const deps = makeTenantMailDeps(async () => { throw new MailNotConfiguredError(); });
+    const ok = await notifyBookingConfirmed(baseData, deps);
+    assert.equal(ok, true);
+    assert.equal(deps.mailCalls.length, 1);
+    assert.equal(deps.emitCalls.length, 0);
+  });
+
+  test('SMTP del tenant falla (red/credenciales) → fallback a SMTP central, sin lanzar', async () => {
+    const deps = makeTenantMailDeps(async () => { throw new Error('ECONNREFUSED'); });
+    const ok = await notifyBookingConfirmed(baseData, deps);
+    assert.equal(ok, true);
+    assert.equal(deps.mailCalls.length, 1);
   });
 });

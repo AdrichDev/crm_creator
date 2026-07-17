@@ -57,6 +57,7 @@ async function topLevelSegments(zipPath: string, prefix: string): Promise<string
 const WEB_SNAPSHOT = [
   '.env.example',
   '.env.local',
+  '.npmrc',
   'app',
   'components',
   'lib',
@@ -73,6 +74,7 @@ const WEB_SNAPSHOT = [
 const ANDROID_SNAPSHOT = [
   '.env.example',
   '.env.local',
+  '.npmrc',
   'android',
   'app',
   'capacitor.config.ts',
@@ -91,6 +93,7 @@ const ANDROID_SNAPSHOT = [
 const IOS_SNAPSHOT = [
   '.env.example',
   '.env.local',
+  '.npmrc',
   'app',
   'capacitor.config.ts',
   'components',
@@ -108,6 +111,7 @@ const IOS_SNAPSHOT = [
 const DESKTOP_SNAPSHOT = [
   '.env.example',
   '.env.local',
+  '.npmrc',
   'app',
   'components',
   'electron',

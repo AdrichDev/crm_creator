@@ -108,7 +108,7 @@ integrationsRouter.get('/', authenticate, staffOnly, async (req: AuthedRequest, 
 
 // POST /:servicio/connect — genera la URL de consentimiento con nonce anti-CSRF
 // ligado al businessId de la sesión. El front abre esa URL.
-integrationsRouter.post('/:servicio/connect', authenticate, staffOnly, (req: AuthedRequest, res: Response) => {
+integrationsRouter.post('/:servicio/connect', authenticate, staffOnly, async (req: AuthedRequest, res: Response) => {
   const servicio = parseServicio(req.params.servicio);
   if (!servicio) {
     return res.status(404).json({ error: { code: 'not_found', message: 'Servicio de integración no soportado' } });
@@ -119,7 +119,7 @@ integrationsRouter.post('/:servicio/connect', authenticate, staffOnly, (req: Aut
   try {
     const rawReturn = (req.body as { returnTo?: unknown } | undefined)?.returnTo;
     const returnTo = isSafeReturnPath(rawReturn) ? rawReturn : null;
-    const url = authorizationUrl(servicio, req.businessId, returnTo);
+    const url = await authorizationUrl(servicio, req.businessId, returnTo);
     res.json({ url });
   } catch {
     // authorizationUrl lanza si faltan GOOGLE_OAUTH_* en el entorno.
@@ -209,14 +209,14 @@ function parseAdminServicio(raw: string): Servicio | null {
 
 // POST /admin/:servicio/connect — el operador inicia el OAuth de la credencial de
 // plataforma (businessId=null). Devuelve la URL de consentimiento con nonce admin.
-integrationsRouter.post('/admin/:servicio/connect', requireOperatorToken(), (req: AuthedRequest, res: Response) => {
+integrationsRouter.post('/admin/:servicio/connect', requireOperatorToken(), async (req: AuthedRequest, res: Response) => {
   const servicio = parseAdminServicio(req.params.servicio);
   if (!servicio) {
     return res.status(404).json({ error: { code: 'not_found', message: 'Servicio admin no soportado' } });
   }
   try {
     // businessId=null EXPLÍCITO → credencial admin (scope='admin' en el callback).
-    const url = authorizationUrl(servicio, null);
+    const url = await authorizationUrl(servicio, null);
     res.json({ url });
   } catch {
     res.status(503).json({ error: { code: 'oauth_no_configurado', message: 'Integración OAuth no configurada en el servidor' } });
