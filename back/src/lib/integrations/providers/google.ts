@@ -7,7 +7,8 @@
 // gmail.modify sería "restringido" (CASA anual) y el código solo envía, nunca lee.
 // ---------------------------------------------------------------------------
 
-import { getTenantSecret, type TenantSecretDb } from '../../tenant-secrets/store.js';
+import { readTenantSecret, type TenantSecretDb } from '../../tenant-secrets/store.js';
+import { readPlatformSecret, getPlatformSecret, type PlatformSettingDb } from '../../platform-secrets/store.js';
 
 export type GoogleService = 'gmail' | 'calendar';
 
@@ -55,40 +56,81 @@ const SCOPE_BY_SERVICE: Record<GoogleService, string> = {
   calendar: 'https://www.googleapis.com/auth/calendar.events',
 };
 
+/** Nivel del que salió una credencial resuelta, en orden de prioridad. */
+type CredSource = 'tenant' | 'platform' | 'env';
+
+/** Prioridad de cada nivel (mayor = gana). null = credencial ausente en todos. */
+function sourceRank(source: CredSource | null): number {
+  return source === 'tenant' ? 3 : source === 'platform' ? 2 : source === 'env' ? 1 : 0;
+}
+
 /**
- * Resuelve el par client_id/client_secret con el que se ejecuta el OAuth de un negocio
- * (crm-tenant-oauth-creds). Regla "trae tu propio proyecto":
- *   - `businessId` con AMBOS secretos propios (`GOOGLE_OAUTH_CLIENT_ID` +
- *     `GOOGLE_OAUTH_CLIENT_SECRET` en TenantSecret) → usa los del tenant.
- *   - `businessId` con NINGUNO → cae al env central del operador (comportamiento
- *     idéntico al histórico: `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_SECRET`).
- *   - `businessId` con UNO solo (o tenant+central mezclados) → `IncompleteTenantOAuthError`.
- *   - Sin `businessId` (credencial de plataforma/admin, `null`) → siempre env central.
+ * Resuelve UNA credencial a través de la cadena tenant → plataforma → env,
+ * devolviendo el valor y el NIVEL del que salió. La plataforma solo se consulta si
+ * se inyecta `platformDb` (los unit-tests que no la pasan omiten el nivel y caen al
+ * env, regresión idéntica al histórico). `envName` puede diferir del nombre de slot
+ * (el secreto vive como `GOOGLE_OAUTH_CLIENT_SECRET` pero el env legacy es
+ * `GOOGLE_OAUTH_SECRET`).
+ */
+async function resolveCred(
+  businessId: string,
+  slotName: string,
+  envName: string,
+  secretDb?: TenantSecretDb,
+  platformDb?: PlatformSettingDb,
+): Promise<{ value: string; source: CredSource } | null> {
+  const tenantVal = await readTenantSecret(businessId, slotName, secretDb);
+  if (tenantVal) return { value: tenantVal, source: 'tenant' };
+
+  if (platformDb) {
+    const platformVal = await readPlatformSecret(slotName, platformDb);
+    if (platformVal) return { value: platformVal, source: 'platform' };
+  }
+
+  const envVal = process.env[envName];
+  if (envVal) return { value: envVal, source: 'env' };
+
+  return null;
+}
+
+/**
+ * Resuelve el par client_id/client_secret con el que se ejecuta el OAuth de un negocio.
+ * Cadena de resolución (crm-central-oauth-admin-config): **tenant → plataforma → env**.
+ *   - `businessId` con AMBOS secretos propios en TenantSecret → usa los del tenant.
+ *   - si no, AMBOS en la config de plataforma (BD) → usa los de plataforma.
+ *   - si no, `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_SECRET` del env (legacy, retro-compat).
+ *   - par mezclado entre niveles (id de un nivel, secret de otro) → `IncompleteTenantOAuthError`.
+ *   - Sin `businessId` (credencial de plataforma/admin, `null`) → plataforma → env.
+ * Invariante par-o-nada POR NIVEL: nunca se mezcla el id de un nivel con el secret de otro.
  * El secreto vive solo en memoria del request: NUNCA se loguea ni se reenvía por HTTP.
- * `secretDb` es inyectable (patrón DI del repo) para testear sin BD.
+ * `secretDb`/`platformDb` son inyectables (patrón DI del repo) para testear sin BD.
  */
 async function resolveClientCreds(
   businessId?: string | null,
   secretDb?: TenantSecretDb,
+  platformDb?: PlatformSettingDb,
 ): Promise<{ clientId: string; clientSecret: string }> {
-  // Sin negocio (credencial admin/plataforma): no hay TenantSecret que consultar.
+  // Sin negocio (credencial admin/plataforma): no hay TenantSecret que consultar,
+  // pero SÍ se consulta la config de plataforma (BD) antes del env legacy.
   if (!businessId) {
+    const idPlat = platformDb ? await getPlatformSecret('GOOGLE_OAUTH_CLIENT_ID', { fallbackEnv: 'GOOGLE_OAUTH_CLIENT_ID' }, platformDb) : null;
+    const secretPlat = platformDb ? await getPlatformSecret('GOOGLE_OAUTH_CLIENT_SECRET', { fallbackEnv: 'GOOGLE_OAUTH_SECRET' }, platformDb) : null;
     return {
-      clientId: process.env.GOOGLE_OAUTH_CLIENT_ID ?? '',
-      clientSecret: process.env.GOOGLE_OAUTH_SECRET ?? '',
+      clientId: idPlat?.value ?? process.env.GOOGLE_OAUTH_CLIENT_ID ?? '',
+      clientSecret: secretPlat?.value ?? process.env.GOOGLE_OAUTH_SECRET ?? '',
     };
   }
 
-  const idRes = await getTenantSecret(businessId, 'GOOGLE_OAUTH_CLIENT_ID', { fallbackEnv: 'GOOGLE_OAUTH_CLIENT_ID' }, secretDb);
-  const secretRes = await getTenantSecret(businessId, 'GOOGLE_OAUTH_CLIENT_SECRET', { fallbackEnv: 'GOOGLE_OAUTH_SECRET' }, secretDb);
+  const idRes = await resolveCred(businessId, 'GOOGLE_OAUTH_CLIENT_ID', 'GOOGLE_OAUTH_CLIENT_ID', secretDb, platformDb);
+  const secretRes = await resolveCred(businessId, 'GOOGLE_OAUTH_CLIENT_SECRET', 'GOOGLE_OAUTH_SECRET', secretDb, platformDb);
 
-  const idFromTenant = idRes?.source === 'tenant';
-  const secretFromTenant = secretRes?.source === 'tenant';
-
-  // Invariante: ambas creds de la MISMA fuente. Una del tenant y la otra del central
-  // (o solo una configurada) → estado inconsistente, nunca se mezcla.
-  if (idFromTenant !== secretFromTenant) {
-    throw new IncompleteTenantOAuthError(businessId, idFromTenant ? 'GOOGLE_OAUTH_CLIENT_SECRET' : 'GOOGLE_OAUTH_CLIENT_ID');
+  // Invariante par-o-nada por nivel: ambas creds del MISMO nivel. Si salen de niveles
+  // distintos (o solo una está configurada), es un estado inconsistente y nunca se mezcla.
+  // El slot "que falta" es el de menor prioridad (el que hay que completar en el nivel alto).
+  const idRank = sourceRank(idRes?.source ?? null);
+  const secretRank = sourceRank(secretRes?.source ?? null);
+  if (idRank !== secretRank) {
+    throw new IncompleteTenantOAuthError(businessId, idRank > secretRank ? 'GOOGLE_OAUTH_CLIENT_SECRET' : 'GOOGLE_OAUTH_CLIENT_ID');
   }
 
   return { clientId: idRes?.value ?? '', clientSecret: secretRes?.value ?? '' };
@@ -109,8 +151,16 @@ export async function googleOAuthConfig(
   service: GoogleService,
   businessId?: string | null,
   secretDb?: TenantSecretDb,
+  platformDb?: PlatformSettingDb,
 ): Promise<GoogleOAuthConfig> {
-  const { clientId, clientSecret } = await resolveClientCreds(businessId, secretDb);
+  const { clientId, clientSecret } = await resolveClientCreds(businessId, secretDb, platformDb);
+  // La redirect URI es SIEMPRE central (no per-tenant): apunta al callback del back
+  // de la plataforma. Se resuelve plataforma (BD) → env legacy — mismo objetivo de
+  // "cero Render" que el par client_id/secret. Sin `platformDb` inyectado → env
+  // directo (regresión idéntica al histórico).
+  const redirectRaw = platformDb
+    ? (await getPlatformSecret('GOOGLE_OAUTH_REDIRECT_URI', { fallbackEnv: 'GOOGLE_OAUTH_REDIRECT_URI' }, platformDb))?.value ?? ''
+    : process.env.GOOGLE_OAUTH_REDIRECT_URI ?? '';
   return {
     authUrl: AUTH_URL,
     tokenUrl: TOKEN_URL,
@@ -118,9 +168,7 @@ export async function googleOAuthConfig(
     tokenInfoUrl: GOOGLE_TOKENINFO_URL,
     clientId,
     clientSecret,
-    // La redirect URI es SIEMPRE la central: apunta al callback del back de la
-    // plataforma, no al del tenant. Solo el client_id/secret son per-tenant.
-    redirectUri: (process.env.GOOGLE_OAUTH_REDIRECT_URI ?? '').replace('{servicio}', service),
+    redirectUri: redirectRaw.replace('{servicio}', service),
     scope: SCOPE_BY_SERVICE[service],
     extraAuthParams: { access_type: 'offline', prompt: 'consent' },
     supportsRefresh: true,

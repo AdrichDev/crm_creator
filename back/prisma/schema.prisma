@@ -1210,3 +1210,25 @@ model TenantSecret {
   @@index([businessId, scope])
   @@map("tenant_secret")
 }
+
+// crm-central-oauth-admin-config: ajustes de PLATAFORMA cifrados (sin negocio).
+// A diferencia de TenantSecret (FK NOT NULL a Business, por-tenant), esta tabla
+// guarda credenciales CENTRALES de la plataforma — hoy la app Google OAuth
+// compartida (GOOGLE_OAUTH_CLIENT_ID/_CLIENT_SECRET/_REDIRECT_URI). Se eligió una
+// tabla propia (Opción B del design §B) en vez de un businessId sentinel en
+// TenantSecret porque `negocio_id` tiene FK NOT NULL con onDelete Cascade: un
+// centinela exigiría una fila Business falsa o soltar la FK — ambas sucias. Clave
+// única, valor cifrado AES-256-GCM con SECRETS_MASTER_KEY (mismo crypto que
+// TenantSecret). RLS sin políticas: secreto, solo el service role de Prisma lo lee.
+model PlatformSetting {
+  id              String   @id @default(cuid())
+  key             String   @unique @map("clave")
+  valueCiphertext String   @map("valor_cifrado") // hex, ciphertext AES-256-GCM
+  iv              String   @map("iv") // hex, 12 bytes
+  authTag         String   @map("auth_tag") // hex, 16 bytes
+  keyVersion      Int      @default(1) @map("clave_version")
+  updatedAt       DateTime @updatedAt @map("actualizado_en")
+  createdAt       DateTime @default(now()) @map("creado_en")
+
+  @@map("platform_setting")
+}

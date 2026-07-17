@@ -9,7 +9,6 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { spawn as nodeSpawn } from 'node:child_process';
 
@@ -69,7 +68,6 @@ export type Emitter = (event: ProgressEvent) => void;
 // Helpers
 // ---------------------------------------------------------------------------
 
-const __dirname_ = path.dirname(fileURLToPath(import.meta.url));
 
 // Carpetas que NUNCA entran en `shared/` (builds y dependencias). `shared/`
 // no pasa por el allowlist de `front/` (design.md §2: "sigue empaquetandose

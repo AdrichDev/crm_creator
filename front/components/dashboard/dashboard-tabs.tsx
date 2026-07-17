@@ -96,7 +96,7 @@ export function DashboardTabs({
           La barra de progreso del exportador se ancla a la derecha y es
           visible en cualquier pestaña mientras haya un job. */}
       <div className="flex items-end" style={{ gap: '2px' }}>
-        {(['dashboard', 'generados', 'historico', 'exportar'] as Tab[]).map((t, i) => {
+        {(['dashboard', 'generados', 'historico', 'exportar'] as Tab[]).map((t) => {
           const active = tab === t;
           return (
             <button
