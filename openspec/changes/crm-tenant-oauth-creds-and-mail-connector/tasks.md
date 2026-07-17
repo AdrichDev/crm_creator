@@ -109,6 +109,15 @@ Fase 1 (OAuth per-tenant) → Fase 2 (IMAP/SMTP). Continuo. Tests con **node:tes
 - [x] **T3.3 — sec-review** (2026-07-17): VERDICT **PASS — seguro para commit**. 63/0 tests + tsc 0. Sin ruta de leak: BACKEND_SECRET sin envVarName excluidos del export a nivel query; AES-256-GCM en reposo; IncompleteTenantOAuthError (no tenant+central mix); IMAP con timeout duro+TLS; secretos nunca en logs/URL/reveal-detail. Report en `sec-review.md`. Warnings no bloqueantes: W1 `/reveal` plaintext sin rate-limit (pre-existente, admin-gated); W2 socket imapflow en connect-timeout (mitigado por finally logout).
   PENDIENTE — no se ejecutó en este segmento porque el contrato de la tarea
   prohíbe commitear; queda como gate HITL antes de mergear.
+  - [x] **W1 (2026-07-17): ATENDIDO.** `/reveal` ahora rate-limitado 5/min por
+    `businessId:name` (bucket `secret-reveal`), mismo patrón `consume()` que `/test`,
+    aplicado tras el gate ADMIN/MANAGER (`tenant-keys.ts` `revealSecretHandler`).
+    Tests: 5 pasan / 6º → 429; no-miembro no consume cupo (`tenant-keys.route.test.ts`).
+  - [x] **W2 (2026-07-17): ATENDIDO.** `readTenantInbox`/`testMailConnection` fuerzan
+    `client.close()` (cierre duro síncrono del socket imapflow) en el catch de error/
+    timeout, además del `logout()` best-effort — un connect-timeout ya no puede filtrar
+    un socket colgado (`mail-connector.ts`; `MinimalImapClient.close()`). Tests: connect
+    que nunca resuelve → `close()` llamado + retorna sin colgarse (`crm-tenant-mail-connector.test.ts`).
 - [x] **T3.4 — Persistir en Engram.** Guardadas decisiones de Fase 2 (cadena de
   fallback de correo, precedente `KNOWN_PRESET_NAMES`, JSON-encoding del
   endpoint de test de un solo valor) vía `mem_save`/`mem_session_summary`.

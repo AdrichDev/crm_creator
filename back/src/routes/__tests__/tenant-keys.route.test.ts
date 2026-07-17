@@ -335,6 +335,34 @@ describe('GET /tenant-keys/:businessId/secrets/:name/reveal', () => {
     await revealSecretHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_B, name: 'OPENAI_API_KEY' } }), res);
     assert.notEqual(res.statusCode, 200);
   });
+
+  test('rate limit: 5 reveal dentro de la ventana pasan, el 6º → 429 (bucket por businessId:name)', async () => {
+    const db = fakeDb({ secrets: [seedEncrypted(BIZ_A, 'GOOGLE_OAUTH_CLIENT_SECRET', 'BACKEND_SECRET', 'gocspx-real')] });
+    for (let i = 0; i < 5; i++) {
+      const res = mockRes();
+      await revealSecretHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_A, name: 'GOOGLE_OAUTH_CLIENT_SECRET' } }), res);
+      assert.equal(res.statusCode, 200, `reveal ${i + 1} debe pasar`);
+      assert.equal((res.body as { value: string }).value, 'gocspx-real');
+    }
+    const sixth = mockRes();
+    await revealSecretHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_A, name: 'GOOGLE_OAUTH_CLIENT_SECRET' } }), sixth);
+    assert.equal(sixth.statusCode, 429, 'el 6º reveal debe ser 429');
+    assert.equal((sixth.body as { error: { code: string } }).error.code, 'rate_limited');
+    // El 429 corta ANTES de devolver el plaintext: el value descifrado nunca sale en la respuesta.
+    assert.ok(!JSON.stringify(sixth.body).includes('gocspx-real'));
+  });
+
+  test('rate limit NO cuenta para un no-miembro (gate antes del contador)', async () => {
+    const db = fakeDb({ secrets: [seedEncrypted(BIZ_A, 'MAIL_APP_PASSWORD', 'BACKEND_SECRET', 'app-pass-real')] });
+    for (let i = 0; i < 5; i++) {
+      const res = mockRes();
+      await revealSecretHandler(db, mockReq({ userId: 'user-sin-membership', params: { businessId: BIZ_A, name: 'MAIL_APP_PASSWORD' } }), res);
+      assert.equal(res.statusCode, 404, 'no-miembro → 404 por el gate, sin tocar el bucket');
+    }
+    const ok = mockRes();
+    await revealSecretHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_A, name: 'MAIL_APP_PASSWORD' } }), ok);
+    assert.equal(ok.statusCode, 200, 'el miembro legítimo conserva sus intentos');
+  });
 });
 
 describe('DELETE /tenant-keys/:businessId/secrets/:name', () => {

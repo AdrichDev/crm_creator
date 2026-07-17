@@ -98,6 +98,10 @@ export interface MinimalImapClient {
   ): AsyncIterable<{ uid: number; envelope?: { subject?: string; from?: Array<{ address?: string }>; date?: Date }; source?: Buffer }>;
   readonly mailbox: { exists: number } | false;
   logout(): Promise<void>;
+  /** Cierre duro y síncrono del socket subyacente (imapflow `close()`): destruye la
+   * conexión sin negociar con el servidor. Seguro de llamar aunque el connect nunca
+   * completara — es el escape para que un timeout de conexión no filtre un socket colgado. */
+  close(): void;
 }
 
 interface SmtpConnectOptions {
@@ -228,6 +232,12 @@ export async function readTenantInbox(
     } finally {
       lock.release();
     }
+  } catch (err) {
+    // Cierre DURO ante cualquier fallo (incluido un timeout de connect): el `logout()`
+    // del finally es un no-op si el handshake nunca completó y podría dejar el socket
+    // colgado. `close()` destruye el socket sincrónicamente para no filtrar la conexión.
+    client.close();
+    throw err;
   } finally {
     // Cierre best-effort con SU PROPIO timeout: nunca deja la función colgada esperando
     // un logout que el servidor no confirma.
@@ -264,17 +274,21 @@ export async function testMailConnection(
 
   let imapOk = false;
   if (cfg.imapHost) {
+    let imapClient: MinimalImapClient | undefined;
     try {
-      const client = deps.createImapClient({
+      imapClient = deps.createImapClient({
         host: cfg.imapHost,
         port: cfg.imapPort ?? DEFAULT_IMAP_PORT,
         secure: true,
         auth: { user: cfg.address, pass: cfg.appPassword },
       });
-      await withTimeout(client.connect(), timeoutMs, 'IMAP login');
+      await withTimeout(imapClient.connect(), timeoutMs, 'IMAP login');
       imapOk = true;
-      await withTimeout(client.logout(), LOGOUT_TIMEOUT_MS, 'cierre IMAP').catch(() => undefined);
+      await withTimeout(imapClient.logout(), LOGOUT_TIMEOUT_MS, 'cierre IMAP').catch(() => undefined);
     } catch {
+      // Cierre DURO: un connect fallido/timeout puede dejar el socket sin cerrar y
+      // `logout()` no serviría — destruimos el socket para no filtrar la conexión.
+      imapClient?.close();
       details.push('IMAP: no se pudo conectar (host/puerto/credenciales)');
     }
   } else {

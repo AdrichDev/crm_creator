@@ -195,6 +195,7 @@ describe('T2.2 — readTenantInbox', () => {
         }
       },
       logout: async () => {},
+      close: () => {},
     };
   }
 
@@ -240,11 +241,33 @@ describe('T2.2 — readTenantInbox', () => {
         mailbox: false,
         async *fetch() {},
         logout: async () => {},
+        close: () => {},
       }),
     };
     const start = Date.now();
     await assert.rejects(() => readTenantInbox('biz-1', { timeoutMs: 200 }, deps), /timeout/);
     assert.ok(Date.now() - start < 2000, 'debe rechazar en el timeout configurado, no colgarse');
+  });
+
+  test('timeout de connect → close() fuerza el cierre del socket colgado (no lo deja filtrado)', async () => {
+    let closeCalls = 0;
+    let logoutCalls = 0;
+    const deps: MailConnectorDeps = {
+      resolveConfig: async () => ({ address: 'a@b.com', appPassword: 'x', imapHost: 'imap.b.com', imapPort: 993, smtpHost: null, smtpPort: 465 }),
+      createTransport: () => { throw new Error('no debería usarse'); },
+      createImapClient: () => ({
+        connect: () => new Promise(() => { /* nunca resuelve */ }),
+        getMailboxLock: async (path) => ({ path, release: () => {} }),
+        mailbox: false,
+        async *fetch() {},
+        logout: async () => { logoutCalls += 1; },
+        close: () => { closeCalls += 1; },
+      }),
+    };
+    await assert.rejects(() => readTenantInbox('biz-1', { timeoutMs: 200 }, deps), /timeout/);
+    assert.equal(closeCalls, 1, 'un timeout de connect debe cerrar el socket con close()');
+    // logout() sigue siendo best-effort en el finally; lo importante es que close() se llamó.
+    assert.equal(logoutCalls, 1, 'el logout best-effort del finally sigue ejecutándose');
   });
 });
 
@@ -259,6 +282,7 @@ describe('T2.2 — testMailConnection', () => {
         mailbox: false,
         async *fetch() {},
         logout: async () => {},
+        close: () => {},
       }),
     };
     const result = await testMailConnection(
@@ -278,6 +302,7 @@ describe('T2.2 — testMailConnection', () => {
         mailbox: false,
         async *fetch() {},
         logout: async () => {},
+        close: () => {},
       }),
     };
     const result = await testMailConnection(
@@ -287,6 +312,30 @@ describe('T2.2 — testMailConnection', () => {
     assert.equal(result.imap, false);
     assert.equal(result.smtp, true);
     assert.ok(result.detail && !result.detail.includes('x'), 'detail no debe filtrar la contraseña probada');
+  });
+
+  test('connect que nunca resuelve → close() se llama y devuelve { imap:false } sin colgarse', async () => {
+    let closeCalls = 0;
+    const deps: MailConnectorDeps = {
+      resolveConfig: async () => null,
+      createTransport: () => ({ sendMail: async () => ({}), verify: async () => true }),
+      createImapClient: () => ({
+        connect: () => new Promise(() => { /* nunca resuelve — simula servidor colgado */ }),
+        getMailboxLock: async (path) => ({ path, release: () => {} }),
+        mailbox: false,
+        async *fetch() {},
+        logout: async () => {},
+        close: () => { closeCalls += 1; },
+      }),
+    };
+    const start = Date.now();
+    const result = await testMailConnection(
+      { address: 'a@b.com', appPassword: 'x', imapHost: 'imap.b.com', imapPort: 993, smtpHost: 'smtp.b.com', smtpPort: 465 },
+      deps,
+    );
+    assert.equal(result.imap, false, 'un connect colgado se resume como IMAP no verificado');
+    assert.equal(closeCalls, 1, 'el timeout de connect debe cerrar el socket con close()');
+    assert.ok(Date.now() - start < 12_000, 'no debe colgarse: corta en el timeout de prueba');
   });
 
   test('sin hosts → ambos false, detail no vacío', async () => {
