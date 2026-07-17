@@ -9,7 +9,6 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { spawn as nodeSpawn } from 'node:child_process';
 import { applyExportCompat as defaultApplyExportCompat } from '../export-compat.js';
@@ -46,7 +45,6 @@ type ArchiverFactory = (
 ) => Archiver;
 const archiver = require('archiver') as ArchiverFactory;
 
-const __dirname_ = path.dirname(fileURLToPath(import.meta.url));
 
 // shared/ no pasa por el allowlist de front/ (design.md §2, "sin cambios");
 // createTempCopy ya la copia sin node_modules/.next/out, segunda barrera.

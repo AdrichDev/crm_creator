@@ -165,7 +165,6 @@ export function TenantConfigProvider({ children }: { children: ReactNode }) {
   // Modo generador (sin API) o App Exportada (GENERATED_TENANT).
   useEffect(() => {
     if (apiMode && !GENERATED_TENANT) return;
-    let alive = true;
     try {
       const p = localStorage.getItem(PROJECTS_KEY);
       if (p && !GENERATED_TENANT) {

@@ -15,7 +15,6 @@ import { supabaseAdmin } from './auth.js';
 
 const require = createRequire(import.meta.url);
 type Archiver = import('archiver').Archiver;
-type EntryData = import('archiver').EntryData;
 type ArchiverFactory = (
   format: 'zip' | 'tar',
   options?: { zlib?: { level?: number } },

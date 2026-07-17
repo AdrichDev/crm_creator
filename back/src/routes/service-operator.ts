@@ -6,6 +6,7 @@ import { splitNombre, joinNombre } from '../lib/nombre.js';
 import { buildTenantKeysOperatorRouter, type TenantKeysOperatorDb } from './service-operator-tenant-keys.js';
 import { buildLifecycleOperatorRouter, type LifecycleOperatorDb } from './service-operator-lifecycle.js';
 import { buildPurgeOperatorRouter, type PurgeDb } from './service-operator-purge.js';
+import { buildPlatformOAuthRouter } from './platform-oauth.js';
 import {
   createProjectService,
   mirrorColumns,
@@ -754,3 +755,9 @@ const purgeOperatorDb: PurgeDb = {
   $transaction: (fn) => prisma.$transaction((tx) => fn(tx), { timeout: 60_000, maxWait: 10_000 }),
 };
 serviceOperatorRouter.use(buildPurgeOperatorRouter(purgeOperatorDb));
+
+// crm-central-oauth-admin-config: config de la app Google OAuth CENTRAL (plataforma).
+// GET/PUT/POST-test /platform/oauth-config, en el carril de operador (requireOperatorToken)
+// — un admin de tenant NO la alcanza. Sin `db` explícito usa el Prisma real (cast: el
+// delegate platformSetting solo existe tras `prisma generate`; ver platform-secrets/store.ts).
+serviceOperatorRouter.use(buildPlatformOAuthRouter());

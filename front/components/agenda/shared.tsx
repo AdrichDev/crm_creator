@@ -1,5 +1,4 @@
 'use client';
-import type { ReactNode } from 'react';
 import type { SectorFieldsDef } from '@/lib/config/citas-sector-fields';
 import type { Tone } from '@/components/ui/primitives';
 import { DOW_FULL } from '@/lib/config/constants';
