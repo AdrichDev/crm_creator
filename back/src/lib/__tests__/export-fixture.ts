@@ -43,6 +43,11 @@ const CORE_ENTRIES: Record<string, string> = {
   'tsconfig.json': '{}',
   'tailwind.config.ts': '// tailwind',
   'postcss.config.mjs': '// postcss',
+  // `.npmrc` (legacy-peer-deps=true): archivo de config intencional presente en
+  // las 4 allowlists (crm-export-legacy-peer-deps). NO es cruft: viaja SIEMPRE
+  // al artefacto para que `npm install` no rompa por el conflicto React 19 <->
+  // @emoji-mart/react. Solo contiene config npm, nunca credenciales/_authToken.
+  '.npmrc': 'legacy-peer-deps=true',
 };
 
 /** Wrappers nativos de plataforma ajena (android/apk vs electron/exe). */
@@ -64,7 +69,6 @@ export const CRUFT_ENTRIES: Record<string, string> = {
   'playwright.config.ts': '// pw',
   'eslint.config.mjs': '// eslint',
   '.gitignore': 'node_modules',
-  '.npmrc': 'engine-strict=true',
   'tsconfig.tsbuildinfo': '{}',
 };
 

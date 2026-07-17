@@ -25,7 +25,7 @@ vi.mock('@/components/ui/dialog-provider', () => ({
   useDialog: () => ({ confirm: confirmMock }),
 }));
 
-import { TenantKeysPanel } from '@/components/config/tenant-keys-panel';
+import { TenantKeysPanel, suggestMailHosts } from '@/components/config/tenant-keys-panel';
 import { KNOWN_PRESET_NAMES } from '@/lib/api/tenant-keys';
 
 async function flush() { await act(async () => { await Promise.resolve(); await Promise.resolve(); }); }
@@ -34,6 +34,43 @@ describe('KNOWN_PRESET_NAMES [crm-onboarding-db-keys-export-connect T5]', () => 
   it('incluye los 2 slots Supabase', () => {
     expect(KNOWN_PRESET_NAMES).toContain('NEXT_PUBLIC_SUPABASE_URL');
     expect(KNOWN_PRESET_NAMES).toContain('NEXT_PUBLIC_SUPABASE_ANON_KEY');
+  });
+});
+
+describe('suggestMailHosts [crm-tenant-oauth-creds-and-mail-connector T2.4]', () => {
+  it('Gmail/Outlook/Hotmail/Live → null (van por OAuth, no IMAP/SMTP)', () => {
+    expect(suggestMailHosts('user@gmail.com')).toBeNull();
+    expect(suggestMailHosts('user@googlemail.com')).toBeNull();
+    expect(suggestMailHosts('user@outlook.com')).toBeNull();
+    expect(suggestMailHosts('user@hotmail.com')).toBeNull();
+    expect(suggestMailHosts('user@live.com')).toBeNull();
+  });
+
+  it('dominio Hostinger conocido → host/puerto exactos', () => {
+    expect(suggestMailHosts('negocio@hostinger.com')).toEqual({
+      providerLabel: 'Hostinger', imapHost: 'imap.hostinger.com', imapPort: 993, smtpHost: 'smtp.hostinger.com', smtpPort: 465,
+    });
+  });
+
+  it('dominio Zoho e IONOS conocidos → host/puerto exactos', () => {
+    expect(suggestMailHosts('negocio@zoho.com')).toEqual({
+      providerLabel: 'Zoho Mail', imapHost: 'imap.zoho.com', imapPort: 993, smtpHost: 'smtp.zoho.com', smtpPort: 465,
+    });
+    expect(suggestMailHosts('negocio@ionos.es')).toEqual({
+      providerLabel: 'IONOS', imapHost: 'imap.ionos.com', imapPort: 993, smtpHost: 'smtp.ionos.com', smtpPort: 465,
+    });
+  });
+
+  it('dominio propio no reconocido → fallback genérico mail.<dominio> (patrón cPanel)', () => {
+    expect(suggestMailHosts('negocio@midominio.com')).toEqual({
+      providerLabel: 'cPanel / genérico', imapHost: 'mail.midominio.com', imapPort: 993, smtpHost: 'mail.midominio.com', smtpPort: 465,
+    });
+  });
+
+  it('email inválido (sin @ o sin dominio con punto) → null', () => {
+    expect(suggestMailHosts('no-es-un-email')).toBeNull();
+    expect(suggestMailHosts('user@localhost')).toBeNull();
+    expect(suggestMailHosts('user@')).toBeNull();
   });
 });
 

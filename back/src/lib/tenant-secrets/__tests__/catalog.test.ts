@@ -6,8 +6,8 @@ import assert from 'node:assert/strict';
 import { TENANT_SECRET_CATALOG, findSecretSlot, ENV_KEY_NAME_PATTERN, inferScope } from '../catalog.js';
 
 describe('TENANT_SECRET_CATALOG', () => {
-  test('tiene exactamente los 7 slots con scope/envVarName/provider exactos', () => {
-    assert.equal(TENANT_SECRET_CATALOG.length, 7);
+  test('tiene exactamente los 15 slots con scope/envVarName/provider exactos', () => {
+    assert.equal(TENANT_SECRET_CATALOG.length, 15);
 
     const byName = new Map(TENANT_SECRET_CATALOG.map((s) => [s.name, s]));
 
@@ -35,6 +35,23 @@ describe('TENANT_SECRET_CATALOG', () => {
       name: 'NEXT_PUBLIC_SUPABASE_ANON_KEY', label: 'Supabase anon key', scope: 'FRONTEND_PUBLIC', provider: 'supabase_anon',
       envVarName: 'NEXT_PUBLIC_SUPABASE_ANON_KEY', group: 'database',
     });
+    // crm-tenant-oauth-creds: BACKEND_SECRET y SIN envVarName → nunca horneados al export.
+    assert.deepEqual(byName.get('GOOGLE_OAUTH_CLIENT_ID'), {
+      name: 'GOOGLE_OAUTH_CLIENT_ID', label: 'Google OAuth Client ID', scope: 'BACKEND_SECRET', provider: 'google', group: 'google',
+    });
+    assert.deepEqual(byName.get('GOOGLE_OAUTH_CLIENT_SECRET'), {
+      name: 'GOOGLE_OAUTH_CLIENT_SECRET', label: 'Google OAuth Client Secret', scope: 'BACKEND_SECRET', provider: 'google', group: 'google',
+    });
+    // crm-tenant-oauth-creds-and-mail-connector (Fase 2): los 6 slots del conector
+    // IMAP/SMTP, BACKEND_SECRET y SIN envVarName → nunca horneados al export.
+    for (const name of ['MAIL_ADDRESS', 'MAIL_APP_PASSWORD', 'IMAP_HOST', 'IMAP_PORT', 'SMTP_HOST', 'SMTP_PORT'] as const) {
+      const slot = byName.get(name);
+      assert.ok(slot, `${name} debe existir en el catálogo`);
+      assert.equal(slot?.scope, 'BACKEND_SECRET');
+      assert.equal(slot?.provider, 'mail');
+      assert.equal(slot?.group, 'mail');
+      assert.equal(slot?.envVarName, undefined, `${name} sin envVarName → nunca horneable`);
+    }
   });
 
   test('findSecretSlot de los slots Supabase devuelve scope FRONTEND_PUBLIC, group database y envVarName == name', () => {

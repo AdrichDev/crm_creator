@@ -10,6 +10,7 @@ import {
 import { sendGmailMessage, ProviderError } from './integrations/gmail.js';
 import type { GmailMessage, GmailSendResult } from './integrations/gmail.js';
 import { ReauthRequiredError } from './integrations/oauth.js';
+import { sendViaTenantSmtp as defaultSendViaTenantSmtp, MailNotConfiguredError } from './mail-connector.js';
 
 // ---------------------------------------------------------------------------
 // Puerto de notificación de citas con fallback.
@@ -44,6 +45,15 @@ export interface NotifyDeps {
    * cuando n8n está activo, la mensajería la enruta n8n (no se duplica el email).
    */
   sendViaGmail?: (businessId: string, msg: GmailMessage) => Promise<GmailSendResult>;
+  /**
+   * Envío por el SMTP propio del tenant (crm-tenant-oauth-creds-and-mail-connector,
+   * Fase 2). Opcional: si falta (tests que no ejercen el conector), se omite y se usa
+   * SMTP central, preservando el comportamiento previo. Orden de la cadena en la vía
+   * SMTP directa (webhook vacío): Gmail OAuth → SMTP tenant → SMTP central. Lanza
+   * `MailNotConfiguredError` si el tenant no configuró correo propio (equivalente al
+   * 'missing' de Gmail: cae al siguiente eslabón sin ruido de telemetría).
+   */
+  sendViaTenantMail?: (businessId: string, msg: GmailMessage) => Promise<void>;
 }
 
 function defaultDeps(): NotifyDeps {
@@ -52,6 +62,7 @@ function defaultDeps(): NotifyDeps {
     emit: defaultEmit,
     sendEmail: defaultSendEmail,
     sendViaGmail: sendGmailMessage,
+    sendViaTenantMail: defaultSendViaTenantSmtp,
   };
 }
 
@@ -72,19 +83,35 @@ async function reportGmailFailure(deps: NotifyDeps, businessId: string, err: unk
 }
 
 /**
- * Vía de email directo (webhook vacío): prefiere el Gmail conectado del negocio y cae
- * a SMTP si no está conectado ('missing'), si requiere reconexión (ReauthRequiredError)
- * o si el proveedor falla (ProviderError). NUNCA lanza — la telemetría y SMTP absorben.
+ * Vía de email directo (webhook vacío): Gmail OAuth → SMTP del tenant
+ * (crm-tenant-oauth-creds-and-mail-connector, Fase 2) → SMTP central. Cae al
+ * siguiente eslabón si Gmail no está conectado ('missing'), requiere reconexión
+ * (ReauthRequiredError), el proveedor falla (ProviderError), o el tenant no
+ * configuró correo propio (`MailNotConfiguredError`). NUNCA lanza — la telemetría
+ * y el SMTP central absorben cualquier fallo.
  */
 async function deliverDirectEmail(deps: NotifyDeps, businessId: string, msg: GmailMessage): Promise<boolean> {
   if (deps.sendViaGmail) {
     try {
       const result = await deps.sendViaGmail(businessId, msg);
       if (result === 'sent') return true;
-      // 'missing' → el negocio no conectó Gmail: cae a SMTP sin ruido de telemetría.
+      // 'missing' → el negocio no conectó Gmail: cae al siguiente eslabón sin ruido.
     } catch (err) {
       await reportGmailFailure(deps, businessId, err);
-      // fall-through a SMTP.
+      // fall-through al SMTP del tenant.
+    }
+  }
+  if (deps.sendViaTenantMail) {
+    try {
+      await deps.sendViaTenantMail(businessId, msg);
+      return true;
+    } catch (err) {
+      if (!(err instanceof MailNotConfiguredError)) {
+        // Solo se loguea si el tenant SÍ configuró correo propio pero el envío falló
+        // (red/credenciales) — sin config es la vía normal hacia SMTP central.
+        console.warn(`[notify] SMTP del tenant no disponible, fallback a central (business=${businessId}): ${(err as Error).name}`);
+      }
+      // fall-through a SMTP central.
     }
   }
   return deps.sendEmail(msg);

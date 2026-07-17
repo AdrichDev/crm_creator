@@ -15,6 +15,7 @@
 // el módulo `pg` desde fuera no es viable sin ese flag.
 
 import { Pool } from 'pg';
+import { testMailConnection, type MailTestConfig, type MailTestResult } from '../mail-connector.js';
 
 export type SecretProvider =
   | 'openai'
@@ -23,7 +24,18 @@ export type SecretProvider =
   | 'maps'
   | 'database'
   | 'supabase_url'
-  | 'supabase_anon';
+  | 'supabase_anon'
+  | 'google'
+  | 'mail';
+
+// crm-tenant-oauth-creds: patrones de las credenciales OAuth de Google. El "Probar" de
+// estos slots es solo validación de FORMATO local (sin red): el mismo provider ('google')
+// cubre dos slots (client_id y client_secret), así que se acepta cualquiera de las dos
+// formas. NUNCA se interpola el `value` en el `detail`.
+//   - client_id: `<n>-<hash>.apps.googleusercontent.com`.
+//   - client_secret: `GOCSPX-<token>` (formato actual) o token opaco largo (legacy).
+const GOOGLE_CLIENT_ID_PATTERN = /^[0-9]+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/;
+const GOOGLE_CLIENT_SECRET_PATTERN = /^(GOCSPX-[A-Za-z0-9_-]{10,}|[A-Za-z0-9_-]{20,})$/;
 
 export interface ProviderTestResult {
   ok: boolean;
@@ -40,10 +52,17 @@ export interface OneShotPool {
 export interface ProviderTestDeps {
   fetchImpl: typeof fetch;
   createPool: (connectionString: string, timeoutMs: number) => OneShotPool;
+  /**
+   * crm-tenant-oauth-creds-and-mail-connector (Fase 2): IMAP+SMTP del conector de
+   * correo. Opcional — dobles de test para otros providers (openai/gemini/…) no lo
+   * declaran; por defecto usa el `testMailConnection` real.
+   */
+  testMail?: (cfg: MailTestConfig) => Promise<MailTestResult>;
 }
 
 const defaultDeps: ProviderTestDeps = {
   fetchImpl: (...args) => fetch(...args),
+  testMail: (cfg) => testMailConnection(cfg),
   createPool: (connectionString, timeoutMs) => {
     // Postgres gestionado (Supabase, Neon, RDS…) EXIGE SSL. `pg` no lo activa por defecto,
     // así que un `SELECT 1` contra el pooler de Supabase fallaba aunque la URL fuese
@@ -172,6 +191,29 @@ export async function testProviderConnection(
         return /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\./.test(value)
           ? { ok: true }
           : { ok: false, detail: 'anon key con formato inválido' };
+      case 'google':
+        // client_id/client_secret de OAuth: sin un intercambio real (que requeriría un
+        // code de consentimiento) solo se valida el FORMATO local, sin red. El value
+        // NUNCA se interpola en `detail`.
+        return GOOGLE_CLIENT_ID_PATTERN.test(value) || GOOGLE_CLIENT_SECRET_PATTERN.test(value)
+          ? { ok: true }
+          : { ok: false, detail: 'formato de credencial de Google inválido' };
+      case 'mail': {
+        // crm-tenant-oauth-creds-and-mail-connector (Fase 2): `value` viene JSON-codificado
+        // desde el panel con los 6 campos del conector (dirección, contraseña, hosts/puertos
+        // de IMAP y SMTP) — el endpoint de test solo admite un `value` por-slot, así que el
+        // front serializa la config completa. `testMailConnection` YA tiene su propio timeout
+        // duro interno (mail-connector.ts), no se envuelve en `testWithTimeout`. El valor
+        // (contraseña incluida) nunca se interpola en `detail`.
+        let cfg: MailTestConfig;
+        try {
+          cfg = JSON.parse(value) as MailTestConfig;
+        } catch {
+          return { ok: false, detail: 'configuración de correo con formato inválido' };
+        }
+        const result = await (deps.testMail ?? testMailConnection)(cfg);
+        return { ok: result.imap && result.smtp, ...(result.detail ? { detail: result.detail } : {}) };
+      }
     }
   } catch {
     // AbortError (timeout) o fallo de red/conexión: nunca se interpola `value` ni el error crudo.

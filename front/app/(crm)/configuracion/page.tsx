@@ -231,9 +231,11 @@ export default function ConfiguracionPage() {
         <Card><CardBody className="space-y-4">
           <p className="text-sm text-[var(--panel-muted)]">
             Gestiona las claves de tus proveedores de IA (OpenAI, Gemini, Anthropic), tu clave de
-            Google Maps y la URL de tu base de datos. Los valores no se muestran una vez guardados.
+            Google Maps, la URL de tu base de datos, opcionalmente tu propio proyecto de Google
+            (OAuth) para Calendar y, si tu correo NO es Gmail/Outlook, tu conector IMAP/SMTP
+            (Hostinger, Zoho, cPanel, IONOS, GoDaddy…). Los valores no se muestran una vez guardados.
           </p>
-          <TenantKeysPanel businessId={activeBusinessId} />
+          <TenantKeysPanel businessId={activeBusinessId} groups={['ai', 'maps', 'database', 'google', 'mail']} />
         </CardBody></Card>
       )}
 

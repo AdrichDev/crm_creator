@@ -18,6 +18,7 @@ import {
   requiredScope,
   type GoogleService,
 } from './providers/google.js';
+import type { TenantSecretDb } from '../tenant-secrets/store.js';
 import { randomBytes } from 'node:crypto';
 
 export type Servicio = 'gmail' | 'whatsapp' | 'calendar';
@@ -119,6 +120,11 @@ export interface OAuthDeps {
   updateCredential(id: string, data: CredentialUpdate): Promise<void>;
   createCredential(data: CredentialCreate): Promise<void>;
   fetch: typeof fetch;
+  // crm-tenant-oauth-creds: lectura de TenantSecret para resolver client_id/secret
+  // per-tenant en `googleOAuthConfig`. Opcional: si se omite, la resolución usa el
+  // Prisma real (default de `getTenantSecret`); los tests inyectan un doble para no
+  // tocar la BD. Sin creds propias del tenant → cae al env central (regresión cero).
+  secretDb?: TenantSecretDb;
 }
 
 // findUnique sobre el compuesto [businessId, servicio] no maneja businessId null
@@ -140,6 +146,7 @@ export function defaultDeps(): OAuthDeps {
       await prisma.oAuthCredential.create({ data });
     },
     fetch: (...args) => fetch(...args),
+    secretDb: prisma,
   };
 }
 
@@ -180,7 +187,7 @@ export async function getValidToken(
     credential.expiresAt !== null &&
     credential.expiresAt.getTime() < Date.now() + 60_000;
 
-  const cfg = googleOAuthConfig(gservice);
+  const cfg = await googleOAuthConfig(gservice, businessId, deps.secretDb);
   const shouldRefresh = isExpired && cfg.supportsRefresh && !!credential.refreshToken;
   if (!shouldRefresh) return plainAccess;
 
@@ -201,7 +208,7 @@ async function doRefresh(
   credential: CredentialRow,
   deps: OAuthDeps,
 ): Promise<string> {
-  const cfg = googleOAuthConfig(asGoogleService(servicio));
+  const cfg = await googleOAuthConfig(asGoogleService(servicio), businessId, deps.secretDb);
   const plainRefresh = decryptToken(credential.refreshToken!);
 
   try {
@@ -273,9 +280,15 @@ export function takeOAuthState(nonce: string, now = Date.now()): StateEntry | nu
   return entry;
 }
 
-/** Genera la URL OAuth de Google con nonce anti-CSRF y el scope mínimo del servicio. */
-export function authorizationUrl(servicio: Servicio, businessId: string | null, returnTo: string | null = null): string {
-  const cfg = googleOAuthConfig(asGoogleService(servicio));
+/** Genera la URL OAuth de Google con nonce anti-CSRF y el scope mínimo del servicio.
+ *  Resuelve las creds POR NEGOCIO (`businessId`); `deps` inyectable para tests. */
+export async function authorizationUrl(
+  servicio: Servicio,
+  businessId: string | null,
+  returnTo: string | null = null,
+  deps: OAuthDeps = defaultDeps(),
+): Promise<string> {
+  const cfg = await googleOAuthConfig(asGoogleService(servicio), businessId, deps.secretDb);
   if (!cfg.clientId || !cfg.clientSecret || !cfg.redirectUri) {
     throw new Error('Faltan credenciales OAuth de Google en back/.env (GOOGLE_OAUTH_CLIENT_ID/SECRET/REDIRECT_URI)');
   }
@@ -305,7 +318,7 @@ export async function handleCallback(
   deps: OAuthDeps = defaultDeps(),
 ): Promise<void> {
   const gservice = asGoogleService(servicio);
-  const cfg = googleOAuthConfig(gservice);
+  const cfg = await googleOAuthConfig(gservice, businessId, deps.secretDb);
 
   // Fail-fast si la clave de cifrado no está disponible (no persistir en claro).
   encryptToken('key-check');
@@ -409,7 +422,7 @@ export async function disconnectIntegration(
 
   if (servicio === 'gmail' || servicio === 'calendar') {
     try {
-      const cfg = googleOAuthConfig(servicio);
+      const cfg = await googleOAuthConfig(servicio, businessId, deps.secretDb);
       const token = decryptToken(credential.accessToken);
       await deps.fetch(`${cfg.revokeUrl}?token=${encodeURIComponent(token)}`, { method: 'POST' });
     } catch {

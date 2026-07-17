@@ -16,10 +16,22 @@ import {
   ReauthRequiredError, ScopeInsufficientError, IntegrationMissingError,
 } from '../integrations/oauth.js';
 import type { OAuthDeps, CredentialRow, CredentialUpdate, CredentialCreate } from '../integrations/oauth.js';
+import type { TenantSecretDb } from '../tenant-secrets/store.js';
 
 process.env.CRM_OAUTH_ENCRYPTION_KEY ??= randomBytes(32).toString('hex');
 
 const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
+
+// crm-tenant-oauth-creds: doble de lectura de TenantSecret. Vacío por defecto → ningún
+// secreto de tenant → `googleOAuthConfig` cae al env central (regresión: idéntico a hoy).
+function fakeSecretDb(): TenantSecretDb {
+  return {
+    tenantSecret: {
+      findUnique: async () => null,
+      findMany: async () => [],
+    },
+  };
+}
 
 // ── Fake repo + fetch en memoria ─────────────────────────────────────────────
 interface Stored extends CredentialRow {
@@ -52,6 +64,7 @@ function makeDeps(seed: Stored | null, fetchStub: FetchStub) {
       fetchCalls.push(String(url));
       return fetchStub(url, init);
     }) as unknown as OAuthDeps['fetch'],
+    secretDb: fakeSecretDb(),
   };
   return Object.assign(deps, { store, fetchCalls });
 }
@@ -235,14 +248,16 @@ describe('authorizationUrl — placeholder {servicio} en GOOGLE_OAUTH_REDIRECT_U
   const ENV_KEYS = ['GOOGLE_OAUTH_CLIENT_ID', 'GOOGLE_OAUTH_SECRET', 'GOOGLE_OAUTH_REDIRECT_URI'] as const;
   const saved: Record<string, string | undefined> = {};
 
-  test('resuelve una redirect URI distinta por servicio', () => {
+  test('resuelve una redirect URI distinta por servicio', async () => {
     for (const k of ENV_KEYS) saved[k] = process.env[k];
     process.env.GOOGLE_OAUTH_CLIENT_ID = 'client-id';
     process.env.GOOGLE_OAUTH_SECRET = 'client-secret';
     process.env.GOOGLE_OAUTH_REDIRECT_URI = 'https://crm.test/api/integrations/{servicio}/callback';
+    // secretDb vacío → creds del env central (el tenant no trae proyecto propio).
+    const deps = makeDeps(null, () => jsonRes(200, {}));
     try {
-      const gmailUrl = new URL(authorizationUrl('gmail', 'biz-1'));
-      const calendarUrl = new URL(authorizationUrl('calendar', 'biz-1'));
+      const gmailUrl = new URL(await authorizationUrl('gmail', 'biz-1', null, deps));
+      const calendarUrl = new URL(await authorizationUrl('calendar', 'biz-1', null, deps));
       assert.equal(gmailUrl.searchParams.get('redirect_uri'), 'https://crm.test/api/integrations/gmail/callback');
       assert.equal(calendarUrl.searchParams.get('redirect_uri'), 'https://crm.test/api/integrations/calendar/callback');
     } finally {
@@ -253,13 +268,14 @@ describe('authorizationUrl — placeholder {servicio} en GOOGLE_OAUTH_REDIRECT_U
     }
   });
 
-  test('sin placeholder → valor tal cual (retrocompatible)', () => {
+  test('sin placeholder → valor tal cual (retrocompatible)', async () => {
     for (const k of ENV_KEYS) saved[k] = process.env[k];
     process.env.GOOGLE_OAUTH_CLIENT_ID = 'client-id';
     process.env.GOOGLE_OAUTH_SECRET = 'client-secret';
     process.env.GOOGLE_OAUTH_REDIRECT_URI = 'https://crm.test/api/integrations/calendar/callback';
+    const deps = makeDeps(null, () => jsonRes(200, {}));
     try {
-      const url = new URL(authorizationUrl('calendar', 'biz-1'));
+      const url = new URL(await authorizationUrl('calendar', 'biz-1', null, deps));
       assert.equal(url.searchParams.get('redirect_uri'), 'https://crm.test/api/integrations/calendar/callback');
     } finally {
       for (const k of ENV_KEYS) {

@@ -125,13 +125,13 @@ beforeEach(() => {
 });
 
 describe('GET /tenant-keys/:businessId/secrets', () => {
-  test('negocio vacío → 7 slots, todos configured:false', async () => {
+  test('negocio vacío → 15 slots, todos configured:false', async () => {
     const db = fakeDb();
     const res = mockRes();
     await listSecretsHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_A } }), res);
     assert.equal(res.statusCode, 200);
     const body = res.body as { secrets: Array<{ name: string; configured: boolean }> };
-    assert.equal(body.secrets.length, 7);
+    assert.equal(body.secrets.length, 15);
     assert.ok(body.secrets.every((s) => s.configured === false));
   });
 
@@ -186,7 +186,7 @@ describe('GET /tenant-keys/:businessId/secrets', () => {
     await listSecretsHandler(db, mockReq({ userId: USER_MEMBER_A_ONLY, params: { businessId: BIZ_A } }), res);
     assert.equal(res.statusCode, 200);
     const body = res.body as { secrets: Array<{ name: string; configured: boolean; scope: string; envVarName: string | null }> };
-    assert.equal(body.secrets.length, 8);
+    assert.equal(body.secrets.length, 16);
     const byName = new Map(body.secrets.map((s) => [s.name, s]));
     assert.equal(byName.get('ANTHROPIC_API_KEY')?.configured, true);
     const freeform = byName.get('NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY');

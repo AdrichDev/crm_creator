@@ -12,7 +12,15 @@ export type SecretSlotName =
   | 'GOOGLE_MAPS_API_KEY'
   | 'DATABASE_URL'
   | 'NEXT_PUBLIC_SUPABASE_URL'
-  | 'NEXT_PUBLIC_SUPABASE_ANON_KEY';
+  | 'NEXT_PUBLIC_SUPABASE_ANON_KEY'
+  | 'GOOGLE_OAUTH_CLIENT_ID'
+  | 'GOOGLE_OAUTH_CLIENT_SECRET'
+  | 'MAIL_ADDRESS'
+  | 'MAIL_APP_PASSWORD'
+  | 'IMAP_HOST'
+  | 'IMAP_PORT'
+  | 'SMTP_HOST'
+  | 'SMTP_PORT';
 
 export type SecretProvider =
   | 'openai'
@@ -21,7 +29,9 @@ export type SecretProvider =
   | 'maps'
   | 'database'
   | 'supabase_url'
-  | 'supabase_anon';
+  | 'supabase_anon'
+  | 'google'
+  | 'mail';
 
 export interface SecretSlot {
   name: SecretSlotName;
@@ -30,7 +40,7 @@ export interface SecretSlot {
   provider: SecretProvider;
   envVarName?: string;
   /** Agrupación para que el front pinte solo un subconjunto de tarjetas (ver TenantKeysPanel `groups`). */
-  group: 'ai' | 'maps' | 'database';
+  group: 'ai' | 'maps' | 'database' | 'google' | 'mail';
 }
 
 export const TENANT_SECRET_CATALOG: SecretSlot[] = [
@@ -62,6 +72,24 @@ export const TENANT_SECRET_CATALOG: SecretSlot[] = [
     envVarName: 'NEXT_PUBLIC_SUPABASE_ANON_KEY',
     group: 'database',
   },
+  // crm-tenant-oauth-creds: client_id/secret del proyecto Google Cloud del propio
+  // tenant (patrón "trae tu propio proyecto"). BACKEND_SECRET y SIN `envVarName`: el
+  // back los resuelve en tiempo de OAuth (providers/google.ts), NUNCA se hornean al
+  // export del front. Vacíos → se usa la app central del operador (fallback env).
+  { name: 'GOOGLE_OAUTH_CLIENT_ID', label: 'Google OAuth Client ID', scope: 'BACKEND_SECRET', provider: 'google', group: 'google' },
+  { name: 'GOOGLE_OAUTH_CLIENT_SECRET', label: 'Google OAuth Client Secret', scope: 'BACKEND_SECRET', provider: 'google', group: 'google' },
+  // crm-tenant-oauth-creds-and-mail-connector (Fase 2): conector IMAP/SMTP genérico para
+  // tenants con buzón fuera de Google/Microsoft (Hostinger, Zoho, cPanel, IONOS, GoDaddy…).
+  // BACKEND_SECRET y SIN `envVarName`: el back los resuelve en tiempo de envío/lectura
+  // (lib/mail-connector.ts), NUNCA se hornean al export del front. Los puertos tienen
+  // default sano si se dejan vacíos (IMAP 993 TLS, SMTP 465) — ver DEFAULT_IMAP_PORT /
+  // DEFAULT_SMTP_PORT en mail-connector.ts.
+  { name: 'MAIL_ADDRESS', label: 'Dirección de correo', scope: 'BACKEND_SECRET', provider: 'mail', group: 'mail' },
+  { name: 'MAIL_APP_PASSWORD', label: 'Contraseña de aplicación', scope: 'BACKEND_SECRET', provider: 'mail', group: 'mail' },
+  { name: 'IMAP_HOST', label: 'Servidor IMAP', scope: 'BACKEND_SECRET', provider: 'mail', group: 'mail' },
+  { name: 'IMAP_PORT', label: 'Puerto IMAP', scope: 'BACKEND_SECRET', provider: 'mail', group: 'mail' },
+  { name: 'SMTP_HOST', label: 'Servidor SMTP', scope: 'BACKEND_SECRET', provider: 'mail', group: 'mail' },
+  { name: 'SMTP_PORT', label: 'Puerto SMTP', scope: 'BACKEND_SECRET', provider: 'mail', group: 'mail' },
 ];
 
 const CATALOG_BY_NAME = new Map(TENANT_SECRET_CATALOG.map((slot) => [slot.name, slot]));
