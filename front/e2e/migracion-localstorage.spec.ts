@@ -1,17 +1,14 @@
 import { test, expect } from '@playwright/test';
+import { login, requiereCredenciales, E2E_API_URL as API } from './_auth';
 
 // P.6 — los proyectos del generador en localStorage se migran a Supabase (se
 // conservan en local como backup). Test autolimpiable: crea uno apuntando a un
 // tenant libre de aa.tenant, recarga (dispara la migración), comprueba que llegó
 // a /api/projects y lo borra (soft) al final.
-const API = 'http://localhost:4001';
+requiereCredenciales();
 
 test('proyecto en localStorage migra a Supabase (conservando backup)', async ({ page }) => {
-  await page.goto('/login');
-  await page.getByPlaceholder('tu@email.com').fill('owner@estudiolua.com');
-  await page.getByPlaceholder('••••••••').fill('demo1234Seed!');
-  await page.getByRole('button', { name: /entrar/i }).click();
-  await page.waitForURL((u) => !u.pathname.includes('/login'), { timeout: 20_000 });
+  await login(page);
 
   // Token + tenant libre (sin proyecto) + estado previo.
   const setup = await page.evaluate(async (api) => {

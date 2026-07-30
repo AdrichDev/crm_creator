@@ -57,6 +57,23 @@ AC:
   notify the customer, so a write from here would desynchronise the assistant's diary in
   silence.
 
+## UC-5 — both sources are shown on the same clock
+
+**Given** an agent booking stored in `aa.cita` for 21:00 Europe/Madrid
+**When** the panel lists it in OperaOS
+**Then** it reads 21:00, the same wall clock the customer agreed with the assistant.
+
+AC:
+- The two tables declare `timestamp without time zone` and store different things:
+  `crm.reserva.inicia_en` holds the business's wall clock, while `aa.cita.inicio` holds a
+  real UTC instant (agents-agency builds its slots with Luxon in the agent's zone and
+  serialises them with an offset). The reader translates the agent's value into wall clock
+  using `aa.horario_agente.zona_horaria`, defaulting to `Europe/Madrid`.
+- The date range is compared against the translated value, not the raw instant: otherwise
+  a booking in the first hours of the 1st falls outside its own month.
+- Rationale: untranslated, a 21:00 dinner appeared at 19:00 — before the restaurant opened
+  — which reads as corrupt data rather than as a display defect.
+
 ## Status mapping
 
 | `aa.cita.estado` | CRM label |

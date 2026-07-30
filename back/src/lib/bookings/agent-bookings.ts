@@ -99,6 +99,8 @@ export type ListAgentBookingsArgs = {
  *
  * `fecha`/`hora` se cortan del ISO igual que en el router (`startAt.toISOString()`), para
  * que ambas fuentes se pinten con el mismo criterio y no aparezcan desfasadas entre sí.
+ * Eso exige que `row.inicio` llegue ya en reloj de pared del negocio: la traducción desde
+ * el instante UTC que guarda `aa.cita` la hace la consulta, no esta función.
  */
 export function mapCitaAgente(row: CitaAgenteRow): CitaAgente {
   const inicio = new Date(row.inicio).toISOString();
@@ -182,15 +184,31 @@ export async function listAgentBookings(
   const hasta = to ? new Date(to) : null;
 
   const rows = await db.$queryRaw<CitaAgenteRow[]>`
-    SELECT c.id, c.inicio, c.estado, c.comensales, c.nombre_cliente, c.email,
-           c.notas, s.nombre AS servicio_nombre
-    FROM aa.cita c
-    JOIN aa.servicio_agente s ON s.id = c.servicio_id
-    JOIN aa.agente a ON a.id = s.agente_id
-    WHERE a.tenant_id = ${negocio.tenantId}
-      AND (${desde}::timestamptz IS NULL OR c.inicio >= ${desde}::timestamptz)
-      AND (${hasta}::timestamptz IS NULL OR c.inicio <= ${hasta}::timestamptz)
-    ORDER BY c.inicio ASC
+    WITH citas AS (
+      SELECT c.id, c.estado, c.comensales, c.nombre_cliente, c.email,
+             c.notas, s.nombre AS servicio_nombre,
+             -- Las dos tablas declaran "timestamp without time zone" y guardan cosas
+             -- distintas: crm.reserva.inicia_en guarda el reloj de pared del negocio,
+             -- mientras que aa.cita.inicio guarda un instante UTC real (AA genera las
+             -- franjas con Luxon en la zona del agente y las serializa con offset).
+             -- Sin traducir, una cena de las 21:00 aparecía en OperaOS a las 19:00, es
+             -- decir antes de que el restaurante abriera. Se pasa a reloj de pared del
+             -- negocio para que ambas fuentes se pinten con el mismo criterio.
+             c.inicio AT TIME ZONE 'UTC'
+                      AT TIME ZONE COALESCE(h.zona_horaria, 'Europe/Madrid') AS inicio
+      FROM aa.cita c
+      JOIN aa.servicio_agente s ON s.id = c.servicio_id
+      JOIN aa.agente a ON a.id = s.agente_id
+      LEFT JOIN aa.horario_agente h ON h.agente_id = a.id
+      WHERE a.tenant_id = ${negocio.tenantId}
+    )
+    SELECT id, inicio, estado, comensales, nombre_cliente, email, notas, servicio_nombre
+    FROM citas
+    -- El rango también se compara contra la hora ya traducida: filtrar por el instante
+    -- UTC dejaría fuera del mes las citas de las dos primeras horas del día 1.
+    WHERE (${desde}::timestamp IS NULL OR inicio >= ${desde}::timestamp)
+      AND (${hasta}::timestamp IS NULL OR inicio <= ${hasta}::timestamp)
+    ORDER BY inicio ASC
     LIMIT ${AGENT_BOOKINGS_CAP}`;
 
   if (rows.length === AGENT_BOOKINGS_CAP) {

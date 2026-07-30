@@ -1,21 +1,14 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { login, requiereCredenciales, E2E_API_URL as API, PROYECTO_RE } from './_auth';
 
 // P1 — gate de tenancy: un FK que no pertenece al negocio activo se rechaza con 422
 // (cross_tenant). Probamos con ids inexistentes/ajenos en bookings y sales.
-const API = 'http://localhost:4001';
-
-async function login(page: Page) {
-  await page.goto('/login');
-  await page.getByPlaceholder('tu@email.com').fill('owner@estudiolua.com');
-  await page.getByPlaceholder('••••••••').fill('demo1234Seed!');
-  await page.getByRole('button', { name: /entrar/i }).click();
-  await page.waitForURL((u) => !u.pathname.includes('/login'), { timeout: 20_000 });
-}
+requiereCredenciales();
 
 test('FK fuera del negocio → 422 cross_tenant (bookings y sales)', async ({ page }) => {
   await login(page);
-  // Abrir Estudio Lúa (tiene servicios) para fijar el negocio activo correcto.
-  const card = page.locator('.crm-console-card', { hasText: /Estudio L[uú]a/i });
+  // Abrir el proyecto de pruebas (tiene servicios) para fijar el negocio activo correcto.
+  const card = page.locator('.crm-console-card', { hasText: PROYECTO_RE });
   await expect(card).toBeVisible({ timeout: 15_000 });
   await card.getByRole('button', { name: /abrir/i }).click();
   await page.waitForURL('**/panel', { timeout: 20_000 });

@@ -31,7 +31,30 @@
       `validation.md` § Known gaps. Playwright: `citas-origen-agente.spec.ts` green.
 - [x] **D2.** Verify against production data: the four sectoral mocks show their bookings
       in OperaOS, counted per business.
-- [ ] **D3.** Deploy and confirm on `operaos.vercel.app`.
+- [x] **D3.** Deploy and confirm on `operaos.vercel.app`. Confirmed visually by the owner.
+
+## Block E — timezone of the agent's rows
+
+- [x] **E1.** Translate `aa.cita.inicio` from a UTC instant to the business's wall clock
+      using `aa.horario_agente.zona_horaria`, and compare the date range against the
+      translated value.
+      *Test:* `agent-bookings-mapping.test.ts` — the query translates before returning and
+      filters on the translated column.
+      *Production check:* Brasserie Lafayette, 17 bookings in August 2026, every one inside
+      its opening hours (lunch 13:00-16:00, dinner 19:30-23:00/23:30, Sunday 11:30-16:30).
+
+## Block F — dead credentials in the e2e suite
+
+- [x] **F1.** `front/e2e/_auth.ts`: single login helper reading `E2E_EMAIL` / `E2E_PASSWORD`,
+      skipping with an explicit reason when they are absent. Eight specs stopped carrying
+      `owner@estudiolua.com` / `demo1234Seed!` (a user that no longer exists in auth) and
+      two of them stopped carrying a real password in the repository.
+      *Test:* the suite skips without credentials and `citas-origen-agente.spec.ts` passes
+      with them.
+- [x] **F2.** `back/src/seed.ts` takes `SEED_EMAIL` / `SEED_PASSWORD` from the environment
+      and refuses to run without them; it creates a real ADMIN in the same Supabase that
+      serves production. `back/scripts/transfer-ownership.mjs` deleted: a one-shot script,
+      already applied, whose `OLD_EMAIL` no longer exists.
 
 ## Verification
 

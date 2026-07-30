@@ -110,6 +110,21 @@ describe('listAgentBookings', () => {
     assert.ok(!consultas[0].sql.includes('tenant-propio'));
   });
 
+  test('la hora se traduce a la zona del agente antes de salir de la base de datos', async () => {
+    const { db, consultas } = fakeDb('t1', [fila()]);
+    await listAgentBookings(db, { businessId: 'n1', from: '2026-08-01', to: '2026-08-31' });
+    const { sql } = consultas[0]!;
+    // `aa.cita.inicio` guarda un instante UTC; el listado pinta reloj de pared. Sin esta
+    // traducción una cena de las 21:00 se mostraba a las 19:00, fuera del horario.
+    assert.ok(sql.includes("AT TIME ZONE 'UTC'"));
+    assert.ok(sql.includes('COALESCE(h.zona_horaria'));
+    assert.ok(sql.includes('LEFT JOIN aa.horario_agente'));
+    // Y el rango se compara contra la hora ya traducida, no contra el instante crudo.
+    assert.ok(!/c\.inicio\s*>=/.test(sql));
+    // `fakeDb` une los fragmentos con "?", así que el hueco del parámetro sale como "?".
+    assert.ok(/inicio\s*>=\s*\?::timestamp\b/.test(sql));
+  });
+
   test('filtro por estado colapsa cancelled y no-show en "Cancelada"', async () => {
     const rows = [
       fila({ id: 'a', estado: 'scheduled' }),

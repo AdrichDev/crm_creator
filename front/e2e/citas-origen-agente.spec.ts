@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { login as entrar, requiereCredenciales } from './_auth';
 
 // C1 — las reservas que toma el asistente (aa.cita) se MUESTRAN en OperaOS pero no se
 // editan desde aquí: OperaOS no sabe liberar la franja ni avisar al cliente, así que un
@@ -6,9 +7,10 @@ import { test, expect, type Page } from '@playwright/test';
 //
 // La respuesta de /bookings se intercepta: lo que se valida es el contrato de la UI ante
 // una fila con `origen: "agente"`, no que exista un mock sembrado en la base local.
-// Usuario de verificación no destructivo (back/scripts/create-verify-login.ts), ADMIN de
-// "EDM San Blas" — el negocio activo se fija en localStorage (lib/auth/session.ts) en vez
-// de pasar por la consola del generador, que es otra pantalla y otro contrato.
+// Credenciales por env (ver ./_auth); el usuario esperado es el de verificación no
+// destructivo que crea back/scripts/create-verify-login.ts, ADMIN de "EDM San Blas". El
+// negocio activo se fija en localStorage (lib/auth/session.ts) en vez de pasar por la
+// consola del generador, que es otra pantalla y otro contrato.
 const BUSINESS_KEY = 'saas.business.id';
 const ACTIVE_KEY = 'saas.active-project.v1';
 const MIGRATED_KEY = 'saas.projects.migrated.v1';
@@ -30,17 +32,15 @@ const PROYECTO = {
   },
 };
 
+requiereCredenciales();
+
 async function login(page: Page) {
   await page.addInitScript(([bk, ak, mk, id]) => {
     localStorage.setItem(bk, id);
     localStorage.setItem(ak, id);
     localStorage.setItem(mk, 'e2e'); // salta la migración localStorage→Supabase
   }, [BUSINESS_KEY, ACTIVE_KEY, MIGRATED_KEY, BUSINESS_ID]);
-  await page.goto('/login');
-  await page.getByPlaceholder('tu@email.com').fill('verify-agent@estudiolua.com');
-  await page.getByPlaceholder('••••••••').fill('VerifyAgent2026!');
-  await page.getByRole('button', { name: /entrar/i }).click();
-  await page.waitForURL((u) => !u.pathname.includes('/login'), { timeout: 20_000 });
+  await entrar(page);
 }
 
 /** Una cita del CRM y una del asistente, el mismo día, para poder comparar en pantalla.

@@ -1,20 +1,22 @@
 import { test, expect, type Page } from '@playwright/test';
+import { login, requiereCredenciales, E2E_API_URL as API, PROYECTO_RE } from './_auth';
 
 // O.3 — alta REAL de cita: modal con selectores por id + fecha/hora → POST /api/bookings
 // (valida disponibilidad). Autolimpiable (borra la cita creada vía API al final).
-const API = 'http://localhost:4001';
-const FECHA = '2026-06-26'; // viernes, dentro de horario L-V 9-20 del seed
+requiereCredenciales();
+
+/** Próximo viernes, dentro del horario L-V 9-20 del seed. Una fecha fija se queda en el
+ *  pasado y el alta pasa a validar disponibilidad sobre un día que ya no existe. */
+function proximoViernes(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + ((5 - d.getDay() + 7) % 7 || 7));
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+const FECHA = proximoViernes();
 const HORA = '10:00';
 
-async function login(page: Page) {
-  await page.goto('/login');
-  await page.getByPlaceholder('tu@email.com').fill('owner@estudiolua.com');
-  await page.getByPlaceholder('••••••••').fill('demo1234Seed!');
-  await page.getByRole('button', { name: /entrar/i }).click();
-  await page.waitForURL((u) => !u.pathname.includes('/login'), { timeout: 20_000 });
-}
 async function abrirCRM(page: Page) {
-  const card = page.locator('.crm-console-card', { hasText: /Estudio L[uú]a/i });
+  const card = page.locator('.crm-console-card', { hasText: PROYECTO_RE });
   await expect(card).toBeVisible({ timeout: 15_000 });
   await card.getByRole('button', { name: /abrir/i }).click();
   await page.waitForURL('**/panel', { timeout: 20_000 });

@@ -8,7 +8,7 @@
 // - `NEXT_PUBLIC_TENANT_JSON`: la hornea SIEMPRE `buildEnvContent` (auto-generada,
 //   nunca la rellena una persona; un placeholder rompería la decodificación).
 // - Directorio `e2e/`: scripts de verificación (Playwright), no runtime de la app
-//   (p. ej. `SMOKE_EMAIL`/`SMOKE_PASSWORD`).
+//   (p. ej. `E2E_EMAIL`/`E2E_PASSWORD`, ver front/e2e/_auth.ts).
 // - `node_modules/`, `.next/`: build output / dependencias, no código fuente propio.
 
 import { test, describe } from 'node:test';

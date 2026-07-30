@@ -73,15 +73,21 @@ expected shape after the cancellation flow. A sample row as served by `GET /book
  "fecha":"2026-07-31","hora":"11:30","estado":"Confirmada","aforo":2,"origen":"agente"}
 ```
 
+That 11:30 lunch is the defect E1 fixes: Lafayette opens at 13:00, and the row was being
+printed in UTC. Read against production after the fix, the same restaurant's 17 August
+bookings all fall inside its hours — lunches at 13:45/14:00, dinners at 20:00/20:30 and
+Sunday brunches at 11:30/12:00 against a Sunday opening of 11:30.
+
 ## Known gaps
 
 - The e2e intercepts `GET /bookings`; it validates the panel's contract for an
   `origen: "agente"` row, not that production data reaches the browser. D2 covers the
   data path, C1 covers the rendering path; no single test covers both ends at once.
-- Seven pre-existing e2e specs (`smoke`, `proyectos-supabase`, `citas-alta`,
-  `soft-delete`, `tenant-gate`, `onboarding-tenants`, `migracion-localstorage`) log in as
-  `owner@estudiolua.com`, a user that no longer exists in auth, and fail before asserting
-  anything. Unrelated to this change and left untouched.
+- ~~Seven pre-existing e2e specs log in as `owner@estudiolua.com`.~~ Closed by F1: all of
+  them now go through `e2e/_auth.ts` and skip with a reason when `E2E_EMAIL` /
+  `E2E_PASSWORD` are absent. Whether the credentials given have access to the seeded
+  business is still the runner's responsibility — a wrong user makes the assertions fail,
+  not skip.
 - Three front unit files are red for reasons predating this change:
   `hover-tokens` (offender is `components/config/tenant-keys-panel.tsx`) and
   `sidebar-collapse` / `sidebar-user` (stale `vi.mock` of `@/lib/auth/session`, missing

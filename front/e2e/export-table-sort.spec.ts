@@ -1,15 +1,7 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { login, requiereCredenciales } from './_auth';
 
-const EMAIL = 'verify-agent@estudiolua.com';
-const PASSWORD = 'VerifyAgent2026!';
-
-async function login(page: Page) {
-  await page.goto('/login');
-  await page.getByPlaceholder('tu@email.com').fill(EMAIL);
-  await page.getByPlaceholder('••••••••').fill(PASSWORD);
-  await page.getByRole('button', { name: /entrar/i }).click();
-  await page.waitForURL((u) => !u.pathname.includes('/login'), { timeout: 20_000 });
-}
+requiereCredenciales();
 
 test('export table proyecto column has sort icon on same line', async ({ page }) => {
   await login(page);

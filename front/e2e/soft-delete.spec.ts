@@ -1,16 +1,9 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { login, requiereCredenciales, E2E_API_URL as API } from './_auth';
 
 // O.1 — soft delete: crear cliente → DELETE (soft) → ya no aparece en la lista
 // (queda en BD con eliminado_en). Autocontenido.
-const API = 'http://localhost:4001';
-
-async function login(page: Page) {
-  await page.goto('/login');
-  await page.getByPlaceholder('tu@email.com').fill('owner@estudiolua.com');
-  await page.getByPlaceholder('••••••••').fill('demo1234Seed!');
-  await page.getByRole('button', { name: /entrar/i }).click();
-  await page.waitForURL((u) => !u.pathname.includes('/login'), { timeout: 20_000 });
-}
+requiereCredenciales();
 
 test('soft delete: cliente borrado desaparece de la lista', async ({ page }) => {
   await login(page);

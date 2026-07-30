@@ -2,10 +2,23 @@ import { prisma } from './prisma.js';
 import { supabaseAdmin } from './lib/auth.js';
 import { seedVisitStates } from './lib/comercial/visit-states.js';
 
-// Siembra una empresa demo completa. Ejecutar: npm run seed
+// Siembra una empresa demo completa. Ejecutar: SEED_EMAIL=... SEED_PASSWORD=... npm run seed
 // Note: User.id is now the Supabase auth.users UUID. The seed creates a Supabase
 // user first, then uses their UUID as the crm.User PK.
+
+// La credencial del propietario NUNCA va en el repo: el seed crea un ADMIN en la misma
+// Supabase que usa producción, así que un usuario y una contraseña conocidos y
+// commiteados serían una puerta trasera. Mismo criterio que scripts/create-verify-login.ts.
+const SEED_EMAIL = process.env.SEED_EMAIL;
+const SEED_PASSWORD = process.env.SEED_PASSWORD;
+
 async function main() {
+  if (!SEED_EMAIL || !SEED_PASSWORD || SEED_PASSWORD.length < 12) {
+    throw new Error(
+      'Define SEED_EMAIL y SEED_PASSWORD (12+ caracteres) antes de sembrar. ' +
+        'El seed da de alta un ADMIN real; sin credencial explícita no se ejecuta.',
+    );
+  }
   const business = await prisma.business.create({
     data: { nombre: 'Estudio Lúa', vertical: 'peluqueria', marcaPrimario: '#1b431c', marcaSecundario: '#8cc63f' },
   });
@@ -17,14 +30,14 @@ async function main() {
 
   // Create Supabase auth.users entry and use the returned UUID as crm.User.id
   const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-    email: 'owner@estudiolua.com',
-    password: 'demo1234Seed!',
+    email: SEED_EMAIL,
+    password: SEED_PASSWORD,
     email_confirm: true,
   });
   if (authError) throw new Error(`Supabase createUser failed: ${authError.message}`);
 
   const owner = await prisma.user.create({
-    data: { id: authData.user.id, email: 'owner@estudiolua.com', firstName: 'Adrián' },
+    data: { id: authData.user.id, email: SEED_EMAIL, firstName: 'Adrián' },
   });
   await prisma.membership.create({ data: { userId: owner.id, businessId: business.id, role: 'ADMIN' } });
 
@@ -52,7 +65,7 @@ async function main() {
   const start = new Date(); start.setDate(start.getDate() + 1); start.setHours(10, 0, 0, 0);
   await prisma.booking.create({ data: { businessId: business.id, locationId: location.id, customerId: ana.id, serviceId: corte.id, employeeId: sara.id, startAt: start, endAt: new Date(start.getTime() + 30 * 60000), status: 'CONFIRMED', resources: { connect: [{ id: sillon.id }] } } });
 
-  console.log('Seed OK. Login demo: owner@estudiolua.com / demo1234Seed! (via Supabase Auth)');
+  console.log(`Seed OK. Login demo: ${SEED_EMAIL} (contraseña en SEED_PASSWORD, vía Supabase Auth)`);
   void sillon;
 }
 
