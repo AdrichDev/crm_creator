@@ -48,6 +48,10 @@ type CitaApiRow = {
   // Dirección para el pin del detalle (back/src/lib/citaDireccion.ts): cliente
   // visitado si tiene dirección, si no la sucursal (Location.direccion).
   direccion?: string | null;
+  // Presente SOLO en las reservas que tomó el asistente del negocio: viven en el esquema
+  // de agentes (aa.cita), no en crm.reserva. OperaOS las muestra pero no las modifica —
+  // editarlas aquí no liberaría la franja ni avisaría al cliente.
+  origen?: 'agente' | null;
 };
 
 const BASE_FIELDS: Omit<Field, 'render'>[] = [
@@ -102,7 +106,12 @@ function CitaAgendaCard({ c, compact, sector, apiEnabled, onCliente, onOpenDetal
           </div>
           <div className="mt-1 flex items-center justify-between gap-2" onClick={(e) => e.stopPropagation()}>
             <Badge tone={tone(c.estado)}>{c.estado}</Badge>
-            <RowActions onEdit={onEdit} onDelete={onDelete} />
+            {/* Reserva del asistente: se muestra, no se toca. Editar o borrar desde aquí
+                no liberaría la franja ni avisaría al cliente, así que en vez de acciones
+                se marca el origen. */}
+            {c.origen === 'agente'
+              ? <span className="text-[11px] font-medium text-[var(--panel-muted)]">Reserva del asistente</span>
+              : <RowActions onEdit={onEdit} onDelete={onDelete} />}
           </div>
         </>
       )}

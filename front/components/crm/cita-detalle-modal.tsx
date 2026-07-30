@@ -10,7 +10,9 @@ import { buildGoogleMapsEmbedUrl, buildGoogleMapsSearchUrl } from '@/lib/citas/g
 // la cita tiene locationId asociado. Sin dirección, el bloque de mapa no se muestra (AC3, WU3).
 // clienteComercial: nombre COMERCIAL (razón social) del cliente visitado — distinto de
 // `cliente` (persona de contacto). Se muestran como dos registros separados en el detalle.
-export type CitaConNotas = Cita & { notes?: string | null; direccion?: string | null; clienteComercial?: string | null };
+// origen: 'agente' marca las reservas que tomó el bot del negocio. Viven en el esquema de
+// agentes (aa.cita), no en crm.reserva: OperaOS las MUESTRA pero no las toca.
+export type CitaConNotas = Cita & { notes?: string | null; direccion?: string | null; clienteComercial?: string | null; origen?: 'agente' | null };
 
 // Modal de detalle de cita desde el widget Agenda (Inicio) — crm-citas-ux-agenda WU5.
 // Patrón visual del ContactInfoModal de agents-agency (dl/dt/dd + ✕ rotatorio, ver
@@ -31,6 +33,11 @@ export function CitaDetalleModal({ cita, onClose, onSave, onIrAgenda, irAgendaLa
   useEffect(() => { setNotes(cita?.notes ?? ''); }, [cita]);
 
   if (!cita) return null;
+
+  // Reserva del bot: OperaOS no puede editarla. Liberar la franja, revocar el código de
+  // confirmación y avisar al cliente son cosas que solo sabe hacer el motor del agente;
+  // un PATCH desde aquí desincronizaría su agenda en silencio.
+  const soloLectura = cita.origen === 'agente';
 
   const mapaEmbedUrl = buildGoogleMapsEmbedUrl(cita.direccion);
   const mapaEnlaceUrl = buildGoogleMapsSearchUrl(cita.direccion);
@@ -58,7 +65,7 @@ export function CitaDetalleModal({ cita, onClose, onSave, onIrAgenda, irAgendaLa
     <Modal open title="Detalle de cita" onClose={onClose}
       footer={<>
         <Button variant="outline" onClick={onClose}>Cerrar</Button>
-        <Button onClick={onIrAgenda}>{irAgendaLabel}</Button>
+        {!soloLectura && <Button onClick={onIrAgenda}>{irAgendaLabel}</Button>}
       </>}>
       <dl className="divide-y divide-[var(--line)] text-sm">
         {campos.map(([label, value]) => (
@@ -101,13 +108,26 @@ export function CitaDetalleModal({ cita, onClose, onSave, onIrAgenda, irAgendaLa
       )}
       <div className="mt-4">
         <label className="opera-label">Anotaciones</label>
-        <textarea className="opera-control" rows={4} value={notes} onChange={(e) => setNotes(e.target.value)}
-          placeholder="Añade una anotación sobre esta cita…" />
-        {/* El pin de ubicación ahora vive junto a la fila "Dirección" de la ficha;
-            aquí solo queda el botón de guardar. */}
-        <div className="mt-2 flex items-center justify-end">
-          <Button variant="outline" onClick={() => onSave(notes)}>Guardar anotación</Button>
-        </div>
+        {soloLectura ? (
+          <>
+            <p className="whitespace-pre-wrap rounded-md border border-[var(--line)] px-3 py-2 text-sm text-[var(--panel-text)]">
+              {cita.notes || <span className="text-[var(--panel-muted)]">Sin anotaciones.</span>}
+            </p>
+            <p className="mt-2 text-xs text-[var(--panel-muted)]">
+              Reserva tomada por tu asistente. Se muestra aquí, pero se gestiona desde el asistente.
+            </p>
+          </>
+        ) : (
+          <>
+            <textarea className="opera-control" rows={4} value={notes} onChange={(e) => setNotes(e.target.value)}
+              placeholder="Añade una anotación sobre esta cita…" />
+            {/* El pin de ubicación ahora vive junto a la fila "Dirección" de la ficha;
+                aquí solo queda el botón de guardar. */}
+            <div className="mt-2 flex items-center justify-end">
+              <Button variant="outline" onClick={() => onSave(notes)}>Guardar anotación</Button>
+            </div>
+          </>
+        )}
       </div>
     </Modal>
   );

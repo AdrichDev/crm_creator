@@ -16,6 +16,7 @@ import { emit } from '../lib/automation/index.js';
 import { buildReviewRequest } from '../lib/eventPayloads.js';
 import { parsePagination } from '../lib/pagination.js';
 import { resolveCitaDireccion } from '../lib/citaDireccion.js';
+import { listAgentBookings, fusionarCitas, resumirCitas, AGENT_BOOKINGS_CAP } from '../lib/bookings/agent-bookings.js';
 
 export const bookingsRouter = Router();
 
@@ -56,19 +57,36 @@ bookingsRouter.get('/', async (req: AuthedRequest, res: Response) => {
     ...(from || to ? { startAt: { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) } } : {}),
   };
 
+  // Citas que ha tomado el agente conversacional del negocio. Viven en `aa.cita`, no en
+  // `crm.reserva`: sin este merge el dueño ve una agenda vacía aunque su bot lleve semanas
+  // reservando (ver lib/bookings/agent-bookings.ts).
+  const citasAgente = await listAgentBookings(prisma, {
+    businessId: req.businessId!,
+    from, to,
+    estado: soloPendientes ? undefined : (status ? ESTADO_LABEL[status] : undefined),
+    soloPendientes,
+    employeeId,
+    search,
+  });
+  // Sin citas del agente NO se cambia nada: se pagina en base de datos, como siempre.
+  // Solo cuando hay dos fuentes hace falta traer la página completa para poder ordenarlas
+  // juntas, y ese coste no se le cobra a los negocios que no tienen agente contratado.
+  const hayAgente = citasAgente.length > 0;
+  const paginacion: { skip?: number; take: number } = hayAgente
+    ? { take: AGENT_BOOKINGS_CAP }
+    : { skip: (page - 1) * limit, take: limit };
+
   const [rows, total] = await Promise.all([
     prisma.booking.findMany({
       where,
       include: { customer: true, contacto: true, service: true, employee: true, team: true, resources: true, location: true },
       orderBy: { startAt: 'asc' },
-      skip: (page - 1) * limit,
-      take: limit,
+      ...paginacion,
     }),
     prisma.booking.count({ where }),
   ]);
 
-  res.json({
-    items: rows.map((b) => ({
+  const propias = rows.map((b) => ({
       id: b.id,
       // "cliente" muestra: equipo (entrenamiento) → contacto/lead → persona de contacto del cliente.
       cliente: b.team ? b.team.nombre : b.contacto ? b.contacto.nombre : joinNombre(b.customer),
@@ -95,8 +113,20 @@ bookingsRouter.get('/', async (req: AuthedRequest, res: Response) => {
       notes: b.notes ?? null,
       // Dirección del pin en el detalle: cliente visitado > sucursal (fallback).
       direccion: resolveCitaDireccion(b.customer, b.location),
-    })),
-    total,
+  }));
+
+  if (!hayAgente) return res.json({ items: propias, total, page, limit });
+
+  if (rows.length === AGENT_BOOKINGS_CAP) {
+    // Truncar en silencio pintaría una agenda incompleta indistinguible de una completa.
+    console.warn('[bookings] tope de reservas propias alcanzado al fusionar con el agente', {
+      businessId: req.businessId, cap: AGENT_BOOKINGS_CAP,
+    });
+  }
+
+  res.json({
+    items: fusionarCitas(propias, citasAgente, page, limit),
+    total: total + citasAgente.length,
     page,
     limit,
   });
@@ -135,21 +165,17 @@ bookingsRouter.get('/stats', async (req: AuthedRequest, res: Response) => {
   if (!req.businessId) {
     return res.status(400).json({ error: { code: 'no_business', message: 'La sesión no tiene un negocio activo' } });
   }
-  const grouped = await prisma.booking.groupBy({
-    by: ['status'],
-    where: { businessId: req.businessId, eliminadoEn: null },
-    _count: { _all: true },
-  });
-  let total = 0;
-  let confirmadas = 0;
-  let pendientes = 0;
-  for (const g of grouped) {
-    const n = g._count._all;
-    total += n;
-    if (g.status === 'CONFIRMED') confirmadas = n;
-    else if (g.status === 'PENDING') pendientes = n;
-  }
-  res.json({ total, confirmadas, pendientes });
+  // Sin rango: el resumen cuenta TODAS las citas del negocio, vengan del CRM o del agente.
+  // Si el agente no se contara aquí, las tarjetas contradirían al propio calendario.
+  const [grouped, citasAgente] = await Promise.all([
+    prisma.booking.groupBy({
+      by: ['status'],
+      where: { businessId: req.businessId, eliminadoEn: null },
+      _count: { _all: true },
+    }),
+    listAgentBookings(prisma, { businessId: req.businessId }),
+  ]);
+  res.json(resumirCitas(grouped, citasAgente));
 });
 
 bookingsRouter.get('/:id', async (req: AuthedRequest, res: Response) => {

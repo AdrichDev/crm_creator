@@ -8,6 +8,11 @@ const output = resolveOutputMode(process.env.NEXT_OUTPUT_MODE);
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Directorio de build conmutable. Dos `next dev` sobre el mismo `.next` se pisan la
+  // caché y corrompen el servidor que ya tenía levantado el usuario; con esto, un dev
+  // efímero para e2e escribe en su propio directorio y no se entera nadie.
+  //   NEXT_DIST_DIR=.next-e2e npx next dev -p 3101
+  distDir: process.env.NEXT_DIST_DIR ?? '.next',
   outputFileTracingRoot: path.join(__dirname),
   ...(output ? { output } : {}),
   // El badge de dev de Next vive por defecto abajo-derecha, EXACTAMENTE donde
