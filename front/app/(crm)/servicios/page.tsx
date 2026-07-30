@@ -36,7 +36,11 @@ function categoriaColor(categoria: string): string {
   for (let i = 0; i < categoria.length; i++) hash = (hash * 31 + categoria.charCodeAt(i)) | 0;
   return CATEGORIA_COLORS[Math.abs(hash) % CATEGORIA_COLORS.length];
 }
-function CategoriaBadge({ categoria }: { categoria: string }) {
+// `categoria` es opcional en BD (`String?`) y un servicio creado por API puede no traerla.
+// Sin esta guarda, `categoriaColor(null)` reventaba la página entera con "Application error:
+// a client-side exception" en cuanto había UN servicio sin categoría.
+function CategoriaBadge({ categoria }: { categoria: string | null | undefined }) {
+  if (!categoria) return <span className="text-white/30">—</span>;
   return (
     <span className={cn('inline-block rounded-full px-2.5 py-0.5 text-xs font-medium', categoriaColor(categoria))}>
       {categoria}
@@ -49,7 +53,8 @@ function CategoriaBadge({ categoria }: { categoria: string }) {
 type ServicioApiRow = {
   id: string;
   nombre: string;
-  categoria: string;
+  // Opcional en BD: el back devuelve null para servicios dados de alta sin categoría.
+  categoria: string | null;
   duracion: number;
   precio: number;
   imagenUrl?: string | null;
