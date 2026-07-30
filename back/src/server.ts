@@ -12,6 +12,7 @@ import { startReminderDrainer } from './lib/reminderDrainer.js';
 import { startDigestScheduler } from './lib/digestScheduler.js';
 import { startCalendarSync } from './lib/calendarSync.js';
 import { swaggerSpec } from './lib/swagger.js';
+import { healthHandler } from './lib/health.js';
 
 // Fail-closed: no arrancar con config Supabase incompleta/placeholder.
 assertConfig();
@@ -25,7 +26,7 @@ app.set('trust proxy', env.trustProxy);
 app.use(cors({ origin: resolveCorsOrigins(env.corsOrigin) }));
 app.use(express.json({ limit: '2mb' }));
 
-app.get('/health', (_req, res) => res.json({ ok: true, service: 'operaos-backend' }));
+app.get('/health', healthHandler);
 
 // Documentación interactiva OpenAPI. Solo fuera de producción para no exponerla.
 if (process.env.NODE_ENV !== 'production') {
