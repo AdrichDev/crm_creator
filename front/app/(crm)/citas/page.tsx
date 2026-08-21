@@ -69,7 +69,13 @@ const ESTADO_TO_STATUS: Record<string, string> = {
   Pendiente: 'PENDING', Confirmada: 'CONFIRMED', Cancelada: 'CANCELLED', Completada: 'COMPLETED',
 };
 
-type CitaRow = CitaApiRow & Cita;
+type CitaRow = Omit<CitaApiRow, 'id' | 'customerId' | 'serviceId' | 'employeeId' | 'locationId'> & {
+  id: string | number;
+  customerId?: string | null;
+  serviceId?: string | null;
+  employeeId?: string | null;
+  locationId?: string | null;
+};
 
 /** Tarjeta de evento de la agenda full-screen (WU1). Card grande (paridad visual
  * con AppointmentCard de agents-agency); en vista compacta (semana/día) se recorta
@@ -235,7 +241,7 @@ export default function Page() {
   // Día seleccionado en la agenda (default hoy dentro de AgendaGrid). Se prellena en el
   // form de nueva cita al pulsar "Añadir" — editable después. Igual que agents-agency.
   const [selectedDay, setSelectedDay] = useState('');
-  const [editing, setEditing] = useState<(Cita & Partial<Omit<CitaApiRow, 'id'>>) | null>(null);
+  const [editing, setEditing] = useState<CitaRow | null>(null);
   const [clienteId, setClienteId] = useState<string | null>(null);
   // Detalle de cita al pulsar la tarjeta (paridad con AgendaWidget.editarCita).
   const [detalleId, setDetalleId] = useState<CitaRow['id'] | null>(null);
@@ -315,7 +321,7 @@ export default function Page() {
   });
 
   // Items de visualización.
-  const displayItems = (apiEnabled ? paged.items : collectionItems) as unknown as (Cita & Partial<CitaApiRow>)[];
+  const displayItems = (apiEnabled ? paged.items : collectionItems) as unknown as CitaRow[];
 
   // Deep-link desde el widget Agenda del inicio: /citas?edit=<id> abre la ficha directamente.
   const router = useRouter();
@@ -323,7 +329,7 @@ export default function Page() {
     const editId = searchParams.get('edit');
     if (!editId || apiEnabled) return;
     const found = collectionItems.find((c) => String(c.id) === editId);
-    if (found) { setEditing(found); setChipsFallback(false); setOpen(true); router.replace('/citas'); }
+    if (found) { setEditing(found as unknown as CitaRow); setChipsFallback(false); setOpen(true); router.replace('/citas'); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, collectionItems, apiEnabled]);
 
@@ -366,7 +372,7 @@ export default function Page() {
       refreshStats();
       return;
     }
-    if (editing) update(editing.id, v as Partial<Cita>); else create(v as unknown as Omit<Cita, 'id'>);
+    if (editing) update(editing.id as number, v as Partial<Cita>); else create(v as unknown as Omit<Cita, 'id'>);
     setOpen(false);
   }
   // En modo CRM el alta es real (selectores por id + disponibilidad, sector-específico); en generador, el modal mock.
@@ -387,13 +393,13 @@ export default function Page() {
           await dialog.alert(err instanceof Error ? err.message : 'No se pudo eliminar la cita.');
         }
       } else {
-        remove(c.id);
+        remove(c.id as number);
       }
     });
   }
 
   // Detalle de cita (paridad AgendaWidget): click en tarjeta abre CitaDetalleModal.
-  const detalleCita = (displayItems as CitaConNotas[]).find((c) => c.id === detalleId) ?? null;
+  const detalleCita = (displayItems as unknown as CitaConNotas[]).find((c) => c.id === detalleId) ?? null;
   async function onGuardarNotas(notes: string) {
     if (!detalleCita) return;
     if (apiEnabled) {
@@ -406,7 +412,7 @@ export default function Page() {
       }
       return;
     }
-    update(detalleCita.id, { notes } as unknown as Partial<Cita>);
+    update(detalleCita.id as number, { notes } as unknown as Partial<Cita>);
   }
   // Ya estamos en /citas: "Ir a agenda" del modal abre directamente el formulario de edición.
   function onIrAgendaDesdeDetalle() {

@@ -12,7 +12,7 @@ import { buildGoogleMapsEmbedUrl, buildGoogleMapsSearchUrl } from '@/lib/citas/g
 // `cliente` (persona de contacto). Se muestran como dos registros separados en el detalle.
 // origen: 'agente' marca las reservas que tomó el bot del negocio. Viven en el esquema de
 // agentes (aa.cita), no en crm.reserva: OperaOS las MUESTRA pero no las toca.
-export type CitaConNotas = Cita & { notes?: string | null; direccion?: string | null; clienteComercial?: string | null; origen?: 'agente' | null };
+export type CitaConNotas = Omit<Cita, 'id'> & { id: string | number; notes?: string | null; direccion?: string | null; clienteComercial?: string | null; origen?: 'agente' | null };
 
 // Modal de detalle de cita desde el widget Agenda (Inicio) — crm-citas-ux-agenda WU5.
 // Patrón visual del ContactInfoModal de agents-agency (dl/dt/dd + ✕ rotatorio, ver

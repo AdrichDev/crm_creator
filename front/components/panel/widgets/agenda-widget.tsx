@@ -57,7 +57,7 @@ export function AgendaWidget() {
       <CitaDetalleModal
         cita={detalleCita}
         onClose={() => setDetalleId(null)}
-        onSave={(notes) => { if (detalleCita) update(detalleCita.id, { notes } as unknown as Partial<Cita>); }}
+        onSave={(notes) => { if (detalleCita) update(detalleCita.id as number, { notes } as unknown as Partial<Cita>); }}
         onIrAgenda={() => { const id = detalleCita?.id; setDetalleId(null); if (id != null) router.push(`/citas?edit=${id}`); }}
       />
     </>
