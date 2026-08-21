@@ -14,7 +14,7 @@ import { NuevaEntrenamientoModal } from '@/components/crm/nueva-entrenamiento-mo
 import { NuevaClaseModal } from '@/components/crm/nueva-clase-modal';
 import { HoraChips } from '@/components/crm/hora-chips';
 import { ServicioSelect, type ServiceOpt } from '@/components/crm/servicio-select';
-import { CalendarPlus } from 'lucide-react';
+import { CalendarPlus, RefreshCw } from 'lucide-react';
 import { usePaginatedApi } from '@/lib/data/use-paginated-api';
 import { SearchInput } from '@/components/ui/search-input';
 import { Pagination } from '@/components/ui/pagination';
@@ -69,7 +69,7 @@ const ESTADO_TO_STATUS: Record<string, string> = {
   Pendiente: 'PENDING', Confirmada: 'CONFIRMED', Cancelada: 'CANCELLED', Completada: 'COMPLETED',
 };
 
-type CitaRow = Cita & Partial<CitaApiRow>;
+type CitaRow = CitaApiRow & Cita;
 
 /** Tarjeta de evento de la agenda full-screen (WU1). Card grande (paridad visual
  * con AppointmentCard de agents-agency); en vista compacta (semana/día) se recorta
@@ -157,23 +157,40 @@ export default function Page() {
 
   // ── Google Calendar (toggle conectar/desconectar, UX igual que AA) ────────────────
   // Desconectado → "📅 Sincronizar Calendar" inicia el OAuth y vuelve a /citas.
-  // Conectado    → "✕ Cancelar sincronización" (rojo) revoca la credencial.
-  // Al volver del OAuth se hace un sync COMPLETO (trae TODAS las citas de Google).
+  // Conectado    → "🔄 Sincronizar Google" (manual) + "✕ Cancelar sincronización".
+  // Al montar/entrar a la página → sincronización automática silenciosa en segundo plano.
   const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null);
   const [calBusy, setCalBusy] = useState(false);
+  const [calSyncing, setCalSyncing] = useState(false);
+
+  const syncCalendarFull = useCallback(async (silent = false) => {
+    if (!silent) setCalSyncing(true);
+    try {
+      await apiFetch('/integrations/calendar/sync', { method: 'POST' });
+      paged.refresh();
+      refreshStats();
+    } catch {
+      if (!silent) {
+        await dialog.alert('No se pudo sincronizar con Google Calendar. Inténtalo de nuevo.');
+      }
+    } finally {
+      if (!silent) setCalSyncing(false);
+    }
+  }, [paged, refreshStats, dialog]);
 
   useEffect(() => {
     if (!apiEnabled) { setCalendarConnected(false); return; }
     apiFetch<{ items: { servicio: string; estado: string | null }[] }>('/integrations')
-      .then((r) => setCalendarConnected(r.items?.some((i) => i.servicio === 'calendar' && i.estado === 'connected') ?? false))
+      .then((r) => {
+        const isConnected = r.items?.some((i) => i.servicio === 'calendar' && i.estado === 'connected') ?? false;
+        setCalendarConnected(isConnected);
+        // Auto-sincronización en segundo plano al montar / entrar a la página si está conectado
+        if (isConnected) {
+          void syncCalendarFull(true);
+        }
+      })
       .catch(() => setCalendarConnected(false));
-  }, [apiEnabled]);
-
-  const syncCalendarFull = useCallback(async () => {
-    await apiFetch('/integrations/calendar/sync', { method: 'POST' }).catch(() => {});
-    paged.refresh();
-    refreshStats();
-  }, [paged, refreshStats]);
+  }, [apiEnabled, syncCalendarFull]);
 
   // Retorno del OAuth (?servicio=calendar&estado=conectado): marca conectado, sincroniza
   // todo y limpia la URL. Espejo del patrón de AA (vuelve a la agenda ya conectado).
@@ -182,7 +199,7 @@ export default function Page() {
     if (searchParams.get('servicio') === 'calendar' && searchParams.get('estado') === 'conectado') {
       setCalendarConnected(true);
       window.history.replaceState(null, '', '/citas');
-      void syncCalendarFull().finally(() => void dialog.alert('Google Calendar conectado. Se han importado tus citas.'));
+      void syncCalendarFull(false).finally(() => void dialog.alert('Google Calendar conectado. Se han importado tus citas.'));
     }
   }, [apiEnabled, searchParams, syncCalendarFull, dialog]);
 
@@ -405,10 +422,17 @@ export default function Page() {
           action={
             <div className="flex items-center gap-2">
               {apiEnabled && calendarConnected === true && (
-                <Button variant="outline" onClick={disconnectCalendar} disabled={calBusy}
-                  className="border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20">
-                  {calBusy ? '…' : '✕ Cancelar sincronización'}
-                </Button>
+                <>
+                  <Button variant="outline" onClick={() => void syncCalendarFull(false)} disabled={calSyncing || calBusy}
+                    className="gap-1.5 text-xs sm:text-sm">
+                    <RefreshCw className={`h-3.5 w-3.5 ${calSyncing ? 'animate-spin text-[var(--acc)]' : ''}`} />
+                    {calSyncing ? 'Sincronizando…' : 'Sincronizar Google'}
+                  </Button>
+                  <Button variant="outline" onClick={disconnectCalendar} disabled={calBusy || calSyncing}
+                    className="border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 text-xs sm:text-sm">
+                    {calBusy ? '…' : '✕ Desconectar'}
+                  </Button>
+                </>
               )}
               {apiEnabled && calendarConnected === false && (
                 <Button variant="outline" onClick={connectCalendar} disabled={calBusy}>
