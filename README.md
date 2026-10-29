@@ -46,16 +46,6 @@ El front se conecta al backend definiendo `NEXT_PUBLIC_API_URL` en
 `front/.env.local` (prioridad de datos: API REST > Supabase > local). Arranque del
 backend en `back/README.md`.
 
-## ⚠️ Antes de empezar (importante)
-
-En la raíz quedó un `node_modules/` **parcial** generado durante la verificación
-que no se pudo limpiar automáticamente. **Bórralo** (no afecta a `front/`):
-
-```bash
-# Windows (cmd):   rmdir /s /q node_modules
-# PowerShell:      Remove-Item -Recurse -Force node_modules
-```
-
 ## Puesta en marcha (front)
 
 ```bash
@@ -64,14 +54,25 @@ npm install
 npm run dev      # http://localhost:3002
 ```
 
-Al abrir por primera vez te lleva al **wizard de onboarding** (`/onboarding`):
-eliges tipo de negocio → módulos → marca → datos. La config se guarda en
-`localStorage`. Luego entras al panel.
+### Probarlo sin backend (modo demo)
+
+No hace falta base de datos ni cuenta: abre directamente
+**http://localhost:3002/onboarding**.
+
+> La raíz (`/`) y `/dashboard` redirigen a `/login`, que necesita Supabase
+> configurado. En modo demo entra siempre por `/onboarding`.
+
+El asistente tiene cinco pasos: **tipo de negocio → módulos → marca → BD, API y
+keys → datos**. Pulsa **Crear proyecto** y entras al panel del negocio. La
+configuración y los datos se guardan en el `localStorage` del navegador.
 
 - `/onboarding` — asistente de configuración (vertical + módulos + branding)
 - `/panel` — dashboard; el **sidebar solo muestra los módulos activos**
 - `/configuracion` — reactiva/desactiva módulos, cambia marca y datos en caliente
-- `/web` — vista previa de la **web pública** generada desde tu configuración
+
+Para usarlo con login y datos persistentes, configura Supabase en
+`front/.env.local` (ver `front/.env.example` y la sección
+«Conexión Supabase» más abajo).
 
 ## Botones funcionales (CRUD)
 
