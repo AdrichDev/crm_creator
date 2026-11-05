@@ -1,6 +1,9 @@
 import { Router, type Response } from 'express';
 import { prisma } from '../prisma.js';
-import { checkAvailability, daySlots, daySlotsWithAvailability } from '../lib/availability.js';
+import {
+  checkAvailability, daySlots, daySlotsWithAvailability,
+  lockBookingSlot, lockCustomerPackage, type BookingTxClient,
+} from '../lib/availability.js';
 import type { AuthedRequest } from '../middleware/types.js';
 import { BookingStatus } from '../lib/generated/prisma/client.js';
 import { assertFks, handleCrossTenant } from '../lib/tenant.js';
@@ -254,10 +257,13 @@ bookingsRouter.post('/', async (req: AuthedRequest, res: Response) => {
     throw e;
   }
 
-  const result = await prisma.$transaction(async () => {
-    const avail = await checkAvailability({ businessId: req.businessId!, locationId, serviceId, employeeId, resourceIds, start });
+  const result = await prisma.$transaction(async (tx) => {
+    // Lock primero, después leer: dos creates concurrentes del mismo hueco se serializan
+    // y el segundo ve la reserva del primero (antes se leía fuera de la tx → solape).
+    await lockBookingSlot(tx, { employeeId, locationId, resourceIds: resourceIds as string[] });
+    const avail = await checkAvailability({ businessId: req.businessId!, locationId, serviceId, employeeId, resourceIds, start }, tx);
     if (!avail.ok) return { conflict: avail.reason };
-    const booking = await prisma.booking.create({
+    const booking = await tx.booking.create({
       data: {
         businessId: req.businessId!, locationId, serviceId, customerId: customerId ?? null,
         teamId: teamId ?? null,
@@ -268,7 +274,7 @@ bookingsRouter.post('/', async (req: AuthedRequest, res: Response) => {
       },
       include: { service: true, customer: true, employee: true, resources: true, team: true },
     });
-    await prisma.bookingStatusHistory.create({ data: { bookingId: booking.id, estadoNuevo: 'PENDING', cambiadoPor: req.userId } });
+    await tx.bookingStatusHistory.create({ data: { bookingId: booking.id, estadoNuevo: 'PENDING', cambiadoPor: req.userId } });
     return { booking };
   });
 
@@ -383,24 +389,48 @@ bookingsRouter.post('/', async (req: AuthedRequest, res: Response) => {
   res.status(201).json(result.booking);
 });
 
-async function transition(req: AuthedRequest, res: Response, to: BookingStatus) {
-  const booking = await prisma.booking.findFirst({ where: { id: req.params.id, businessId: req.businessId } });
-  if (!booking) { res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } }); return null; }
-  const updated = await prisma.booking.update({ where: { id: booking.id }, data: { status: to } });
-  await prisma.bookingStatusHistory.create({ data: { bookingId: booking.id, estadoAnterior: booking.status, estadoNuevo: to, cambiadoPor: req.userId, motivo: req.body?.reason } });
+// Consume una sesión del bono activo del cliente para el servicio de la cita, DENTRO de
+// la transición (F-06: antes el consumo y la sesión vivían fuera de toda transacción y el
+// chequeo de agotamiento se hacía con una lectura previa, así que dos completados
+// concurrentes podían pasarse de sesiones).
+async function consumePackageSession(
+  tx: BookingTxClient,
+  p: { businessId: string; customerId: string; serviceId: string; bookingId: string },
+): Promise<void> {
+  const candidates = await tx.customerPackage.findMany({
+    where: { businessId: p.businessId, customerId: p.customerId, estado: 'ACTIVE', package: { services: { some: { id: p.serviceId } } } },
+    orderBy: { compradoEn: 'asc' },
+  });
+  const cp = candidates.find((c) => c.sesionesUsadas < c.sesionesTotal);
+  if (!cp) return;
+  await lockCustomerPackage(tx, cp.id);
+  const fresh = await tx.customerPackage.findUnique({ where: { id: cp.id } });
+  if (!fresh || fresh.sesionesUsadas >= fresh.sesionesTotal) return; // re-chequeo dentro de la tx
+  await tx.customerPackage.update({ where: { id: fresh.id }, data: { sesionesUsadas: { increment: 1 } } });
+  await tx.packageSession.create({ data: { customerPackageId: fresh.id, bookingId: p.bookingId } });
+}
 
-  // Al completar: consumir una sesión de bono si el cliente tiene uno activo para ese servicio.
-  if (to === 'COMPLETED' && booking.customerId) {
-    const candidates = await prisma.customerPackage.findMany({
-      where: { businessId: req.businessId, customerId: booking.customerId, estado: 'ACTIVE', package: { services: { some: { id: booking.serviceId } } } },
-      orderBy: { compradoEn: 'asc' },
-    });
-    const cp = candidates.find((c: { sesionesUsadas: number; sesionesTotal: number }) => c.sesionesUsadas < c.sesionesTotal);
-    if (cp) {
-      await prisma.customerPackage.update({ where: { id: cp.id }, data: { sesionesUsadas: { increment: 1 } } });
-      await prisma.packageSession.create({ data: { customerPackageId: cp.id, bookingId: booking.id } });
+async function transition(req: AuthedRequest, res: Response, to: BookingStatus) {
+  // Una sola transacción: estado + historial + consumo de bono + sesión del bono.
+  const updated = await prisma.$transaction(async (tx) => {
+    const booking = await tx.booking.findFirst({ where: { id: req.params.id, businessId: req.businessId } });
+    if (!booking) return null;
+    const row = await tx.booking.update({ where: { id: booking.id }, data: { status: to } });
+    await tx.bookingStatusHistory.create({ data: { bookingId: booking.id, estadoAnterior: booking.status, estadoNuevo: to, cambiadoPor: req.userId, motivo: req.body?.reason } });
+
+    // Al completar: consumir una sesión de bono si el cliente tiene uno activo para ese servicio.
+    if (to === 'COMPLETED' && booking.customerId) {
+      await consumePackageSession(tx, {
+        businessId: req.businessId!,
+        customerId: booking.customerId,
+        serviceId: booking.serviceId,
+        bookingId: booking.id,
+      });
     }
-  }
+    return row;
+  });
+
+  if (!updated) { res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } }); return null; }
   res.json(updated);
   return updated;
 }
@@ -520,30 +550,39 @@ bookingsRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
     notes: body.notes, employeeId: body.employeeId, serviceId: body.serviceId, status: body.status,
   };
 
-  // Reprogramación (start) o cambio de servicio: revalida disponibilidad contra el
-  // resto de la agenda antes de tocar nada.
-  if (body.start || body.serviceId) {
-    const avail = await checkAvailability({
-      businessId: req.businessId!,
-      locationId: booking.locationId,
-      serviceId: (body.serviceId as string) ?? booking.serviceId,
-      employeeId: (body.employeeId as string) ?? booking.employeeId,
-      start: (body.start as string) ?? booking.startAt,
-    });
-    if (!avail.ok) return res.status(409).json({ error: { code: 'availability', message: 'No disponible', reason: avail.reason } });
-    data.startAt = avail.startAt;
-    data.endAt = avail.endAt;
-  }
+  // Reprogramación (start) o cambio de servicio: revalida disponibilidad contra el resto de
+  // la agenda DENTRO de la misma transacción que escribe (F-06). Antes se validaba fuera y
+  // la escritura iba en otra tx: dos reprogramaciones del mismo hueco podían solaparse.
+  const needsAvailability = Boolean(body.start || body.serviceId);
+  const outcome = await prisma.$transaction(async (tx) => {
+    if (needsAvailability) {
+      await lockBookingSlot(tx, {
+        employeeId: (body.employeeId as string) ?? booking.employeeId,
+        locationId: booking.locationId,
+      });
+      const avail = await checkAvailability({
+        businessId: req.businessId!,
+        locationId: booking.locationId,
+        serviceId: (body.serviceId as string) ?? booking.serviceId,
+        employeeId: (body.employeeId as string) ?? booking.employeeId,
+        start: (body.start as string) ?? booking.startAt,
+      }, tx);
+      if (!avail.ok) return { conflict: avail.reason } as const;
+      data.startAt = avail.startAt;
+      data.endAt = avail.endAt;
+    }
 
-  const updated = await prisma.$transaction(async (tx) => {
     const row = await tx.booking.update({ where: { id: booking.id }, data });
     if (body.status !== undefined && body.status !== booking.status) {
       await tx.bookingStatusHistory.create({
         data: { bookingId: booking.id, estadoAnterior: booking.status, estadoNuevo: body.status as BookingStatus, cambiadoPor: req.userId },
       });
     }
-    return row;
+    return { row } as const;
   });
+
+  if ('conflict' in outcome) return res.status(409).json({ error: { code: 'availability', message: 'No disponible', reason: outcome.conflict } });
+  const updated = outcome.row;
 
   // WU2 (AC2): refleja la edición en el Google Calendar del negocio en directo.
   // Cancelación → elimina el evento; resto de ediciones → upsert (si el evento no

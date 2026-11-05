@@ -1,5 +1,6 @@
 import { prisma } from '../prisma.js';
 import { BookingStatus } from './generated/prisma/client.js';
+import type { Prisma } from './generated/prisma/client.js';
 
 export interface AvailabilityParams {
   businessId: string;
@@ -10,6 +11,46 @@ export interface AvailabilityParams {
   start: string | Date;
 }
 export interface AvailabilityResult { ok: boolean; reason?: string; startAt?: Date; endAt?: Date; }
+
+/** Cliente de una transacción interactiva de Prisma. */
+export type BookingTxClient = Prisma.TransactionClient;
+
+// F-06: no existe ninguna constraint en BD contra solapes, así que toda creación o
+// reprogramación de reserva se serializa con un lock de fila del recurso escaso (empleado /
+// recurso / sucursal) tomado DENTRO de la transacción que después lee y escribe. Sin el
+// lock, dos transacciones leen "libre" antes de que la otra commitee e insertan un solape.
+// Nombres de tabla verificados en prisma/schema.prisma (@@map) y schema `crm` que cualifica
+// el adapter de src/prisma.ts (`DB_SCHEMA ?? 'crm'`). `$queryRaw` no parametriza
+// identificadores: el nombre de tabla va literal, como en sale-lines.ts (crm.venta).
+export async function lockEmployee(tx: BookingTxClient, employeeId: string): Promise<void> {
+  await tx.$queryRaw`SELECT id FROM crm.empleado WHERE id = ${employeeId} FOR UPDATE`;
+}
+export async function lockLocation(tx: BookingTxClient, locationId: string): Promise<void> {
+  await tx.$queryRaw`SELECT id FROM crm.sucursal WHERE id = ${locationId} FOR UPDATE`;
+}
+export async function lockResource(tx: BookingTxClient, resourceId: string): Promise<void> {
+  await tx.$queryRaw`SELECT id FROM crm.recurso WHERE id = ${resourceId} FOR UPDATE`;
+}
+export async function lockCustomerPackage(tx: BookingTxClient, customerPackageId: string): Promise<void> {
+  await tx.$queryRaw`SELECT id FROM crm.paquete_cliente WHERE id = ${customerPackageId} FOR UPDATE`;
+}
+
+// Orden de adquisición estable (empleado|sucursal → recursos ordenados) para que dos
+// reservas concurrentes no se bloqueen en cruz y provoquen un deadlock.
+export async function lockBookingSlot(
+  tx: BookingTxClient,
+  p: { employeeId?: string | null; locationId: string; resourceIds?: string[] },
+): Promise<void> {
+  if (p.employeeId) await lockEmployee(tx, p.employeeId);
+  else await lockLocation(tx, p.locationId); // sin empleado, la sucursal es el recurso escaso
+  for (const rid of [...(p.resourceIds ?? [])].sort()) await lockResource(tx, rid);
+}
+
+/** Subconjunto de Prisma que necesita la comprobación de disponibilidad. Admite tanto el
+ *  cliente global como el cliente de una transacción (`tx`), igual que sale-lines.ts. */
+export type AvailabilityClient = Pick<
+  typeof prisma, 'service' | 'openingHour' | 'holiday' | 'booking' | 'timeOffRequest' | 'resource'
+>;
 
 const ACTIVE_STATES: BookingStatus[] = [
   BookingStatus.DRAFT, BookingStatus.PENDING, BookingStatus.CONFIRMED,
@@ -32,8 +73,12 @@ function hhmmToMin(s: string): number { const [h, m] = s.split(':').map(Number);
 function dateOnly(d: Date): Date { return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())); }
 
 // Valida una franja contra horario, festivos, empleado (solape + ausencias) y recursos (aforo).
-export async function checkAvailability(p: AvailabilityParams): Promise<AvailabilityResult> {
-  const service = await prisma.service.findFirst({ where: { id: p.serviceId, businessId: p.businessId } });
+// `db` permite leer dentro de la MISMA transacción que va a insertar la reserva: así el
+// solape se evalúa contra lo ya committeado + lo de la propia tx, y el lock de fila previo
+// serializa a los creadores concurrentes del mismo empleado/recurso (F-06). Por defecto
+// usa el cliente global, de modo que todos los callers existentes siguen igual.
+export async function checkAvailability(p: AvailabilityParams, db: AvailabilityClient = prisma): Promise<AvailabilityResult> {
+  const service = await db.service.findFirst({ where: { id: p.serviceId, businessId: p.businessId } });
   if (!service) return { ok: false, reason: 'service_not_found' };
   if (!service.activo) return { ok: false, reason: 'service_inactive' };
 
@@ -43,23 +88,23 @@ export async function checkAvailability(p: AvailabilityParams): Promise<Availabi
   const winEnd = new Date(endAt.getTime() + service.margenDespues * 60000);
 
   // Horario de apertura
-  const hours = await prisma.openingHour.findMany({ where: { locationId: p.locationId, diaSemana: startAt.getUTCDay() } });
+  const hours = await db.openingHour.findMany({ where: { locationId: p.locationId, diaSemana: startAt.getUTCDay() } });
   const within = hours.some((h: { apertura: string; cierre: string }) => minutesOfDay(startAt) >= hhmmToMin(h.apertura) && minutesOfDay(endAt) <= hhmmToMin(h.cierre));
   if (hours.length > 0 && !within) return { ok: false, reason: 'outside_opening_hours' };
 
   // Festivos / cierres
-  const holiday = await prisma.holiday.findFirst({ where: { locationId: p.locationId, fecha: dateOnly(startAt) } });
+  const holiday = await db.holiday.findFirst({ where: { locationId: p.locationId, fecha: dateOnly(startAt) } });
   if (holiday && !holiday.abierto) return { ok: false, reason: 'holiday' };
 
   // Empleado: solape + ausencias aprobadas
   if (p.employeeId) {
-    const svcEmp = await prisma.service.findFirst({ where: { id: p.serviceId, employees: { some: { id: p.employeeId } } } });
+    const svcEmp = await db.service.findFirst({ where: { id: p.serviceId, employees: { some: { id: p.employeeId } } } });
     if (service.requiereProfesional && !svcEmp) return { ok: false, reason: 'employee_not_compatible' };
-    const overlap = await prisma.booking.findFirst({
+    const overlap = await db.booking.findFirst({
       where: { employeeId: p.employeeId, status: { in: ACTIVE_STATES }, startAt: { lt: winEnd }, endAt: { gt: winStart } },
     });
     if (overlap) return { ok: false, reason: 'employee_busy' };
-    const off = await prisma.timeOffRequest.findFirst({
+    const off = await db.timeOffRequest.findFirst({
       where: { employeeId: p.employeeId, estado: 'APPROVED', inicio: { lte: startAt }, fin: { gte: startAt } },
     });
     if (off) return { ok: false, reason: 'employee_time_off' };
@@ -68,9 +113,9 @@ export async function checkAvailability(p: AvailabilityParams): Promise<Availabi
   // Recursos: activos + aforo no superado
   const resourceIds = p.resourceIds ?? [];
   for (const rid of resourceIds) {
-    const res = await prisma.resource.findFirst({ where: { id: rid, businessId: p.businessId } });
+    const res = await db.resource.findFirst({ where: { id: rid, businessId: p.businessId } });
     if (!res || res.estado !== 'Activo') return { ok: false, reason: 'resource_unavailable' };
-    const concurrent = await prisma.booking.count({
+    const concurrent = await db.booking.count({
       where: { status: { in: ACTIVE_STATES }, startAt: { lt: endAt }, endAt: { gt: startAt }, resources: { some: { id: rid } } },
     });
     if (concurrent >= res.capacidad) return { ok: false, reason: 'resource_full' };

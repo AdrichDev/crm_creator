@@ -6,7 +6,19 @@ import type { AddressInfo } from 'node:net';
 
 type Row = Record<string, unknown>;
 export type Seed = Record<string, Row[]>;
-export interface Write { model: string; op: string; args: unknown }
+/** `client` dice qué cliente hizo la escritura: el root o el cliente de la transacción.
+ *  Permite probar que un handler escribe DENTRO de `$transaction` (ver bookings-atomic). */
+export type ClientTag = 'root' | 'tx';
+export interface Write { model: string; op: string; args: unknown; client: ClientTag }
+
+// Compara valores DateTime/numéricos de un filtro de rango. Devuelve null cuando el par no
+// es comparable (p. ej. fechas como string, o columnas que la fila de prueba no tiene).
+function compare(actual: unknown, expected: unknown): number | null {
+  const a = actual instanceof Date ? actual.getTime() : typeof actual === 'number' ? actual : null;
+  const b = expected instanceof Date ? expected.getTime() : typeof expected === 'number' ? expected : null;
+  if (a === null || b === null) return null;
+  return a - b;
+}
 
 function matchValue(actual: unknown, expected: unknown): boolean {
   if (expected === undefined) return true; // Prisma ignores undefined filters
@@ -15,7 +27,17 @@ function matchValue(actual: unknown, expected: unknown): boolean {
   if (typeof expected === 'object') {
     const ops = expected as Record<string, unknown>;
     if (Array.isArray(ops.in)) return ops.in.includes(actual);
-    return true; // relational/range filters are not modelled: treat as match
+    // Rangos (lt/lte/gt/gte) sobre DateTime/número: se modelan para poder probar el solape
+    // de reservas real. Lo no comparable (o ausente en la fila) no filtra, como antes.
+    const lt = compare(actual, ops.lt);
+    if (lt !== null && !(lt < 0)) return false;
+    const lte = compare(actual, ops.lte);
+    if (lte !== null && !(lte <= 0)) return false;
+    const gt = compare(actual, ops.gt);
+    if (gt !== null && !(gt > 0)) return false;
+    const gte = compare(actual, ops.gte);
+    if (gte !== null && !(gte >= 0)) return false;
+    return true; // resto de filtros relacionales (relaciones anidadas): treat as match
   }
   return actual === expected;
 }
@@ -30,9 +52,9 @@ export function installFakePrisma() {
   const writes: Write[] = [];
   let seq = 0;
 
-  const delegate = (model: string) => {
+  const delegate = (model: string, tag: ClientTag) => {
     const rows = () => (store[model] ??= []);
-    const log = (op: string, args: unknown) => writes.push({ model, op, args });
+    const log = (op: string, args: unknown) => writes.push({ model, op, args, client: tag });
     return {
       findFirst: async (a?: { where?: unknown }) => rows().find((r) => matches(r, a?.where)) ?? null,
       findUnique: async (a?: { where?: unknown }) => rows().find((r) => matches(r, a?.where)) ?? null,
@@ -54,15 +76,32 @@ export function installFakePrisma() {
     };
   };
 
-  const client: Record<string, unknown> = new Proxy({}, {
+  // `$queryRaw` / `$queryRawUnsafe` no se ejecutan: se registran (con el SQL ya unido y
+  // sus parámetros) y devuelven []. Así los tests pueden comprobar que se emitió un lock
+  // de fila (`SELECT … FOR UPDATE`) dentro de la transacción.
+  const buildClient = (tag: ClientTag): Record<string, unknown> => new Proxy({}, {
     get(_t, prop: string) {
-      if (prop === '$transaction') {
-        return async (arg: unknown) => (Array.isArray(arg) ? Promise.all(arg) : (arg as (c: unknown) => unknown)(client));
-      }
       if (prop === 'then') return undefined; // not a thenable
-      return delegate(prop);
+      if (prop === '$transaction') {
+        return async (arg: unknown) => {
+          writes.push({ model: '$transaction', op: 'begin', args: null, client: tag });
+          // El callback recibe SIEMPRE el cliente de transacción (`tx`), distinto del root.
+          return Array.isArray(arg) ? Promise.all(arg) : (arg as (c: unknown) => unknown)(txClient);
+        };
+      }
+      if (prop === '$queryRaw' || prop === '$queryRawUnsafe') {
+        return async (query: TemplateStringsArray | string, ...values: unknown[]) => {
+          const sql = typeof query === 'string' ? query : query.join('?');
+          writes.push({ model: '$queryRaw', op: 'query', args: { query: sql, values }, client: tag });
+          return [];
+        };
+      }
+      return delegate(prop, tag);
     },
   });
+
+  const txClient = buildClient('tx');
+  const client = buildClient('root');
 
   (globalThis as { prisma?: unknown }).prisma = client;
 

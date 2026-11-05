@@ -1,7 +1,7 @@
 import { Router, type Response, type Request } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../prisma.js';
-import { checkAvailability } from '../../lib/availability.js';
+import { checkAvailability, lockBookingSlot } from '../../lib/availability.js';
 import { splitNombre } from '../../lib/nombre.js';
 
 export const bookingsPublicRouter = Router();
@@ -60,20 +60,25 @@ bookingsPublicRouter.post('/', async (req: Request, res: Response) => {
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      // 1. Validar disponibilidad real (evitar double-booking concurrentes)
+      // 1. Lock de fila ANTES de leer: dos reservas públicas concurrentes del mismo hueco
+      // se serializan aquí (F-06). Antes la disponibilidad se leía con el cliente global
+      // dentro de una tx que no la usaba → ambas podían ver el hueco libre.
+      await lockBookingSlot(tx, { employeeId: d.employeeId ?? null, locationId: d.locationId });
+
+      // 2. Validar disponibilidad real (evitar double-booking concurrentes)
       const avail = await checkAvailability({
         businessId: d.businessId,
         locationId: d.locationId,
         serviceId: d.serviceId,
         employeeId: d.employeeId,
         start: d.start,
-      });
+      }, tx);
 
       if (!avail.ok) {
         return { conflict: avail.reason };
       }
 
-      // 2. Resolver Cliente (Upsert por email si existe, sino crear)
+      // 3. Resolver Cliente (Upsert por email si existe, sino crear)
       let customer = null;
       if (d.customer.email) {
         customer = await tx.customer.findFirst({
@@ -100,7 +105,7 @@ bookingsPublicRouter.post('/', async (req: Request, res: Response) => {
         });
       }
 
-      // 3. Crear Booking
+      // 4. Crear Booking
       const booking = await tx.booking.create({
         data: {
           businessId: d.businessId,
