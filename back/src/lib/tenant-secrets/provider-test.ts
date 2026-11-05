@@ -16,6 +16,7 @@
 
 import { Pool } from 'pg';
 import { testMailConnection, type MailTestConfig, type MailTestResult } from '../mail-connector.js';
+import { assertPublicHost, assertPublicUrl, SsrfError, type LookupFn } from '../ssrf.js';
 
 export type SecretProvider =
   | 'openai'
@@ -58,6 +59,88 @@ export interface ProviderTestDeps {
    * declaran; por defecto usa el `testMailConnection` real.
    */
   testMail?: (cfg: MailTestConfig) => Promise<MailTestResult>;
+  /**
+   * Guard anti-SSRF (hallazgo F-04, spec S2): resolución DNS para validar que el
+   * destino es público. Opcional — por defecto usa el DNS real del sistema; los tests
+   * inyectan un stub porque `node:test` aquí no puede mockear `node:dns`.
+   */
+  lookupHost?: LookupFn;
+}
+
+/**
+ * Motivo de rechazo del guard anti-SSRF, tal cual se devuelve en `detail`. Claro,
+ * genérico y sin datos del destino: nunca revela el host/IP sondeado (evita convertir
+ * el endpoint en un oráculo de la red interna).
+ */
+const BLOCKED_DETAIL = 'Destino no permitido';
+
+/** Entorno que decide la política TLS del pool de prueba (inyectable en tests). */
+export interface PostgresTlsEnv {
+  NODE_ENV?: string;
+  PG_TLS_INSECURE?: string;
+}
+
+export interface PostgresConnectConfig {
+  connectionString: string;
+  /** `undefined` = no se fuerza `ssl`: lo decide la propia cadena (`sslmode`). */
+  ssl?: { rejectUnauthorized: boolean };
+}
+
+/**
+ * Quita de la cadena los parámetros que DESACTIVAN la verificación del certificado.
+ *
+ * `pg` parsea `connectionString` y SUS valores PISAN el `ssl` explícito del Pool
+ * (`pg/lib/connection-parameters.js`: `Object.assign({}, config, parse(connectionString))`),
+ * así que neutralizarlos en la cadena es la única forma efectiva de garantizar que en
+ * producción se verifica el certificado TLS. Solo se tocan los dos parámetros que
+ * apagan la verificación (`sslmode=no-verify`, `uselibpqcompat=true`): el resto de la
+ * cadena (host, credenciales, otras opciones) se devuelve byte a byte tal cual si no
+ * hay nada que quitar.
+ */
+function stripWeakTlsParams(connectionString: string): string {
+  let url: URL;
+  try {
+    url = new URL(connectionString);
+  } catch {
+    return connectionString;
+  }
+  const params = url.searchParams;
+  let changed = false;
+  if ((params.get('sslmode') ?? '').toLowerCase() === 'no-verify') {
+    params.delete('sslmode');
+    changed = true;
+  }
+  if ((params.get('uselibpqcompat') ?? '').toLowerCase() === 'true') {
+    params.delete('uselibpqcompat');
+    changed = true;
+  }
+  if (!changed) return connectionString;
+  url.search = params.toString();
+  return url.toString();
+}
+
+/**
+ * Configuración de conexión de la prueba Postgres: cadena saneada + política TLS.
+ *
+ * En PRODUCCIÓN el certificado del servidor SIEMPRE se verifica (F-04/S2): el antiguo
+ * `ssl: { rejectUnauthorized: false }` permitía un man-in-the-middle sobre la prueba.
+ * Si la cadena fija `sslmode` (ya sin los modos que apagan la verificación, ver
+ * `stripWeakTlsParams`) se respeta esa elección explícita del tenant sobre SU base de
+ * datos; si no, se fuerza `rejectUnauthorized: true`.
+ *
+ * Escape SOLO para desarrollo local: `PG_TLS_INSECURE=1` permite aceptar un certificado
+ * autofirmado. Se IGNORA por completo cuando `NODE_ENV === 'production'`, y no tiene
+ * efecto si la cadena fija `sslmode`.
+ */
+export function postgresConnectConfig(
+  connectionString: string,
+  env: PostgresTlsEnv = process.env,
+): PostgresConnectConfig {
+  const sanitized = stripWeakTlsParams(connectionString);
+  // La cadena ya eligió su TLS (`sslmode=…`, ya saneado arriba): se respeta.
+  if (/[?&]sslmode=/.test(sanitized)) return { connectionString: sanitized };
+  const insecureAllowed = env.NODE_ENV !== 'production' && env.PG_TLS_INSECURE === '1';
+  return { connectionString: sanitized, ssl: { rejectUnauthorized: !insecureAllowed } };
 }
 
 const defaultDeps: ProviderTestDeps = {
@@ -66,14 +149,13 @@ const defaultDeps: ProviderTestDeps = {
   createPool: (connectionString, timeoutMs) => {
     // Postgres gestionado (Supabase, Neon, RDS…) EXIGE SSL. `pg` no lo activa por defecto,
     // así que un `SELECT 1` contra el pooler de Supabase fallaba aunque la URL fuese
-    // correcta ("no se pudo conectar la base de datos"). Se activa SSL salvo host local
-    // (dev sin SSL) o si la cadena ya fija `sslmode`. `rejectUnauthorized:false` acepta la
-    // cadena de certificado del pooler (patrón habitual con Supabase).
-    const isLocal = /@(localhost|127\.0\.0\.1|\[::1\])/.test(connectionString);
-    const hasSslMode = /[?&]sslmode=/.test(connectionString);
-    const ssl = isLocal || hasSslMode ? undefined : { rejectUnauthorized: false };
+    // correcta ("no se pudo conectar la base de datos"). Se activa SSL con el certificado
+    // VERIFICADO (`postgresConnectConfig`, F-04/S2), salvo que la cadena fije `sslmode`.
+    // Los hosts locales (localhost/127.0.0.1) ya no llegan aquí: el guard anti-SSRF los
+    // rechaza antes de crear el pool.
+    const { connectionString: sanitized, ssl } = postgresConnectConfig(connectionString);
     return new Pool({
-      connectionString,
+      connectionString: sanitized,
       connectionTimeoutMillis: timeoutMs,
       query_timeout: timeoutMs,
       max: 1,
@@ -95,6 +177,20 @@ async function testWithTimeout(
     return await fn(controller.signal);
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/**
+ * Extrae el host de una cadena de conexión Postgres. `null` = no se pudo determinar
+ * (cadena inválida o conexión por socket UNIX `postgresql:///db`) → el guard rechaza
+ * (fail-closed) en lugar de conectar a un destino que no supo validar.
+ */
+function postgresHost(connectionString: string): string | null {
+  try {
+    const { hostname } = new URL(connectionString);
+    return hostname ? hostname : null;
+  } catch {
+    return null;
   }
 }
 
@@ -124,7 +220,7 @@ export async function testProviderConnection(
   deps: ProviderTestDeps = defaultDeps,
 ): Promise<ProviderTestResult> {
   const timeoutMs = DEFAULT_TIMEOUT_MS;
-  const { fetchImpl, createPool } = deps;
+  const { fetchImpl, createPool, lookupHost } = deps;
   try {
     switch (provider) {
       case 'openai':
@@ -162,7 +258,16 @@ export async function testProviderConnection(
           return denied ? { ok: false, detail: `maps: ${body.status}` } : { ok: true };
         });
       case 'database':
-        return await testDatabaseUrl(value, timeoutMs, createPool);
+        // F-04/S2: la cadena la escribe un humano del tenant, así que el host se valida
+        // ANTES de crear el pool — nunca se abre un socket hacia loopback/red privada/
+        // link-local/metadata/CGNAT. Un rechazo es `ok:false` (nunca un throw) y no
+        // cambia el contrato del endpoint.
+        {
+          const host = postgresHost(value);
+          if (!host) return { ok: false, detail: BLOCKED_DETAIL };
+          await assertPublicHost(host, lookupHost);
+          return await testDatabaseUrl(value, timeoutMs, createPool);
+        }
       case 'supabase_url':
         // NEXT_PUBLIC_SUPABASE_URL es pública (va al bundle del front). Se valida
         // formato (https) + ALCANZABILIDAD del host. Basta con que el host RESPONDA:
@@ -180,6 +285,9 @@ export async function testProviderConnection(
           if (parsed.protocol !== 'https:') {
             return { ok: false, detail: 'URL de Supabase inválida' };
           }
+          // F-04/S2: guard anti-SSRF DESPUÉS del formato (un `http://` conserva el
+          // mensaje de siempre) y ANTES de cualquier fetch.
+          await assertPublicUrl(parsed.toString(), { lookup: lookupHost });
           // Cualquier respuesta HTTP (200, 401, 404…) = host alcanzable → ok.
           await fetchImpl(`${value.replace(/\/$/, '')}/auth/v1/health`, { signal });
           return { ok: true };
@@ -211,11 +319,23 @@ export async function testProviderConnection(
         } catch {
           return { ok: false, detail: 'configuración de correo con formato inválido' };
         }
+        // F-04/S2: los hosts IMAP/SMTP los escribe un humano del tenant → se validan
+        // ANTES de invocar al conector, así no se abre ningún socket hacia la red
+        // interna. Sin hosts configurados no hay nada que resolver (comportamiento
+        // previo: el conector reporta los campos que faltan).
+        for (const rawHost of [cfg.imapHost, cfg.smtpHost]) {
+          if (rawHost === undefined || rawHost === null || rawHost === '') continue;
+          await assertPublicHost(String(rawHost), lookupHost);
+        }
         const result = await (deps.testMail ?? testMailConnection)(cfg);
         return { ok: result.imap && result.smtp, ...(result.detail ? { detail: result.detail } : {}) };
       }
     }
-  } catch {
+  } catch (e) {
+    // F-04/S2: un destino no público es un rechazo del guard anti-SSRF, no un fallo de
+    // red — se distingue para devolver un motivo claro (y solo para eso: el resto del
+    // contrato de `detail` no cambia).
+    if (e instanceof SsrfError) return { ok: false, detail: BLOCKED_DETAIL };
     // AbortError (timeout) o fallo de red/conexión: nunca se interpola `value` ni el error crudo.
     return { ok: false, detail: 'timeout o error de conexión al contactar al recurso' };
   }

@@ -358,6 +358,15 @@ describe('T2.4 — provider-test.ts case "mail"', () => {
       fetchImpl: (() => { throw new Error('no debería usarse'); }) as unknown as typeof fetch,
       createPool: () => { throw new Error('no debería usarse'); },
       testMail,
+      // F-04/S2: el guard SSRF resuelve imapHost/smtpHost antes de conectar. Stub de DNS
+      // (IP pública) para que estos casos no dependan de la red real.
+      lookupHost: async (hostname) => {
+        const known = ['imap.b.com', 'smtp.b.com'];
+        if (!known.includes(hostname)) {
+          throw Object.assign(new Error(`getaddrinfo ENOTFOUND ${hostname}`), { code: 'ENOTFOUND' });
+        }
+        return [{ address: '93.184.216.34', family: 4 }];
+      },
     };
   }
 
