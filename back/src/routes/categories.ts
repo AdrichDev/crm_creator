@@ -3,6 +3,7 @@ import { prisma } from '../prisma.js';
 import type { AuthedRequest } from '../middleware/types.js';
 import { parsePagination } from '../lib/pagination.js';
 import { staffOnly } from '../middleware/rbac.js';
+import { assertFks, handleCrossTenant } from '../lib/tenant.js';
 
 // Equipos deportivos (crm.equipo + crm.miembro_equipo).
 // Montado bajo staffOnly en routes/index.ts.
@@ -163,10 +164,21 @@ categoriesRouter.post('/:id/members', staffOnly as unknown as (req: Request, res
     return res.status(422).json({ error: { code: 'invalid', message: 'Falta rol' } });
   }
 
+  // El miembro (empleado o socio) tiene que ser del negocio activo, antes de leerlo.
+  try {
+    await assertFks(req.businessId, [
+      { model: 'employee', id: employeeId, field: 'employeeId' },
+      { model: 'customer', id: customerId, field: 'customerId' },
+    ]);
+  } catch (e) {
+    if (handleCrossTenant(e, res)) return;
+    throw e;
+  }
+
   // Validación menor de edad (solo cuando customerId presente)
   if (customerId) {
-    const socio = await prisma.customer.findUnique({
-      where: { id: customerId },
+    const socio = await prisma.customer.findFirst({
+      where: { id: customerId, businessId: req.businessId },
       select: { fechaNacimiento: true },
     });
     if (socio?.fechaNacimiento) {

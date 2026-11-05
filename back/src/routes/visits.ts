@@ -1,6 +1,7 @@
 import { Router, type Response } from 'express';
 import { prisma } from '../prisma.js';
 import type { AuthedRequest } from '../middleware/types.js';
+import { assertBelongsToBusiness, handleCrossTenant } from '../lib/tenant.js';
 
 // Registro de visitas (RF-12). POST crea la visita y, en la MISMA transacción, actualiza
 // Customer.ultimaVisitaEn = fecha y, si viene estadoPosteriorId, el estadoVisitaId del cliente.
@@ -34,12 +35,20 @@ visitsRouter.post('/', async (req: AuthedRequest, res: Response) => {
     if (!st) return res.status(422).json({ error: { code: 'invalid', message: 'Estado posterior inválido' } });
   }
 
+  const employeeId = typeof body.employeeId === 'string' ? body.employeeId : null;
+  try {
+    await assertBelongsToBusiness('employee', employeeId, req.businessId, 'employeeId');
+  } catch (e) {
+    if (handleCrossTenant(e, res)) return;
+    throw e;
+  }
+
   const [visit] = await prisma.$transaction([
     prisma.visit.create({
       data: {
         businessId: req.businessId!,
         customerId,
-        employeeId: typeof body.employeeId === 'string' ? body.employeeId : null,
+        employeeId,
         fecha,
         resultado: typeof body.resultado === 'string' ? body.resultado : null,
         nota: typeof body.nota === 'string' ? body.nota : null,

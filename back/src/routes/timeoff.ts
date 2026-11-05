@@ -6,6 +6,7 @@ import { joinNombre } from '../lib/nombre.js';
 import { emit } from '../lib/automation/index.js';
 import { adminEmails } from '../lib/adminEmails.js';
 import { buildTimeoffRequested, buildTimeoffResolved } from '../lib/eventPayloads.js';
+import { assertBelongsToBusiness, handleCrossTenant } from '../lib/tenant.js';
 
 export const timeOffRouter = Router();
 
@@ -31,6 +32,12 @@ timeOffRouter.get('/', async (req: AuthedRequest, res: Response) => {
 timeOffRouter.post('/', async (req: AuthedRequest, res: Response) => {
   const { employeeId, tipo = 'VACATION', inicio, fin, dias, motivo } = req.body ?? {};
   if (!employeeId || !inicio || !fin) return res.status(422).json({ error: { code: 'validation', message: 'employeeId, inicio y fin requeridos' } });
+  try {
+    await assertBelongsToBusiness('employee', employeeId, req.businessId, 'employeeId');
+  } catch (e) {
+    if (handleCrossTenant(e, res)) return;
+    throw e;
+  }
   const row = await prisma.timeOffRequest.create({ data: { businessId: req.businessId!, employeeId, tipo, inicio: new Date(inicio), fin: new Date(fin), dias, motivo, estado: 'PENDING' } });
   res.status(201).json(row);
 
@@ -38,7 +45,7 @@ timeOffRouter.post('/', async (req: AuthedRequest, res: Response) => {
   void (async () => {
     try {
       const [employee, business, admins] = await Promise.all([
-        prisma.employee.findFirst({ where: { id: employeeId }, select: { nombre: true, apellido: true } }),
+        prisma.employee.findFirst({ where: { id: employeeId, businessId: req.businessId }, select: { nombre: true, apellido: true } }),
         prisma.business.findFirst({ where: { id: req.businessId }, select: { nombre: true } }),
         adminEmails(req.businessId!),
       ]);
@@ -70,7 +77,7 @@ async function decide(req: AuthedRequest, res: Response, estado: 'APPROVED' | 'R
   void (async () => {
     try {
       const [employee, business] = await Promise.all([
-        prisma.employee.findFirst({ where: { id: row.employeeId }, select: { nombre: true, apellido: true, email: true } }),
+        prisma.employee.findFirst({ where: { id: row.employeeId, businessId: req.businessId }, select: { nombre: true, apellido: true, email: true } }),
         prisma.business.findFirst({ where: { id: req.businessId }, select: { nombre: true } }),
       ]);
       if (!employee?.email) return;

@@ -20,6 +20,34 @@ import { listAgentBookings, fusionarCitas, resumirCitas, AGENT_BOOKINGS_CAP } fr
 
 export const bookingsRouter = Router();
 
+// Las consultas de disponibilidad leen horarios, festivos y agenda por id: sin esta
+// comprobación, un id de otro negocio revelaría su ocupación. 422 cross_tenant.
+async function availabilityIdsAreOwn(
+  businessId: string | undefined,
+  ids: { locationId?: unknown; serviceId?: unknown; employeeId?: unknown; resourceIds?: unknown },
+  res: Response,
+): Promise<boolean> {
+  const one = (v: unknown) => (typeof v === 'string' && v ? v : null);
+  const raw = ids.resourceIds ?? [];
+  if (!Array.isArray(raw) || raw.some((v) => typeof v !== 'string')) {
+    res.status(422).json({ error: { code: 'validation', message: 'resourceIds debe ser una lista de ids' } });
+    return false;
+  }
+  const resources = raw as string[];
+  try {
+    await assertFks(businessId, [
+      { model: 'location', id: one(ids.locationId), field: 'locationId' },
+      { model: 'service', id: one(ids.serviceId), field: 'serviceId' },
+      { model: 'employee', id: one(ids.employeeId), field: 'employeeId' },
+      ...resources.map((id) => ({ model: 'resource' as const, id, field: 'resourceIds' })),
+    ]);
+    return true;
+  } catch (e) {
+    if (handleCrossTenant(e, res)) return false;
+    throw e;
+  }
+}
+
 // Estado de reserva (enum) → etiqueta castellana que muestra el front.
 const ESTADO_LABEL: Record<string, string> = {
   PENDING: 'Pendiente', CONFIRMED: 'Confirmada', CANCELLED: 'Cancelada',
@@ -139,6 +167,7 @@ bookingsRouter.get('/', async (req: AuthedRequest, res: Response) => {
 bookingsRouter.get('/slots', async (req: AuthedRequest, res: Response) => {
   const { date, serviceId, employeeId, locationId } = req.query as Record<string, string | undefined>;
   if (!date || !serviceId) return res.status(422).json({ error: { code: 'validation', message: 'date y serviceId requeridos' } });
+  if (!(await availabilityIdsAreOwn(req.businessId, { locationId, serviceId, employeeId }, res))) return;
 
   let loc = locationId;
   if (!loc) {
@@ -188,6 +217,7 @@ bookingsRouter.get('/:id', async (req: AuthedRequest, res: Response) => {
 bookingsRouter.post('/check-availability', async (req: AuthedRequest, res: Response) => {
   const { locationId, serviceId, employeeId, resourceIds, start, date } = req.body ?? {};
   if (!locationId || !serviceId) return res.status(422).json({ error: { code: 'validation', message: 'locationId y serviceId requeridos' } });
+  if (!(await availabilityIdsAreOwn(req.businessId, { locationId, serviceId, employeeId, resourceIds }, res))) return;
   if (start) {
     const r = await checkAvailability({ businessId: req.businessId!, locationId, serviceId, employeeId, resourceIds, start });
     return res.json(r);

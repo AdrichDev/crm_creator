@@ -7,6 +7,20 @@ import { splitNombre, joinNombre, pickFields } from '../lib/nombre.js';
 import { parsePagination } from '../lib/pagination.js';
 import { resolveGeocoder, setGeocoder, haversineKm, isValidCoord } from '../lib/geo/index.js';
 import { planImport, type ImportRow, type ExistingCustomer } from '../lib/comercial/import.js';
+import { assertBelongsToBusiness, handleCrossTenant } from '../lib/tenant.js';
+
+// El estado de visita es un FK editable: tiene que ser del negocio activo.
+// Responde 422 cross_tenant y devuelve false si no lo es.
+async function visitStateIsOwn(data: Record<string, unknown>, businessId: string | undefined, res: Response): Promise<boolean> {
+  const id = typeof data.estadoVisitaId === 'string' ? data.estadoVisitaId : null;
+  try {
+    await assertBelongsToBusiness('visitState', id, businessId, 'estadoVisitaId');
+    return true;
+  } catch (e) {
+    if (handleCrossTenant(e, res)) return false;
+    throw e;
+  }
+}
 
 // Clientes (crm.cliente) en CASTELLANO, con agregados calculados (visitas, gastoTotal,
 // ultimaVisita, segmento) y campos de comercial de campo (geo, estado de visita, ABC, tipo).
@@ -186,6 +200,7 @@ customersRouter.post('/', async (req: AuthedRequest, res: Response) => {
   const body = (req.body ?? {}) as Record<string, unknown>;
   const data = buildData(body);
   if (!data.nombre) return res.status(422).json({ error: { code: 'invalid', message: 'Falta nombre' } });
+  if (!(await visitStateIsOwn(data, req.businessId, res))) return;
   await resolveGeo(body, data);
   const row = await prisma.customer.create({
     data: { ...data, businessId: req.businessId } as unknown as Prisma.CustomerUncheckedCreateInput,
@@ -198,6 +213,7 @@ customersRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
   if (!existing) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
   const body = (req.body ?? {}) as Record<string, unknown>;
   const data = buildData(body);
+  if (!(await visitStateIsOwn(data, req.businessId, res))) return;
   // Sólo re-geocodifica si cambian dirección o coords en el body.
   if (['latitud', 'longitud', 'direccion', 'numero', 'localidad', 'provincia', 'codigoPostal'].some((k) => k in body)) {
     await resolveGeo(body, data);

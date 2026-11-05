@@ -1,7 +1,7 @@
 import { Router, type Response } from 'express';
 import { prisma } from '../prisma.js';
 import type { AuthedRequest } from '../middleware/types.js';
-import { assertBelongsToBusiness, handleCrossTenant } from '../lib/tenant.js';
+import { assertBelongsToBusiness, assertFks, handleCrossTenant } from '../lib/tenant.js';
 
 export const packagesRouter = Router();
 
@@ -13,6 +13,15 @@ packagesRouter.get('/', async (req: AuthedRequest, res: Response) => {
 packagesRouter.post('/', async (req: AuthedRequest, res: Response) => {
   const { nombre, sesionesTotal, diasValidez = 365, precio, serviceIds = [] } = req.body ?? {};
   if (!nombre || !sesionesTotal) return res.status(422).json({ error: { code: 'validation', message: 'nombre y sesionesTotal requeridos' } });
+  if (!Array.isArray(serviceIds) || serviceIds.some((id) => typeof id !== 'string')) {
+    return res.status(422).json({ error: { code: 'validation', message: 'serviceIds debe ser una lista de ids' } });
+  }
+  try {
+    await assertFks(req.businessId, serviceIds.map((id: string) => ({ model: 'service' as const, id, field: 'serviceIds' })));
+  } catch (e) {
+    if (handleCrossTenant(e, res)) return;
+    throw e;
+  }
   const row = await prisma.package.create({ data: { businessId: req.businessId!, nombre, sesionesTotal, diasValidez, precio, services: serviceIds.length ? { connect: serviceIds.map((id: string) => ({ id })) } : undefined } });
   res.status(201).json(row);
 });
@@ -41,6 +50,12 @@ packagesRouter.post('/customer-packages/:id/consume-session', async (req: Authed
   if (cp.estado !== 'ACTIVE') return res.status(409).json({ error: { code: 'inactive', message: 'Bono no activo' } });
   if (cp.sesionesUsadas >= cp.sesionesTotal) return res.status(409).json({ error: { code: 'exhausted', message: 'Bono agotado' } });
   if (cp.expiraEn && cp.expiraEn < new Date()) return res.status(409).json({ error: { code: 'expired', message: 'Bono caducado' } });
+  try {
+    await assertBelongsToBusiness('booking', req.body?.bookingId, req.businessId, 'bookingId');
+  } catch (e) {
+    if (handleCrossTenant(e, res)) return;
+    throw e;
+  }
   const updated = await prisma.customerPackage.update({ where: { id: cp.id }, data: { sesionesUsadas: { increment: 1 }, sessions: { create: { bookingId: req.body?.bookingId } } } });
   res.json(updated);
 });
