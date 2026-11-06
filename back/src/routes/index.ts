@@ -47,7 +47,8 @@ api.use('/public', publicRouter);
 
 // Público
 api.use('/auth', authRouter);
-// Extracción de diseño de la landing con IA (setup de proyecto, sin tenant aún).
+// Extracción de diseño de la landing con IA. Auth propia en el router (brandingAuth):
+// sesión obligatoria; con negocio exige membresía, sin negocio solo el operador.
 api.use('/branding', brandingRouter);
 // crm-citas-google-calendar: feed ICS por token en la URL (sin Bearer, Google/Outlook
 // lo piden por suscripción); los endpoints de autoservicio dentro del router llaman

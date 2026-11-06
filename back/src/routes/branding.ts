@@ -1,8 +1,10 @@
-import { Router, type Request, type Response } from 'express';
+import { Router, type Request, type Response, type NextFunction } from 'express';
+import rateLimit from 'express-rate-limit';
 import { env } from '../env.js';
 import { getTenantSecret } from '../lib/tenant-secrets/store.js';
-
-export const brandingRouter = Router();
+import { verifySupabaseToken, type SupabaseTokenPayload } from '../lib/auth.js';
+import { prisma } from '../prisma.js';
+import type { AuthedRequest } from '../middleware/types.js';
 
 /**
  * Design-tokens que la IA extrae de la landing. La landing manda: OperaOS solo
@@ -90,6 +92,59 @@ export interface BrandingExtractDeps {
 
 const defaultDeps: BrandingExtractDeps = { getTenantSecret, extractWithAnthropic };
 
+/** Identidad para gastar una clave de IA (inyectable en tests). */
+export interface BrandingAuthDeps {
+  verify: (token: string) => Promise<SupabaseTokenPayload>;
+  isMember: (userId: string, businessId: string) => Promise<boolean>;
+}
+
+const defaultAuthDeps: BrandingAuthDeps = {
+  verify: verifySupabaseToken,
+  isMember: async (userId, businessId) => !!(await prisma.membership.findFirst({ where: { userId, businessId }, select: { id: true } })),
+};
+
+const EXTRACT_PER_MINUTE = 10;
+
+/**
+ * La extracción gasta una clave de Anthropic, así que exige sesión:
+ * - con negocio (header x-business-id o body.businessId): hay que ser miembro de él;
+ *   se usa la clave del negocio (con fallback a la del operador, como antes).
+ * - sin negocio (montar un proyecto nuevo): solo el operador de la plataforma
+ *   (`app_metadata.role = 'operator'`) puede usar la clave del operador.
+ */
+export function brandingAuth(deps: BrandingAuthDeps = defaultAuthDeps) {
+  return async (req: AuthedRequest, res: Response, next: NextFunction) => {
+    const header = req.headers.authorization;
+    if (!header?.startsWith('Bearer ')) {
+      return res.status(401).json({ error: { code: 'no_token', message: 'Falta token' } });
+    }
+    let claims: SupabaseTokenPayload;
+    try {
+      claims = await deps.verify(header.slice(7));
+    } catch {
+      return res.status(401).json({ error: { code: 'invalid_token', message: 'Token inválido' } });
+    }
+    const fromHeader = typeof req.headers['x-business-id'] === 'string' ? req.headers['x-business-id'].trim() : '';
+    const fromBody = typeof req.body?.businessId === 'string' ? req.body.businessId.trim() : '';
+    const businessId = fromHeader || fromBody;
+    try {
+      if (businessId) {
+        if (!(await deps.isMember(claims.sub, businessId))) {
+          return res.status(403).json({ error: { code: 'wrong_business', message: 'No tienes acceso a ese negocio' } });
+        }
+        req.businessId = businessId;
+      } else if (claims.appRole !== 'operator') {
+        return res.status(403).json({ error: { code: 'forbidden', message: 'Sin negocio activo, solo el operador puede usar la IA de branding' } });
+      }
+    } catch (e) {
+      console.error('[branding] error resolviendo acceso:', (e as Error).message);
+      return res.status(500).json({ error: { code: 'server_error', message: 'Error interno' } });
+    }
+    req.userId = claims.sub;
+    next();
+  };
+}
+
 /**
  * Resuelve la clave Anthropic a usar en esta petición:
  * - Con `businessId` → `getTenantSecret` (clave propia del negocio, con
@@ -121,7 +176,8 @@ export async function extractHandler(deps: BrandingExtractDeps, req: Request, re
     return res.status(422).json({ error: { code: 'validation', message: 'Envía files (css/html) o text.' } });
   }
 
-  const businessId = typeof body.businessId === 'string' && body.businessId.trim() ? body.businessId.trim() : undefined;
+  // Negocio ya validado por brandingAuth (membresía); nunca se toma del body sin validar.
+  const businessId = (req as AuthedRequest).businessId || undefined;
   const resolved = await resolveAnthropicKey(deps, businessId);
   if (!resolved) {
     // Sin key: el front cae a su heurística local. No es un error duro.
@@ -137,4 +193,18 @@ export async function extractHandler(deps: BrandingExtractDeps, req: Request, re
   }
 }
 
-brandingRouter.post('/extract', (req: Request, res: Response) => extractHandler(defaultDeps, req, res));
+export function createBrandingRouter(auth: BrandingAuthDeps = defaultAuthDeps, deps: BrandingExtractDeps = defaultDeps): Router {
+  const router = Router();
+  const limiter = rateLimit({
+    windowMs: 60_000,
+    max: EXTRACT_PER_MINUTE,
+    keyGenerator: (req) => (req as AuthedRequest).userId ?? 'anonymous',
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: { code: 'too_many_requests', message: 'Demasiadas extracciones, inténtalo en un minuto.' } },
+  });
+  router.post('/extract', brandingAuth(auth), limiter, (req: Request, res: Response) => extractHandler(deps, req, res));
+  return router;
+}
+
+export const brandingRouter = createBrandingRouter();

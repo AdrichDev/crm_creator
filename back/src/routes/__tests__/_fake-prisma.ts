@@ -127,6 +127,7 @@ export async function call(
   path: string,
   body?: unknown,
   ctx: CallContext = { businessId: 'A', userId: 'uA', role: 'ADMIN' },
+  headers: Record<string, string> = {},
 ): Promise<{ status: number; body: any }> {
   const app = express();
   app.use(express.json());
@@ -138,7 +139,7 @@ export async function call(
   try {
     const r = await fetch(`http://127.0.0.1:${port}${path}`, {
       method,
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...headers },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(5000),
     });

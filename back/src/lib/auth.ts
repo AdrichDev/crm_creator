@@ -24,6 +24,8 @@ export interface SupabaseTokenPayload {
   sub: string;
   email: string;
   role: string;
+  /** `app_metadata.role` (only the service role can set it, e.g. 'operator'). Absent when not set. */
+  appRole?: string;
 }
 
 /**
@@ -31,15 +33,19 @@ export interface SupabaseTokenPayload {
  * Extracted so the claim-shape contract is unit-testable without crypto/network
  * (the JWKS verification itself is covered by integration against live Supabase).
  */
-export function extractSupabaseClaims(payload: { sub?: unknown; email?: unknown; role?: unknown }): SupabaseTokenPayload {
+export function extractSupabaseClaims(payload: { sub?: unknown; email?: unknown; role?: unknown; app_metadata?: unknown }): SupabaseTokenPayload {
   if (typeof payload.sub !== 'string' || !payload.sub) {
     throw new Error('Token payload missing sub');
   }
-  return {
+  const claims: SupabaseTokenPayload = {
     sub: payload.sub,
     email: (payload.email as string) ?? '',
     role: (payload.role as string) ?? 'authenticated',
   };
+  // Solo app_metadata (no editable por el usuario); user_metadata.role se ignora a propósito.
+  const appRole = (payload.app_metadata as { role?: unknown } | undefined)?.role;
+  if (typeof appRole === 'string' && appRole) claims.appRole = appRole;
+  return claims;
 }
 
 export async function verifySupabaseToken(token: string): Promise<SupabaseTokenPayload> {

@@ -23,8 +23,9 @@ function mockRes() {
   return res;
 }
 
-function mockReq(body: unknown): Request {
-  return { body } as unknown as Request;
+// businessId llega validado por brandingAuth (req.businessId), no desde el body.
+function mockReq(body: unknown, businessId?: string): Request {
+  return { body, businessId } as unknown as Request;
 }
 
 const ORIGINAL_ANTHROPIC_KEY = env.anthropicApiKey;
@@ -49,7 +50,7 @@ describe('POST /branding/extract — con businessId (getTenantSecret)', () => {
     };
 
     const res = mockRes();
-    await extractHandler(deps, mockReq({ ...SAMPLE_BODY, businessId: 'biz-1' }), res);
+    await extractHandler(deps, mockReq(SAMPLE_BODY, 'biz-1'), res);
 
     assert.deepEqual(calledWith, {
       businessId: 'biz-1',
@@ -68,7 +69,7 @@ describe('POST /branding/extract — con businessId (getTenantSecret)', () => {
       },
     };
     const res = mockRes();
-    await extractHandler(deps, mockReq({ ...SAMPLE_BODY, businessId: 'biz-1' }), res);
+    await extractHandler(deps, mockReq(SAMPLE_BODY, 'biz-1'), res);
     assert.equal((res.body as { source: string }).source, 'ai');
   });
 
@@ -78,7 +79,7 @@ describe('POST /branding/extract — con businessId (getTenantSecret)', () => {
       extractWithAnthropic: async () => { throw new Error('no debería llamarse'); },
     };
     const res = mockRes();
-    await extractHandler(deps, mockReq({ ...SAMPLE_BODY, businessId: 'biz-1' }), res);
+    await extractHandler(deps, mockReq(SAMPLE_BODY, 'biz-1'), res);
     const body = res.body as { source: string; tokens: unknown; message?: string };
     assert.equal(body.source, 'none');
     assert.equal(body.tokens, null);
