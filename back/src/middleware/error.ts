@@ -8,6 +8,7 @@ export function notFound(_req: Request, res: Response) {
 export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction) {
   // Red de seguridad: FK cross-tenant que llegara sin try/catch local → 422.
   if (handleCrossTenant(err, res)) return;
-  const message = err instanceof Error ? err.message : 'Error interno';
-  res.status(500).json({ error: { code: 'internal', message } });
+  // El detalle (Prisma, hosts, SQL) solo va al log del servidor, nunca al cliente.
+  console.error('[error] no controlado:', err instanceof Error ? err.message : err);
+  res.status(500).json({ error: { code: 'internal', message: 'Error interno' } });
 }

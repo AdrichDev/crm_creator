@@ -20,6 +20,20 @@ export interface EmailPayload {
  * Retorna true si el email se envió, false en cualquier otro caso.
  * NUNCA lanza.
  */
+/** Enmascara direcciones para el log (dato personal): `maria@x.es` → `m***@x.es`. */
+export function maskEmail(value: string): string {
+  return value
+    .split(',')
+    .map((part) => {
+      const addr = part.trim();
+      const at = addr.lastIndexOf('@');
+      if (at < 0) return '***';
+      const local = addr.slice(0, at);
+      return `${local.length > 1 ? local[0] : ''}***${addr.slice(at)}`;
+    })
+    .join(', ');
+}
+
 export async function sendEmail(payload: EmailPayload): Promise<boolean> {
   if (!env.emailEnabled || !env.smtpHost) {
     console.log('[email] deshabilitado o sin SMTP configurado — omitido');
@@ -42,10 +56,10 @@ export async function sendEmail(payload: EmailPayload): Promise<boolean> {
       text: payload.text,
     });
 
-    console.log(`[email] enviado a=${payload.to} subject="${payload.subject}"`);
+    console.log(`[email] enviado a=${maskEmail(String(payload.to))} subject="${payload.subject}"`);
     return true;
   } catch (err) {
-    console.error(`[email] error al enviar a=${payload.to} subject="${payload.subject}"`, (err as Error).message);
+    console.error(`[email] error al enviar a=${maskEmail(String(payload.to))} subject="${payload.subject}"`, (err as Error).message);
     return false;
   }
 }
