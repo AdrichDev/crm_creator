@@ -91,8 +91,19 @@ export function installFakePrisma() {
       }
       if (prop === '$queryRaw' || prop === '$queryRawUnsafe') {
         return async (query: TemplateStringsArray | string, ...values: unknown[]) => {
-          const sql = typeof query === 'string' ? query : query.join('?');
-          writes.push({ model: '$queryRaw', op: 'query', args: { query: sql, values }, client: tag });
+          // Los fragmentos `Prisma.raw` (identificadores schema.tabla, no parametrizables)
+          // se intercalan en el texto; el resto son parámetros reales → `?` + valor.
+          const isRaw = (v: unknown): v is { sql: string } =>
+            typeof v === 'object' && v !== null && typeof (v as { sql?: unknown }).sql === 'string';
+          const parts = typeof query === 'string' ? [query] : Array.from(query);
+          const params: unknown[] = [];
+          let sql = parts[0];
+          values.forEach((v, i) => {
+            if (isRaw(v)) sql += v.sql;
+            else { sql += '?'; params.push(v); }
+            sql += parts[i + 1] ?? '';
+          });
+          writes.push({ model: '$queryRaw', op: 'query', args: { query: sql, values: params }, client: tag });
           return [];
         };
       }

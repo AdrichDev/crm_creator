@@ -1,6 +1,6 @@
 import { prisma } from '../prisma.js';
 import { BookingStatus } from './generated/prisma/client.js';
-import type { Prisma } from './generated/prisma/client.js';
+import { Prisma } from './generated/prisma/client.js';
 
 export interface AvailabilityParams {
   businessId: string;
@@ -19,20 +19,33 @@ export type BookingTxClient = Prisma.TransactionClient;
 // reprogramación de reserva se serializa con un lock de fila del recurso escaso (empleado /
 // recurso / sucursal) tomado DENTRO de la transacción que después lee y escribe. Sin el
 // lock, dos transacciones leen "libre" antes de que la otra commitee e insertan un solape.
-// Nombres de tabla verificados en prisma/schema.prisma (@@map) y schema `crm` que cualifica
-// el adapter de src/prisma.ts (`DB_SCHEMA ?? 'crm'`). `$queryRaw` no parametriza
-// identificadores: el nombre de tabla va literal, como en sale-lines.ts (crm.venta).
+// Nombres de tabla verificados en prisma/schema.prisma (@@map). El schema NO puede ir fijo:
+// el adapter de src/prisma.ts cualifica las consultas con `DB_SCHEMA ?? 'crm'`, así que el
+// lock tiene que resolver el MISMO schema, o bloquearía tablas inexistentes (la creación de
+// reserva fallaría antes de insertar) o protegería filas de un schema ajeno.
+// `$queryRaw` no parametriza identificadores: se intercala un fragmento `Prisma.raw` cuyo
+// nombre se valida como identificador de Postgres (si no, se cae a `crm`, fail-closed).
+export function lockSchema(raw: string | undefined = process.env.DB_SCHEMA): string {
+  const candidate = raw ?? 'crm';
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(candidate) ? candidate : 'crm';
+}
+
+/** `schema.tabla` como fragmento SQL (identificador validado, no parametrizable). */
+function qualified(table: string): ReturnType<typeof Prisma.raw> {
+  return Prisma.raw(`${lockSchema()}.${table}`);
+}
+
 export async function lockEmployee(tx: BookingTxClient, employeeId: string): Promise<void> {
-  await tx.$queryRaw`SELECT id FROM crm.empleado WHERE id = ${employeeId} FOR UPDATE`;
+  await tx.$queryRaw`SELECT id FROM ${qualified('empleado')} WHERE id = ${employeeId} FOR UPDATE`;
 }
 export async function lockLocation(tx: BookingTxClient, locationId: string): Promise<void> {
-  await tx.$queryRaw`SELECT id FROM crm.sucursal WHERE id = ${locationId} FOR UPDATE`;
+  await tx.$queryRaw`SELECT id FROM ${qualified('sucursal')} WHERE id = ${locationId} FOR UPDATE`;
 }
 export async function lockResource(tx: BookingTxClient, resourceId: string): Promise<void> {
-  await tx.$queryRaw`SELECT id FROM crm.recurso WHERE id = ${resourceId} FOR UPDATE`;
+  await tx.$queryRaw`SELECT id FROM ${qualified('recurso')} WHERE id = ${resourceId} FOR UPDATE`;
 }
 export async function lockCustomerPackage(tx: BookingTxClient, customerPackageId: string): Promise<void> {
-  await tx.$queryRaw`SELECT id FROM crm.paquete_cliente WHERE id = ${customerPackageId} FOR UPDATE`;
+  await tx.$queryRaw`SELECT id FROM ${qualified('paquete_cliente')} WHERE id = ${customerPackageId} FOR UPDATE`;
 }
 
 // Orden de adquisición estable (empleado|sucursal → recursos ordenados) para que dos
