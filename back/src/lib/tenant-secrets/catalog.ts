@@ -9,6 +9,7 @@ export type SecretSlotName =
   | 'OPENAI_API_KEY'
   | 'GEMINI_API_KEY'
   | 'ANTHROPIC_API_KEY'
+  | 'NANBUILDERS_API_KEY'
   | 'GOOGLE_MAPS_API_KEY'
   | 'DATABASE_URL'
   | 'NEXT_PUBLIC_SUPABASE_URL'
@@ -26,6 +27,7 @@ export type SecretProvider =
   | 'openai'
   | 'gemini'
   | 'anthropic'
+  | 'nanbuilders'
   | 'maps'
   | 'database'
   | 'supabase_url'
@@ -47,6 +49,8 @@ export const TENANT_SECRET_CATALOG: SecretSlot[] = [
   { name: 'OPENAI_API_KEY', label: 'OpenAI', scope: 'BACKEND_SECRET', provider: 'openai', group: 'ai' },
   { name: 'GEMINI_API_KEY', label: 'Gemini', scope: 'BACKEND_SECRET', provider: 'gemini', group: 'ai' },
   { name: 'ANTHROPIC_API_KEY', label: 'Anthropic', scope: 'BACKEND_SECRET', provider: 'anthropic', group: 'ai' },
+  // Proveedor LLM INTERNO (OpenAI-compatible): branding, landings y estudios de mercado.
+  { name: 'NANBUILDERS_API_KEY', label: 'nanBuilders', scope: 'BACKEND_SECRET', provider: 'nanbuilders', group: 'ai' },
   {
     name: 'GOOGLE_MAPS_API_KEY',
     label: 'Google Maps',

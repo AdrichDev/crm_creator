@@ -22,6 +22,7 @@ export type SecretProvider =
   | 'openai'
   | 'gemini'
   | 'anthropic'
+  | 'nanbuilders'
   | 'maps'
   | 'database'
   | 'supabase_url'
@@ -247,6 +248,29 @@ export async function testProviderConnection(
           });
           return r.ok ? { ok: true } : { ok: false, detail: `anthropic respondió ${r.status}` };
         });
+      case 'nanbuilders': {
+        // Proveedor INTERNO OpenAI-compatible: se comprueba la clave contra /models de SU base
+        // URL. Sin NANBUILDERS_BASE_URL configurada no hay destino y se falla cerrado (nunca se
+        // manda la clave a la API de OpenAI por accidente). El host pasa por el guard anti-SSRF
+        // igual que el resto: es una URL del entorno, no del tenant.
+        const base = (process.env.NANBUILDERS_BASE_URL ?? '').trim();
+        if (!base) return { ok: false, detail: 'falta NANBUILDERS_BASE_URL en el servidor' };
+        let host: string;
+        try {
+          host = new URL(base).hostname;
+        } catch {
+          return { ok: false, detail: 'NANBUILDERS_BASE_URL no es una URL válida' };
+        }
+        // Se pasa el `lookupHost` inyectado igual que en las demás ramas: los tests no tocan red.
+        await assertPublicHost(host, lookupHost);
+        return await testWithTimeout(timeoutMs, async (signal) => {
+          const r = await fetchImpl(`${base.replace(/\/+$/, '')}/models`, {
+            headers: { Authorization: `Bearer ${value}` },
+            signal,
+          });
+          return r.ok ? { ok: true } : { ok: false, detail: `nanbuilders respondió ${r.status}` };
+        });
+      }
       case 'maps':
         return await testWithTimeout(timeoutMs, async (signal) => {
           const r = await fetchImpl(
