@@ -1,0 +1,35 @@
+name: ci
+on:
+  push:
+  pull_request:
+
+# Least privilege: the jobs only read the repository.
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: back
+    env:
+      # `prisma generate` (Prisma 7 config) resolves DATABASE_URL eagerly but never connects.
+      DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: back/package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      - name: typecheck
+        run: npx tsc --noEmit -p .
+      # Unit suite only (no DB, no network). *.e2e.test.ts need live Supabase.
+      - name: unit tests
+        run: npm test
+      - name: generator exclusions
+        working-directory: .
+        run: node --test generar.test.mjs

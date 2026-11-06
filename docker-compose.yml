@@ -26,8 +26,10 @@ services:
       - NODE_FUNCTION_ALLOW_BUILTIN=crypto
       # n8n >=1.x bloquea $env en nodos por defecto; el Code lee AUTOMATION_WEBHOOK_SECRET.
       - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
-      # Clave de cifrado de credenciales de n8n (define N8N_ENCRYPTION_KEY en tu .env).
-      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-change-me-please}
+      # Clave de cifrado de credenciales de n8n: OBLIGATORIA (sin valor por defecto conocido).
+      # Si ya arrancaste n8n con el antiguo default, define en tu .env ese mismo valor o n8n
+      # no podrá descifrar las credenciales guardadas en el volumen.
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:?Define N8N_ENCRYPTION_KEY en tu .env}
       # MISMO secreto que el back (AUTOMATION_WEBHOOK_SECRET). El dispatcher lo lee
       # via $env para recomputar el HMAC y rechazar firmas invalidas.
       - AUTOMATION_WEBHOOK_SECRET=${AUTOMATION_WEBHOOK_SECRET}

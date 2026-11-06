@@ -3,6 +3,10 @@ on:
   push:
   pull_request:
 
+# Least privilege: the scan only reads the repository.
+permissions:
+  contents: read
+
 jobs:
   secret-scan:
     runs-on: ubuntu-latest
