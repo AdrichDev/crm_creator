@@ -29,7 +29,12 @@ vi.mock('@/lib/api/profile', () => ({
   getAuthProfile: () =>
     Promise.resolve({ id: '1', email: 'real@x.com', firstName: 'Carlos', lastName: 'Ruiz Pérez', phone: null, role: 'EMPLOYEE' }),
 }));
-vi.mock('@/lib/auth/session', () => ({ logout: vi.fn() }));
+// 8ac2ba5 added getCurrentUser() to the sidebar footer. El usuario de estos casos
+// viene de /auth/me (getAuthProfile), así que no hay sesión Supabase que resolver.
+vi.mock('@/lib/auth/session', () => ({
+  logout: vi.fn(),
+  getCurrentUser: () => Promise.resolve(null),
+}));
 vi.mock('@/lib/config/generated-tenant', () => ({ GENERATED_TENANT: false }));
 
 import { Sidebar } from '@/components/layout/sidebar';

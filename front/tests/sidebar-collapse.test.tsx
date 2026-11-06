@@ -25,7 +25,12 @@ vi.mock('@/lib/api/client', () => ({
   apiFetch: vi.fn(),
 }));
 vi.mock('@/lib/api/profile', () => ({ getAuthProfile: () => Promise.reject(new Error('no api')) }));
-vi.mock('@/lib/auth/session', () => ({ logout: vi.fn() }));
+// 8ac2ba5 added getCurrentUser() to the sidebar footer (real session email instead of
+// the demo user), so the module mock must expose it — sin sesión real → null.
+vi.mock('@/lib/auth/session', () => ({
+  logout: vi.fn(),
+  getCurrentUser: () => Promise.resolve(null),
+}));
 vi.mock('@/lib/config/generated-tenant', () => ({ GENERATED_TENANT: false }));
 
 import { Sidebar } from '@/components/layout/sidebar';

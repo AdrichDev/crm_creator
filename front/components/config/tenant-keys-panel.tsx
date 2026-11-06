@@ -453,7 +453,7 @@ export function TenantKeysPanel({ businessId, groups, showExtras = true }: Tenan
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => void toggleRevealSaved(name)}
                       aria-label={revealedValue[name] != null ? 'Ocultar valor' : 'Mostrar valor'}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-white/50 hover:text-white"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-white/50 hover:text-[var(--hover-text)]"
                     >
                       {revealedValue[name] != null ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
@@ -475,7 +475,7 @@ export function TenantKeysPanel({ businessId, groups, showExtras = true }: Tenan
                       type="button"
                       onClick={() => setReveal((p) => ({ ...p, [name]: !p[name] }))}
                       aria-label={reveal[name] ? 'Ocultar valor' : 'Mostrar valor'}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-white/50 hover:text-white"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-white/50 hover:text-[var(--hover-text)]"
                     >
                       {reveal[name] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
