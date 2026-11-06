@@ -75,6 +75,14 @@ describe('ssrf — isBlockedAddress', () => {
     assert.equal(isBlockedAddress('240.0.0.1'), true);
   });
 
+  test('bloquea multicast 224.0.0.0/4 y TEST-NET-2/3', () => {
+    assert.equal(isBlockedAddress('224.0.0.1'), true);
+    assert.equal(isBlockedAddress('239.255.255.255'), true);
+    assert.equal(isBlockedAddress('198.51.100.7'), true);
+    assert.equal(isBlockedAddress('203.0.113.7'), true);
+    assert.equal(isBlockedAddress('223.255.255.255'), false); // pública, justo antes de multicast
+  });
+
   test('bloquea IPv6 loopback ::1 y unspecified ::', () => {
     assert.equal(isBlockedAddress('::1'), true);
     assert.equal(isBlockedAddress('::'), true);
@@ -84,6 +92,8 @@ describe('ssrf — isBlockedAddress', () => {
     assert.equal(isBlockedAddress('fc00::1'), true);
     assert.equal(isBlockedAddress('fd12:3456:789a::1'), true);
     assert.equal(isBlockedAddress('fe80::1'), true);
+    assert.equal(isBlockedAddress('febf::1'), true); // borde alto de fe80::/10
+    assert.equal(isBlockedAddress('fec0::1'), false); // fuera del prefijo link-local
   });
 
   test('bloquea IPv4 mapeada en IPv6 (::ffff:127.0.0.1)', () => {

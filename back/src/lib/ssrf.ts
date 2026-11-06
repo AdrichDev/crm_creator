@@ -70,6 +70,9 @@ function isBlockedIPv4(ip: string): boolean {
     inV4Cidr(ip, '192.0.0.0', 24) || // IETF protocol assignments
     inV4Cidr(ip, '192.0.2.0', 24) || // TEST-NET-1
     inV4Cidr(ip, '198.18.0.0', 15) || // benchmarking
+    inV4Cidr(ip, '198.51.100.0', 24) || // TEST-NET-2
+    inV4Cidr(ip, '203.0.113.0', 24) || // TEST-NET-3
+    inV4Cidr(ip, '224.0.0.0', 4) || // multicast (no enrutable en destino único)
     inV4Cidr(ip, '240.0.0.0', 4) // reservado
   );
 }
@@ -91,7 +94,9 @@ function isBlockedIPv6(ip: string): boolean {
   // …y su forma hexadecimal (::ffff:7f00:1)
   const mappedHex = lower.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
   if (mappedHex) return isBlockedIPv4(mappedV4FromHex(mappedHex[1], mappedHex[2]));
-  if (lower.startsWith('fe80')) return true; // link-local fe80::/10
+  // link-local fe80::/10 → primer hexteto fe80…febf
+  const firstHextet = lower.split(':')[0];
+  if (/^fe[89ab][0-9a-f]$/.test(firstHextet)) return true;
   // unique-local fc00::/7 → primer byte 0xfc o 0xfd
   if (lower.startsWith('fc') || lower.startsWith('fd')) return true;
   return false;
