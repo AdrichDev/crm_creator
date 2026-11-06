@@ -43,6 +43,7 @@ import {
   type RuntimeConfig,
 } from './runtime-config-env.js';
 import { buildPublicEnvSecretsLines, type PublicEnvSecret } from './public-env-secrets.js';
+import { guardExportArtifact } from '../export-guard.js';
 
 // ---------------------------------------------------------------------------
 // Exported types (shared across all builders)
@@ -265,6 +266,13 @@ export async function buildWebZip(
     const outputPath = path.join(outputDir, `${slug}-web-src.zip`);
 
     await assembleZip(tmpFrontDir, tmpSharedDir, outputPath, { sql, prisma, manifest, readme });
+
+    // security-wave-2 (S3/S4): barrera final ANTES de entregar el artefacto.
+    // Un ZIP con volcados/backups, un `.env` ajeno, material de clave o el valor
+    // de un secreto del operador se rechaza y se borra del disco.
+    await guardExportArtifact(outputPath, {
+      publicValues: (deps.publicEnvSecrets ?? []).map((s) => s.value),
+    });
 
     emit({ type: 'progress', format: 'web-zip', step: 'Guardando archivo ZIP...', pct: 100, outputPath });
     return { success: true, outputPath };

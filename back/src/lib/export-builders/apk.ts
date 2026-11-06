@@ -32,6 +32,7 @@ import {
   type RuntimeConfig,
 } from './runtime-config-env.js';
 import { buildPublicEnvSecretsLines, type PublicEnvSecret } from './public-env-secrets.js';
+import { guardExportArtifact } from '../export-guard.js';
 import type { TenantConfig } from '../../../../shared/generate/tenant-types.js';
 import type { Emitter, BuildResult } from './web-zip.js';
 
@@ -399,6 +400,11 @@ export async function buildApk(
     const readme = renderReadme(productName);
 
     await assembleZip(tmpFrontDir, tmpSharedDir, outputPath, { readme });
+
+    // security-wave-2 (S3/S4): barrera final antes de entregar el artefacto.
+    await guardExportArtifact(outputPath, {
+      publicValues: (deps.publicEnvSecrets ?? []).map((s) => s.value),
+    });
 
     emit({ type: 'progress', format: 'apk', step: 'Guardando archivo ZIP...', pct: 100, outputPath });
     return { success: true, outputPath };

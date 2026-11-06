@@ -63,9 +63,28 @@ export const VERSION_ARTIFACT_EXCLUDED_DIRS = new Set<string>([
   'node_modules', '.next', '.git', '.turbo', '.vercel', 'coverage', 'dist', 'out',
 ]);
 
-/** true si la ruta relativa NO cae bajo un directorio excluido del artefacto. */
+/**
+ * Ficheros que tampoco pueden entrar NUNCA: el artefacto archiva el `frontDir` vivo,
+ * que en la máquina del operador lleva su `.env.local` real (claves de IA, token de
+ * servicio). Lo descarga cualquier miembro del negocio con la URL firmada, así que un
+ * secreto aquí es una fuga hacia el tenant. Plantillas `*.example` sí se conservan.
+ */
+const VERSION_ARTIFACT_EXCLUDED_DIR_NAMES = new Set<string>(['backups', 'secrets']);
+const SENSITIVE_FILE_RE = /(^\.env($|\.)|\.env$|\.(pem|key|p12|pfx|dump|log)$|\.sql\.gz$)/i;
+
+function isSensitiveFileName(name: string): boolean {
+  if (/\.example$/i.test(name)) return false;
+  return SENSITIVE_FILE_RE.test(name);
+}
+
+/** true si la ruta relativa NO cae bajo un directorio excluido ni es un fichero sensible. */
 export function includeInVersionArtifact(relPath: string): boolean {
-  return !relPath.split(/[\\/]/).some((seg) => VERSION_ARTIFACT_EXCLUDED_DIRS.has(seg));
+  const segments = relPath.split(/[\\/]/).filter(Boolean);
+  if (segments.some((seg) => VERSION_ARTIFACT_EXCLUDED_DIRS.has(seg) || VERSION_ARTIFACT_EXCLUDED_DIR_NAMES.has(seg))) {
+    return false;
+  }
+  const name = segments[segments.length - 1] ?? '';
+  return !isSensitiveFileName(name);
 }
 
 /**

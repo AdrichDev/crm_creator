@@ -11,6 +11,7 @@ import { notFound, errorHandler } from './middleware/error.js';
 import { startReminderDrainer } from './lib/reminderDrainer.js';
 import { startDigestScheduler } from './lib/digestScheduler.js';
 import { startCalendarSync } from './lib/calendarSync.js';
+import { startExportRetention } from './lib/export-retention.js';
 import { swaggerSpec } from './lib/swagger.js';
 import { healthHandler } from './lib/health.js';
 
@@ -66,5 +67,8 @@ app.listen(env.port, () => {
     startReminderDrainer();
     startDigestScheduler();
     startCalendarSync();
+    // security-wave-2 (S3): los artefactos de export caducan (EXPORT_RETENTION_DAYS,
+    // 7 por defecto). Pasada al arrancar + una diaria, con el mismo kill-switch.
+    startExportRetention();
   }
 });

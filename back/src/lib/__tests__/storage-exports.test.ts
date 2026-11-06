@@ -35,6 +35,16 @@ describe('includeInVersionArtifact (excluye node_modules/.next → evita OOM)', 
     assert.equal(includeInVersionArtifact('.git/HEAD'), false);
     assert.equal(includeInVersionArtifact('dist/bundle.js'), false);
   });
+  test('excluye secretos locales del operador: .env*, claves, dumps y backups (a cualquier profundidad)', () => {
+    for (const p of ['.env', '.env.local', '.env.production', 'android/.env.local', 'chatbot.env',
+      'certs/server.pem', 'certs/server.key', 'backups/prod.sql', 'data/dump.dump', 'logs/app.log']) {
+      assert.equal(includeInVersionArtifact(p), false, `${p} no debe entrar en el artefacto de versión`);
+    }
+  });
+  test('mantiene las plantillas de entorno sin valores', () => {
+    assert.equal(includeInVersionArtifact('.env.example'), true);
+    assert.equal(includeInVersionArtifact('.env.local.example'), true);
+  });
   test('incluye la fuente real', () => {
     assert.equal(includeInVersionArtifact('app/page.tsx'), true);
     assert.equal(includeInVersionArtifact('components/config/panel.tsx'), true);

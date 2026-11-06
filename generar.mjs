@@ -16,6 +16,13 @@
  *                                     #   `npm run dev` en tu máquina.
  *   node generar.mjs --from manifest.json   # toma vertical/módulos de un manifest
  *
+ * Barrera de entrega (security-wave-2 S3/S4): tras copiar, el paquete generado
+ * se escanea y se RECHAZA (borrándolo) si contiene volcados/backups/logs, un
+ * `.env` real (solo se admiten plantillas `*.example`), material de clave
+ * privada, el valor de un secreto del operador o una forma de secreto
+ * (`sk-...`, JWT con role service_role). Lo que se entrega a un cliente nunca
+ * lleva secretos del operador.
+ *
  * No instala nada ni necesita servicios corriendo: solo copia archivos y escribe
  * env/README. Requiere Node 18+.
  */
@@ -142,6 +149,200 @@ export function copyDir(src, dest, relDir = '') {
   }
 }
 
+// ── Barrera post-copia (security-wave-2 S3/S4) ──────────────────────────────
+// `copyDir` filtra por nombre al copiar, pero el paquete generado se entrega a
+// un CLIENTE: una segunda barrera comprueba el RESULTADO (por si un cambio
+// futuro en la denylist deja pasar algo, o por si aparece material sensible con
+// otra forma). Rechaza y BORRA el paquete si contiene volcados/backups/logs,
+// ficheros de entorno reales, material de clave privada, el valor literal de un
+// secreto del operador o una forma generica de secreto (sk-…, JWT service_role).
+//
+// Es una duplicacion MINIMA deliberada de back/src/lib/export-guard.ts: el
+// generador vive en la raiz sin build de TS y debe poder ejecutarse con
+// `node generar.mjs` a secas. El mensaje nombra la ruta ofensora, nunca el valor.
+const GUARD_OPERATOR_ENV_NAMES = [
+  'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_GENAI_API_KEY',
+  'AA_SERVICE_TOKEN', 'CRM_SERVICE_TOKEN', 'OPERATOR_SERVICE_TOKEN',
+  'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_JWT_SECRET', 'DATABASE_URL', 'DIRECT_URL', 'JWT_SECRET',
+  'CRM_OAUTH_ENCRYPTION_KEY', 'GOOGLE_OAUTH_SECRET', 'GOOGLE_CLIENT_SECRET',
+  'SMTP_PASS', 'AUTOMATION_WEBHOOK_SECRET', 'LICENSE_HEARTBEAT_SECRET',
+  'SEED_PASSWORD', 'VERIFY_LOGIN_PASSWORD',
+];
+const GUARD_SECRETS_MASTER_KEY_RE = /^SECRETS_MASTER_KEY(_V\d+)?$/;
+const GUARD_PUBLIC_ENV_NAMES = new Set(['SUPABASE_URL', 'SUPABASE_ANON_KEY']);
+const GUARD_MIN_SECRET_LENGTH = 12;
+const GUARD_MAX_TEXT_BYTES = 8 * 1024 * 1024;
+const GUARD_BINARY_EXT_RE = /\.(png|jpe?g|gif|webp|bmp|ico|avif|woff2?|ttf|otf|eot|jar|zip|gz|jks|keystore|p12|pfx|so|a|dylib|dll|exe|node|class|war|pdf|mp3|mp4|webm|db|sqlite|bin|dat)$/i;
+const GUARD_PRIVATE_KEY_RE = /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----/;
+const GUARD_API_KEY_SHAPE_RE = /\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{16,}/g;
+const GUARD_JWT_RE = /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g;
+
+function guardUrlPassword(raw) {
+  try {
+    const url = new URL(raw);
+    return url.password ? decodeURIComponent(url.password) : null;
+  } catch {
+    const m = raw.match(/^[a-z][a-z0-9+.-]*:\/\/[^:/@]+:([^@]+)@/i);
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+}
+
+/** Valores literales del entorno que el paquete generado NUNCA puede contener. */
+export function guardOperatorSecrets(env = process.env) {
+  const out = [];
+  const seen = new Set();
+  const add = (name, raw) => {
+    if (!raw) return;
+    const value = String(raw).trim();
+    if (value.length < GUARD_MIN_SECRET_LENGTH || seen.has(value)) return;
+    seen.add(value);
+    out.push({ name, value });
+  };
+  for (const name of GUARD_OPERATOR_ENV_NAMES) add(name, env[name]);
+  for (const [name, value] of Object.entries(env)) {
+    if (GUARD_SECRETS_MASTER_KEY_RE.test(name)) add(name, value);
+  }
+  for (const dbName of ['DATABASE_URL', 'DIRECT_URL']) {
+    if (!env[dbName]) continue;
+    const password = guardUrlPassword(String(env[dbName]));
+    if (password) add(`${dbName} (password)`, password);
+  }
+  return out;
+}
+
+/** Valores publicos por contrato (anon key / NEXT_PUBLIC_*): nunca se marcan. */
+export function guardPublicValues(env = process.env) {
+  const values = [];
+  for (const [name, value] of Object.entries(env)) {
+    if (!value) continue;
+    if (!GUARD_PUBLIC_ENV_NAMES.has(name) && !name.startsWith('NEXT_PUBLIC_')) continue;
+    values.push(String(value).trim());
+  }
+  return values.filter((v) => v.length >= 8);
+}
+
+/** Clave `sk-...` real: base62 mezclada (mayusculas + digitos). Evita prosa/fixtures. */
+function guardHasApiKeyShape(text) {
+  GUARD_API_KEY_SHAPE_RE.lastIndex = 0;
+  let m;
+  while ((m = GUARD_API_KEY_SHAPE_RE.exec(text)) !== null) {
+    if (/[A-Z]/.test(m[0]) && /[0-9]/.test(m[0])) return true;
+  }
+  return false;
+}
+
+function guardHasServiceRoleJwt(text) {
+  GUARD_JWT_RE.lastIndex = 0;
+  let m;
+  let inspected = 0;
+  while ((m = GUARD_JWT_RE.exec(text)) !== null && inspected < 50) {
+    inspected += 1;
+    try {
+      const payload = JSON.parse(Buffer.from(m[0].split('.')[1], 'base64url').toString('utf8'));
+      if (payload && payload.role === 'service_role') return true;
+    } catch { /* no es un JWT parseable */ }
+  }
+  return false;
+}
+
+function guardCheckName(relPath, isDir) {
+  const segments = relPath.split('/').filter(Boolean);
+  if (segments.length === 0) return;
+  const basename = segments[segments.length - 1];
+  const lower = basename.toLowerCase();
+
+  const dirSegments = isDir ? segments : segments.slice(0, -1);
+  if (dirSegments.some((s) => s.toLowerCase() === 'backups')) {
+    throw new Error(`Export rechazado: ${segments.slice(0, dirSegments.length).join('/')} — directorio de copias de seguridad (backups/)`);
+  }
+  if (lower.endsWith('.pem') || lower.endsWith('.key')) {
+    throw new Error(`Export rechazado: ${relPath} — material de clave privada (*.pem/*.key)`);
+  }
+  if (lower.endsWith('.dump') || lower.endsWith('.sql.gz')) {
+    throw new Error(`Export rechazado: ${relPath} — volcado de base de datos (*.dump/*.sql.gz)`);
+  }
+  if (lower.endsWith('.log')) {
+    throw new Error(`Export rechazado: ${relPath} — log de ejecucion (*.log)`);
+  }
+  if (lower.endsWith('.sql')) {
+    const isMigration = /(^|\/)prisma\/migrations\/[^/]+\/migration\.sql$/.test(relPath);
+    if (!isMigration) {
+      throw new Error(`Export rechazado: ${relPath} — volcado/script SQL fuera de prisma/migrations`);
+    }
+  }
+  if (!lower.endsWith('.example') && (lower.startsWith('.env') || /(^|\.)env(\.|$)/i.test(lower))) {
+    throw new Error(`Export rechazado: ${relPath} — fichero de entorno real (el paquete solo lleva plantillas *.example)`);
+  }
+}
+
+function guardCheckContent(relPath, text, secrets, publicValues) {
+  for (const secret of secrets) {
+    if (text.includes(secret.value)) {
+      throw new Error(`Export rechazado: ${relPath} — contiene el valor de un secreto del operador (${secret.name})`);
+    }
+  }
+  if (GUARD_PRIVATE_KEY_RE.test(text)) {
+    throw new Error(`Export rechazado: ${relPath} — bloque de clave privada embebido`);
+  }
+  let scrubbed = text;
+  for (const value of publicValues) {
+    if (value && scrubbed.includes(value)) scrubbed = scrubbed.split(value).join('');
+  }
+  if (guardHasApiKeyShape(scrubbed)) {
+    throw new Error(`Export rechazado: ${relPath} — clave de API con forma sk-... (no puede viajar)`);
+  }
+  if (guardHasServiceRoleJwt(scrubbed)) {
+    throw new Error(`Export rechazado: ${relPath} — JWT con role=service_role (clave de servicio)`);
+  }
+}
+
+/**
+ * Escanea el paquete YA copiado. Lanza si encuentra material que no debe
+ * entregarse a un cliente (ruta + motivo en el mensaje, nunca el valor).
+ */
+export function assertCleanGeneratedTree(rootDir, env = process.env) {
+  const root = path.resolve(rootDir);
+  if (!fs.existsSync(root)) return;
+  const secrets = guardOperatorSecrets(env);
+  const publicValues = guardPublicValues(env);
+
+  const walk = (absDir, relDir) => {
+    for (const entry of fs.readdirSync(absDir, { withFileTypes: true })) {
+      if (entry.isSymbolicLink()) continue;
+      const abs = path.join(absDir, entry.name);
+      const rel = relDir ? `${relDir}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        guardCheckName(rel, true);
+        walk(abs, rel);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      guardCheckName(rel, false);
+      if (GUARD_BINARY_EXT_RE.test(entry.name)) continue;
+      if (fs.statSync(abs).size > GUARD_MAX_TEXT_BYTES) continue;
+      const buffer = fs.readFileSync(abs);
+      if (buffer.subarray(0, 8192).includes(0)) continue;
+      guardCheckContent(rel, buffer.toString('utf8'), secrets, publicValues);
+    }
+  };
+
+  walk(root, '');
+}
+
+/**
+ * Puerta unica tras `copyDir`: valida el paquete generado y, si el guard lo
+ * rechaza, BORRA el directorio antes de propagar (un paquete rechazado no queda
+ * en disco esperando a que alguien lo empaquete por error).
+ */
+export function guardGeneratedTree(outDir, env = process.env) {
+  try {
+    assertCleanGeneratedTree(outDir, env);
+  } catch (err) {
+    try { fs.rmSync(outDir, { recursive: true, force: true }); } catch { /* best-effort */ }
+    throw err;
+  }
+}
+
 async function main() {
   console.log(`\n\x1b[1m=== Generador del CRM completo (OperaOS) — modo ${LOCAL ? 'LOCAL' : 'DEPLOY'} ===\x1b[0m`);
   if (!LOCAL) console.log('\x1b[2mZip limpio sin infra horneada. BD/secretos/URLs se configuran en el host (ver DEPLOY.md). Usa --local para un .env listo para tu máquina.\x1b[0m');
@@ -225,6 +426,12 @@ async function main() {
   console.log('\nCopiando backend y front…');
   copyDir(path.join(ROOT, 'back'), path.join(out, 'back'));
   copyDir(path.join(ROOT, 'front'), path.join(out, 'front'));
+
+  // Barrera post-copia (S3/S4): el paquete va a un cliente. Si arrastra
+  // volcados/backups, un `.env` real, material de clave o un secreto del
+  // operador, se rechaza y se borra `generated/<slug>` (fail-closed).
+  console.log('Verificando que el paquete generado no lleva secretos ni volcados…');
+  guardGeneratedTree(out);
 
   // Fijar el puerto del front en su package.json (los scripts traen `-p 3002`
   // hardcodeado; sin esto la copia chocaría con la consola fuente en localStorage).

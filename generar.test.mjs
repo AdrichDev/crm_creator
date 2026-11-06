@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { shouldCopy, copyDir } from './generar.mjs';
+import { shouldCopy, copyDir, guardGeneratedTree } from './generar.mjs';
 
 // ── T1: unit del predicado ───────────────────────────────────────────────────
 
@@ -153,6 +153,139 @@ test('copyDir: origen sintético — copia lo permitido, filtra lo sensible', ()
       !fs.existsSync(path.join(dest, 'prisma', 'migrate-negocio-generado.sql')),
       'script suelto migrate-negocio-generado.sql sigue excluido',
     );
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+// ── T3 (security-wave-2 S3/S4): barrera post-copia del paquete generado ─────
+
+const OPERATOR_TOKEN = 'aa-service-token-value-1234';
+const OPERATOR_ENV = { AA_SERVICE_TOKEN: OPERATOR_TOKEN };
+
+function makeJwt(payload) {
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  return `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64(payload)}.${'x'.repeat(24)}`;
+}
+
+function writeTree(root, entries) {
+  for (const [rel, content] of Object.entries(entries)) {
+    const full = path.join(root, rel);
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, content);
+  }
+}
+
+function makeTree(entries) {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'generar-guard-'));
+  const out = path.join(base, 'generated', 'demo');
+  fs.mkdirSync(out, { recursive: true });
+  writeTree(out, entries);
+  return { base, out };
+}
+
+test('guardGeneratedTree: rechaza volcados, backups, logs, .env y claves', () => {
+  // [ruta sembrada, ruta ofensora reportada] — un fichero dentro de backups/
+  // se rechaza reportando el DIRECTORIO backups/, que es el entry ofensor.
+  const cases = [
+    ['back/dump.sql', 'back/dump.sql'],
+    ['back/backups/notas.txt', 'back/backups'],
+    ['back/app.log', 'back/app.log'],
+    ['back/.env', 'back/.env'],
+    ['back/certs/server.pem', 'back/certs/server.pem'],
+    ['back/client.key', 'back/client.key'],
+  ];
+  for (const [rel, offending] of cases) {
+    const { base, out } = makeTree({ [rel]: 'x' });
+    try {
+      assert.throws(
+        () => guardGeneratedTree(out, OPERATOR_ENV),
+        (err) => err.message.includes(offending),
+        `"${rel}" debe ser rechazado nombrando la ruta`,
+      );
+      assert.equal(fs.existsSync(out), false, `el paquete con "${rel}" no debe quedar en disco`);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  }
+});
+
+test('guardGeneratedTree: rechaza el valor de un secreto del operador sin filtrarlo', () => {
+  const { base, out } = makeTree({ 'back/src/config.ts': `export const T = '${OPERATOR_TOKEN}';` });
+  try {
+    assert.throws(
+      () => guardGeneratedTree(out, OPERATOR_ENV),
+      (err) => err.message.includes('back/src/config.ts') && !err.message.includes(OPERATOR_TOKEN),
+    );
+    assert.equal(fs.existsSync(out), false);
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('guardGeneratedTree: rechaza formas genericas de secreto (sk- y JWT service_role)', () => {
+  // sk-... y JWT con role service_role.
+  for (const content of [
+    "const k = 'sk-proj-AbCdEf0123456789AbCdEf01';",
+    `const k = '${makeJwt({ role: 'service_role' })}';`,
+  ]) {
+    const { base, out } = makeTree({ 'back/src/ai.ts': content });
+    try {
+      assert.throws(
+        () => guardGeneratedTree(out, OPERATOR_ENV),
+        (err) => err.message.includes('back/src/ai.ts'),
+        `debe rechazar: ${content.slice(0, 24)}…`,
+      );
+      assert.equal(fs.existsSync(out), false);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  }
+});
+
+test('guardGeneratedTree: acepta el paquete legitimo (plantillas .example, migraciones, codigo)', () => {
+  const { base, out } = makeTree({
+    'back/.env.example': 'DATABASE_URL=\n',
+    'front/.env.local.example': 'NEXT_PUBLIC_API_URL=\n',
+    'back/prisma/migrations/20260616_x/migration.sql': 'CREATE TABLE x();',
+    'back/src/index.ts': 'export {};',
+    'front/app/page.tsx': 'export default function Page(){return null;}',
+    'front/public/.npmrc': 'legacy-peer-deps=true',
+  });
+  try {
+    assert.doesNotThrow(() => guardGeneratedTree(out, OPERATOR_ENV));
+    assert.equal(fs.existsSync(out), true, 'el paquete limpio se conserva');
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('guardGeneratedTree: acepta el anon key publico del tenant (JWT role anon)', () => {
+  const { base, out } = makeTree({
+    'front/.env.local.example': `NEXT_PUBLIC_SUPABASE_ANON_KEY=${makeJwt({ role: 'anon' })}\n`,
+  });
+  try {
+    assert.doesNotThrow(() => guardGeneratedTree(out, OPERATOR_ENV));
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('guardGeneratedTree: copyDir -> guard pasa con un origen limpio', () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'generar-guard-e2e-'));
+  try {
+    const src = path.join(base, 'origen', 'back');
+    fs.mkdirSync(path.join(src, 'src'), { recursive: true });
+    fs.mkdirSync(path.join(src, '.next'), { recursive: true });
+    fs.writeFileSync(path.join(src, 'src', 'index.ts'), 'export {};');
+    fs.writeFileSync(path.join(src, 'backups.tmp'), 'esta no es una carpeta backups/');
+    fs.writeFileSync(path.join(src, '.env.example'), 'DATABASE_URL=\n');
+    fs.writeFileSync(path.join(src, '.next', 'cache.bin'), 'descartado con el directorio');
+
+    const out = path.join(base, 'generated', 'demo', 'back');
+    copyDir(src, out);
+
+    assert.doesNotThrow(() => guardGeneratedTree(path.dirname(out), OPERATOR_ENV));
   } finally {
     fs.rmSync(base, { recursive: true, force: true });
   }

@@ -43,6 +43,7 @@ import {
   type PublicEnvSecret,
 } from "../lib/export-builders/public-env-secrets.js";
 import { readBakeableSecrets } from "../lib/tenant-secrets/store.js";
+import { assertCleanArchiveBuffer } from "../lib/export-guard.js";
 import { generateApiKeyToken } from "../middleware/tenant-api-key.js";
 import {
   zipDirectoryToBuffer,
@@ -482,6 +483,13 @@ export function createExportHandler(deps: ExportsDeps) {
     const artifactStorage = deps.artifactStorage ?? defaultArtifactStorage;
     const onComplete = async (): Promise<void> => {
       const buffer = await artifactStorage.zipDirectory(frontDir);
+      // security-wave-2 (S3/S4): este ZIP de FUENTE tambien se archiva y llega al
+      // cliente (historial de versiones), asi que pasa por la misma barrera que
+      // los builders justo antes de subirse. Un rechazo propaga: el job manager
+      // lo registra y NO se crea la fila ExportVersion ni se sube el artefacto.
+      await assertCleanArchiveBuffer(buffer, {
+        publicValues: publicEnvSecrets.map((s) => s.value),
+      });
       const versionId = randomUUID();
       const { storagePath } = await artifactStorage.upload(projectId, versionId, buffer);
       await deps.db.exportVersion.create({
