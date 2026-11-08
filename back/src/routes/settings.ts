@@ -35,7 +35,10 @@ settingsRouter.put('/:categoria', async (req: AuthedRequest, res: Response) => {
     where: { businessId: req.businessId, locationId: null, categoria },
   });
   const row = existing
-    ? await prisma.businessSetting.update({ where: { id: existing.id }, data: { datos } })
+    ? await prisma.businessSetting.update({
+        where: { id: existing.id, businessId: req.businessId! },
+        data: { datos },
+      })
     : await prisma.businessSetting.create({ data: { businessId: req.businessId!, locationId: null, categoria, datos } });
   res.json({ categoria: row.categoria, datos: row.datos });
 });

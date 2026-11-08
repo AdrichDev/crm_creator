@@ -69,7 +69,10 @@ timeOffRouter.post('/', async (req: AuthedRequest, res: Response) => {
 async function decide(req: AuthedRequest, res: Response, estado: 'APPROVED' | 'REJECTED') {
   const existing = await prisma.timeOffRequest.findFirst({ where: { id: req.params.id, businessId: req.businessId } });
   if (!existing) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
-  const row = await prisma.timeOffRequest.update({ where: { id: existing.id }, data: { estado, decididoPor: req.userId, decididoEn: new Date() } });
+  const row = await prisma.timeOffRequest.update({
+    where: { id: existing.id, businessId: req.businessId! },
+    data: { estado, decididoPor: req.userId, decididoEn: new Date() },
+  });
   res.json(row);
 
   // Fire-and-forget: notificar al empleado la resolución SI tiene email (emit directo,

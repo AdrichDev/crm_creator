@@ -54,7 +54,7 @@ function makeDeps(seed: Stored | null, fetchStub: FetchStub) {
         ? { id: store.row.id, accessToken: store.row.accessToken, refreshToken: store.row.refreshToken, expiresAt: store.row.expiresAt }
         : null;
     },
-    async updateCredential(id: string, data: CredentialUpdate) {
+    async updateCredential(_businessId: string | null, id: string, data: CredentialUpdate) {
       if (store.row && store.row.id === id) Object.assign(store.row, data);
     },
     async createCredential(data: CredentialCreate) {

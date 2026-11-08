@@ -6,13 +6,17 @@
 > negocio decide qué módulos activa (CRM completo, control de empleados,
 > vacaciones, productos, citas, ventas/TPV, fichaje, web pública, marketing…).
 
-Estado (2026-06, ACTUALIZADO): **Supabase + Prisma + RLS**. Los datos viven en Supabase
+Estado (2026-06, ACTUALIZADO): **Supabase + Prisma**. Los datos viven en Supabase
 (schema `crm`, multi-tenant row-level por `negocio_id`); el front consume el **back REST**
 (Express/Prisma) — fuente única. `localStorage` solo en el repo generador en modo demo (sin
 `NEXT_PUBLIC_API_URL`). "Proyecto" = `Business` (1-1 con `aa.tenant` de agents-agency vía
 `tenant_id`). Borrado = **soft delete** (`eliminado_en`); hard delete en producción.
 Castellano end-to-end (campos Prisma con `@map`; excepciones infra: `Membership.role`,
 `User.firstName/lastName`, `tenant_id`).
+
+Aislamiento entre negocios: lo garantiza el **código de la API** (filtros por `businessId` +
+guarda estructural de Prisma), **no** RLS — el back conecta como dueño del esquema y salta las
+políticas. Ver [`docs/tenant-isolation.md`](docs/tenant-isolation.md).
 
 > NOTA: el texto histórico de abajo describe el scaffold inicial con mock/localStorage. Se
 > conserva como contexto; la verdad operativa actual es la de este recuadro + el change

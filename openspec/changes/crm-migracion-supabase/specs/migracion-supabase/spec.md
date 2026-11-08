@@ -75,6 +75,16 @@ Característica: Tenancy row-level (sin schema-per-tenant)
     Y los datos se aíslan por "businessId"
     Pero no se crea ningún schema Postgres dinámico
 
+  # "Row-level" aquí significa aislamiento por fila en el CÓDIGO de la API, no RLS.
+  # La API conecta como dueña del esquema y salta las políticas; detalle, puntos
+  # ciegos y verificación en docs/tenant-isolation.md.
+  Escenario: el aislamiento lo impone la API, no RLS
+    Dado un usuario con sesión de Supabase y un negocio activo
+    Cuando llama a una ruta de datos del back
+    Entonces el back filtra cada consulta por "businessId"
+    Y una consulta sin "businessId" lanza "TenantScopeError" y responde 500 genérico
+    Pero las políticas RLS no participan: el back conecta como dueño del esquema
+
   Escenario: retiro del modelo schema-per-tenant
     Cuando la migración está completa
     Entonces "buildTenantSchemaSql" no tiene call-sites

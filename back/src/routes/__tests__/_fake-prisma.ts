@@ -3,6 +3,7 @@
 // that imports `../prisma.js`: the lazy singleton picks up `globalThis.prisma`.
 import express, { type Router } from 'express';
 import type { AddressInfo } from 'node:net';
+import { guardDelegateCall } from '../../lib/tenant-scope.js';
 
 type Row = Record<string, unknown>;
 export type Seed = Record<string, Row[]>;
@@ -37,14 +38,58 @@ function matchValue(actual: unknown, expected: unknown): boolean {
     if (gt !== null && !(gt > 0)) return false;
     const gte = compare(actual, ops.gte);
     if (gte !== null && !(gte >= 0)) return false;
-    return true; // resto de filtros relacionales (relaciones anidadas): treat as match
+    // Resto de operadores sobre una columna escalar (`not`, `contains`, `notIn`…): el doble
+    // no los modela. Las relaciones to-one ya no llegan aquí: las resuelve `matchEntry`.
+    return true;
   }
   return actual === expected;
 }
 
-function matches(row: Row, where: unknown): boolean {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Filtro sobre una relación to-one (`{ padre: { … } }` / `{ padre: { is: { … } } }`).
+ * Prisma solo devuelve la fila si la fila PADRE cumple el filtro; un FK colgante (padre
+ * inexistente) no coincide con nada.
+ */
+function matchRelation(parent: Row, filter: unknown, store: Seed): boolean {
+  if (!isPlainObject(filter)) return true;
+  if ('is' in filter || 'isNot' in filter) {
+    const is = filter.is === undefined ? true : filter.is === null ? false : matches(parent, filter.is, store);
+    const isNot = filter.isNot === undefined ? true : filter.isNot === null ? true : !matches(parent, filter.isNot, store);
+    return is && isNot;
+  }
+  return matches(parent, filter, store);
+}
+
+/**
+ * ¿Coincide la fila con una entrada del `where`? Una clave que no es columna de la fila pero
+ * que tiene FK `<clave>Id` se interpreta como RELACIÓN to-one y se evalúa contra la fila
+ * padre del store (`location` → `locationId`, `sale` → `saleId`, `user` → `userId`…).
+ *
+ * Sin esto un filtro relacional contaba como "coincide" SIEMPRE y una tabla hija (que se
+ * acota por su padre porque no tiene `businessId`) devolvía filas de cualquier negocio: los
+ * tests de fuga de las hijas pasaban en vacío. Las relaciones to-many (`some`/`none`/`every`)
+ * y las claves compuestas (`campo1_campo2`) siguen sin evaluarse (coinciden), que es el
+ * comportamiento que ya tenían.
+ */
+function matchEntry(row: Row, key: string, expected: unknown, store: Seed): boolean {
+  if (row[key] === undefined && isPlainObject(expected)) {
+    const fk = row[`${key}Id`];
+    if (typeof fk === 'string') {
+      const parent = (store[key] ?? []).find((p) => p.id === fk);
+      if (!parent) return false;
+      return matchRelation(parent, expected, store);
+    }
+  }
+  return matchValue(row[key], expected);
+}
+
+function matches(row: Row, where: unknown, store: Seed): boolean {
   if (!where || typeof where !== 'object') return true;
-  return Object.entries(where as Row).every(([k, v]) => matchValue(row[k], v));
+  return Object.entries(where as Row).every(([k, v]) => matchEntry(row, k, v, store));
 }
 
 export function installFakePrisma() {
@@ -52,27 +97,57 @@ export function installFakePrisma() {
   const writes: Write[] = [];
   let seq = 0;
 
+  // Guarda de tenancy (S2/S3): TODA llamada de delegado —también la del cliente de
+  // transacción (`tx`)— pasa por `guardDelegateCall`, igual que la extensión del cliente
+  // real. Así la suite de rutas corre con la guarda activa y una consulta sin negocio
+  // (fuera de `runUnscoped`) rompe el test con `TenantScopeError` en vez de pasar.
+  const guarded = <A, R>(model: string, op: string, fn: (a: A) => R) => (a?: A): R => {
+    guardDelegateCall(model, op, a);
+    return fn(a as A);
+  };
+
   const delegate = (model: string, tag: ClientTag) => {
     const rows = () => (store[model] ??= []);
     const log = (op: string, args: unknown) => writes.push({ model, op, args, client: tag });
     return {
-      findFirst: async (a?: { where?: unknown }) => rows().find((r) => matches(r, a?.where)) ?? null,
-      findUnique: async (a?: { where?: unknown }) => rows().find((r) => matches(r, a?.where)) ?? null,
-      findMany: async (a?: { where?: unknown }) => rows().filter((r) => matches(r, a?.where)),
-      count: async (a?: { where?: unknown }) => rows().filter((r) => matches(r, a?.where)).length,
-      groupBy: async () => [],
-      create: async (a: { data: Row }) => {
+      findFirst: guarded(model, 'findFirst', async (a?: { where?: unknown }) => rows().find((r) => matches(r, a?.where, store)) ?? null),
+      findUnique: guarded(model, 'findUnique', async (a?: { where?: unknown }) => rows().find((r) => matches(r, a?.where, store)) ?? null),
+      findMany: guarded(model, 'findMany', async (a?: { where?: unknown }) => rows().filter((r) => matches(r, a?.where, store))),
+      count: guarded(model, 'count', async (a?: { where?: unknown }) => rows().filter((r) => matches(r, a?.where, store)).length),
+      groupBy: guarded(model, 'groupBy', async () => []),
+      create: guarded(model, 'create', async (a: { data: Row; select?: unknown; include?: unknown }) => {
         log('create', a);
         const row = { id: `${model}-${++seq}`, ...a.data };
         rows().push(row);
         return row;
-      },
-      update: async (a: { where: unknown; data: Row }) => {
+      }),
+      createMany: guarded(model, 'createMany', async (a: { data: Row[] }) => {
+        log('createMany', a);
+        for (const data of a.data) rows().push({ id: `${model}-${++seq}`, ...data });
+        return { count: a.data.length };
+      }),
+      update: guarded(model, 'update', async (a: { where: unknown; data: Row }) => {
         log('update', a);
-        const row = rows().find((r) => matches(r, a.where)) ?? {};
+        const row = rows().find((r) => matches(r, a.where, store)) ?? {};
         return { ...row, ...a.data };
-      },
-      delete: async (a: unknown) => { log('delete', a); return {}; },
+      }),
+      // `updateMany`/`deleteMany` SÍ mutan el store (como Prisma): así un test puede probar
+      // que un filtro de más (p. ej. una tabla hija acotada solo por su padre) borraría filas
+      // de otro negocio.
+      updateMany: guarded(model, 'updateMany', async (a: { where?: unknown; data: Row }) => {
+        log('updateMany', a);
+        const hit = rows().filter((r) => matches(r, a.where, store));
+        for (const row of hit) Object.assign(row, a.data);
+        return { count: hit.length };
+      }),
+      delete: guarded(model, 'delete', async (a?: unknown) => { log('delete', a); return {}; }),
+      deleteMany: guarded(model, 'deleteMany', async (a?: { where?: unknown }) => {
+        log('deleteMany', a);
+        const before = rows();
+        const kept = before.filter((r) => !matches(r, a?.where, store));
+        store[model] = kept;
+        return { count: before.length - kept.length };
+      }),
     };
   };
 

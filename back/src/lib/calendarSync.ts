@@ -1,5 +1,6 @@
 import { prisma as defaultPrisma } from '../prisma.js';
 import { BookingStatus } from './generated/prisma/client.js';
+import { runUnscoped } from './tenant-scope.js';
 import {
   getValidToken,
   IntegrationMissingError,
@@ -79,7 +80,8 @@ export interface CalendarSyncDeps {
   getToken(businessId: string): Promise<string>;
   listEvents(businessId: string, token: string): Promise<GoogleCalendarEvent[]>;
   findBooking(businessId: string, bookingId: string): Promise<SyncBookingRow | null>;
-  updateBooking(bookingId: string, data: BookingUpdate): Promise<void>;
+  /** Escritura espejo acotada al negocio: el `businessId` va en el `where` de la reserva. */
+  updateBooking(businessId: string, bookingId: string, data: BookingUpdate): Promise<void>;
   /** Ubicación por defecto + servicio marcador; null si el negocio no tiene ubicación. */
   resolveTarget(businessId: string): Promise<{ locationId: string; serviceId: string } | null>;
   createBooking(businessId: string, input: CreatedBookingInput): Promise<{ id: string }>;
@@ -147,7 +149,7 @@ export async function reconcileEvent(
 
     if (isCancelled) {
       if (booking.status !== 'CANCELLED') {
-        await deps.updateBooking(booking.id, { status: BookingStatus.CANCELLED, prevStatus: booking.status });
+        await deps.updateBooking(businessId, booking.id, { status: BookingStatus.CANCELLED, prevStatus: booking.status });
       }
       return;
     }
@@ -156,7 +158,7 @@ export async function reconcileEvent(
     const startAt = parseEndpoint(event.start, timeZone);
     const endAt = parseEndpoint(event.end, timeZone);
     if (startAt && endAt) {
-      await deps.updateBooking(booking.id, { startAt, endAt });
+      await deps.updateBooking(businessId, booking.id, { startAt, endAt });
     }
     return;
   }
@@ -300,18 +302,23 @@ async function getOrCreateSyncService(businessId: string): Promise<{ id: string 
   });
 }
 
-function buildProdDeps(full = false): CalendarSyncDeps {
+// Exportada para el test de la guarda de tenancy (S2): la escritura espejo por id debe
+// llevar el negocio en el `where` (y no depender de una salida `runUnscoped`).
+export function buildProdDeps(full = false): CalendarSyncDeps {
   const prisma = defaultPrisma;
   return {
-    listCredentials: async () => {
-      const rows = await prisma.oAuthCredential.findMany({
-        where: { servicio: 'calendar', estado: 'connected', businessId: { not: null } },
-        select: { businessId: true },
-      });
-      return rows
-        .filter((r): r is { businessId: string } => r.businessId != null)
-        .map((r) => ({ businessId: r.businessId }));
-    },
+    // Cross-tenant explícito (S2): el cron itera TODOS los negocios con calendario
+    // conectado; el id de negocio es el dato que se está descubriendo aquí.
+    listCredentials: async () =>
+      runUnscoped('calendarSync: credenciales de Google Calendar conectadas de todos los negocios', async () => {
+        const rows = await prisma.oAuthCredential.findMany({
+          where: { servicio: 'calendar', estado: 'connected', businessId: { not: null } },
+          select: { businessId: true },
+        });
+        return rows
+          .filter((r): r is { businessId: string } => r.businessId != null)
+          .map((r) => ({ businessId: r.businessId }));
+      }),
     getToken: (businessId) => getValidToken(businessId, 'calendar'),
     listEvents: (businessId, token) =>
       full
@@ -322,9 +329,11 @@ function buildProdDeps(full = false): CalendarSyncDeps {
         where: { id: bookingId, businessId, eliminadoEn: null },
         select: { id: true, status: true },
       }),
-    updateBooking: async (bookingId, data) => {
+    updateBooking: async (businessId, bookingId, data) => {
+      // Escritura acotada al negocio (S2): el `businessId` viaja en el `where`, así que la
+      // consulta se demuestra por sí sola y no necesita `runUnscoped`.
       await prisma.booking.update({
-        where: { id: bookingId },
+        where: { id: bookingId, businessId },
         data: {
           ...(data.startAt ? { startAt: data.startAt } : {}),
           ...(data.endAt ? { endAt: data.endAt } : {}),

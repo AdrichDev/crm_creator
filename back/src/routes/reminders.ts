@@ -92,13 +92,19 @@ remindersRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
   if (!existing) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
   const data = pickFields(req.body ?? {}, UPDATE_FIELDS);
   if (data.fechaPrevista) data.fechaPrevista = new Date(String(data.fechaPrevista));
-  const row = await prisma.reminder.update({ where: { id: req.params.id }, data: data as never });
+  const row = await prisma.reminder.update({
+    where: { id: req.params.id, businessId: req.businessId! },
+    data: data as never,
+  });
   res.json(row);
 });
 
 remindersRouter.delete('/:id', async (req: AuthedRequest, res: Response) => {
   const existing = await prisma.reminder.findFirst({ where: { id: req.params.id, businessId: req.businessId, eliminadoEn: null } });
   if (!existing) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
-  await prisma.reminder.update({ where: { id: req.params.id }, data: { eliminadoEn: new Date() } });
+  await prisma.reminder.update({
+    where: { id: req.params.id, businessId: req.businessId! },
+    data: { eliminadoEn: new Date() },
+  });
   res.status(204).end();
 });

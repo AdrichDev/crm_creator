@@ -239,7 +239,7 @@ contactosRouter.post('/geocode/rerun', requireRole('ADMIN', 'MANAGER'), async (r
   for (const c of candidates) {
     const geo = await geocodeContacto(c);
     if (geo.geoEstado === undefined) { skipped += 1; continue; } // sin dirección
-    await prisma.contacto.update({ where: { id: c.id }, data: geo });
+    await prisma.contacto.update({ where: { id: c.id, businessId: req.businessId! }, data: geo });
     if (geo.geoEstado === 'OK') ok += 1; else failed += 1;
   }
   res.json({ ok, failed, skipped });
@@ -315,7 +315,7 @@ contactosRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
       })
     : {};
   const row = await prisma.contacto.update({
-    where: { id: req.params.id },
+    where: { id: req.params.id, businessId: req.businessId! },
     data: {
       ...(d.tipo !== undefined && { tipo: d.tipo }),
       ...(d.nombre !== undefined && { nombre: d.nombre }),
@@ -385,7 +385,10 @@ contactosRouter.post('/convert', async (req: AuthedRequest, res: Response) => {
           },
         });
         // El contacto sale de la agenda: se vincula al cliente (historial) y se soft-borra.
-        await tx.contacto.update({ where: { id: c.id }, data: { clienteId: nuevo.id, eliminadoEn: new Date() } });
+        await tx.contacto.update({
+          where: { id: c.id, businessId: req.businessId! },
+          data: { clienteId: nuevo.id, eliminadoEn: new Date() },
+        });
         return nuevo;
       });
       created.push({ contactoId: c.id, clienteId: cliente.id });

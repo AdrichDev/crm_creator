@@ -2,6 +2,7 @@ import { prisma as defaultPrisma } from '../prisma.js';
 import { emit as defaultEmit } from './automation/index.js';
 import { adminEmails as prodAdminEmails } from './adminEmails.js';
 import { env } from '../env.js';
+import { runUnscoped } from './tenant-scope.js';
 import type { AutomationEventName, AutomationPayloads } from './automation/index.js';
 
 // ---------------------------------------------------------------------------
@@ -343,8 +344,10 @@ export async function runDigestsWithDeps(deps: DigestDeps, now: Date = new Date(
 
 // ---------------------------------------------------------------------------
 // Dependencias reales (producción) construidas sobre prisma.
+// Exportada para el test de la guarda de tenancy (S2): las consultas cross-tenant de este
+// cron deben ir dentro de `runUnscoped` con el motivo documentado.
 // ---------------------------------------------------------------------------
-function buildProdDeps(): DigestDeps {
+export function buildProdDeps(): DigestDeps {
   const prisma = defaultPrisma;
   return {
     enabled: Boolean(env.automationWebhookUrl),
@@ -369,10 +372,13 @@ function buildProdDeps(): DigestDeps {
         if ((e as { code?: string }).code === 'P2002') {
           const existing = await prisma.notification.findUnique({
             where: {
+              // El negocio viaja en la clave compuesta Y en el filtro de nivel superior:
+              // la guarda de tenancy (S2) solo acepta `businessId` ahí, no anidado.
               tipo_businessId_destino_programadoEn: {
                 tipo: input.tipo, businessId: input.businessId,
                 destino: input.destino, programadoEn: input.programadoEn,
               },
+              businessId: input.businessId,
             },
             select: { id: true, estado: true },
           });
@@ -382,7 +388,11 @@ function buildProdDeps(): DigestDeps {
       }
     },
     markSent: async (id) => {
-      await prisma.notification.update({ where: { id }, data: { estado: 'sent', enviadoEn: new Date() } });
+      // Cross-tenant explícito (S2): la fila se acaba de crear o de listar en ESTA pasada
+      // del digest y el puerto solo transporta su id.
+      await runUnscoped('digestScheduler: marcar como enviado el digest por id (fila creada/listada en esta pasada)', async () =>
+        await prisma.notification.update({ where: { id }, data: { estado: 'sent', enviadoEn: new Date() } }),
+      );
     },
     invoicePending: async (businessId) => {
       const rows = await prisma.invoice.findMany({

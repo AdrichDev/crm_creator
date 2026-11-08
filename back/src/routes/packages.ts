@@ -56,6 +56,9 @@ packagesRouter.post('/customer-packages/:id/consume-session', async (req: Authed
     if (handleCrossTenant(e, res)) return;
     throw e;
   }
-  const updated = await prisma.customerPackage.update({ where: { id: cp.id }, data: { sesionesUsadas: { increment: 1 }, sessions: { create: { bookingId: req.body?.bookingId } } } });
+  const updated = await prisma.customerPackage.update({
+    where: { id: cp.id, businessId: req.businessId! },
+    data: { sesionesUsadas: { increment: 1 }, sessions: { create: { bookingId: req.body?.bookingId } } },
+  });
   res.json(updated);
 });

@@ -65,7 +65,14 @@ async function main() {
   let saltadas = 0;
   for (const t of TRAMOS) {
     const existente = await prisma.openingHour.findFirst({
-      where: { locationId: location.id, diaSemana: t.diaSemana, apertura: t.apertura, cierre: t.cierre },
+      // OpeningHour es tabla hija: el negocio se filtra por la sucursal padre (S2/S3).
+      where: {
+        locationId: location.id,
+        location: { businessId: BUSINESS_ID },
+        diaSemana: t.diaSemana,
+        apertura: t.apertura,
+        cierre: t.cierre,
+      },
     });
     if (existente) {
       saltadas++;
@@ -79,7 +86,9 @@ async function main() {
     console.log(`  + dia ${t.diaSemana} ${t.apertura}-${t.cierre} creado (id ${created.id})`);
   }
 
-  const total = await prisma.openingHour.count({ where: { locationId: location.id } });
+  const total = await prisma.openingHour.count({
+    where: { locationId: location.id, location: { businessId: BUSINESS_ID } },
+  });
 
   // Verificación: mismos huecos que GET /bookings/slots (daySlotsWithAvailability).
   const service = await prisma.service.findFirst({

@@ -325,9 +325,12 @@ bookingsRouter.post('/', async (req: AuthedRequest, res: Response) => {
           if (programadoEn > now) {
             await prisma.notification.upsert({
               where: {
+                // El negocio va también en el nivel superior: la guarda (S2) no acepta el
+                // `businessId` anidado dentro de la clave compuesta.
                 tipo_businessId_destino_programadoEn: {
                   tipo, businessId, destino: customerEmail, programadoEn,
                 },
+                businessId,
               },
               create: {
                 businessId, tipo, canal: 'email', destino: customerEmail,
@@ -349,7 +352,7 @@ bookingsRouter.post('/', async (req: AuthedRequest, res: Response) => {
           select: { calendarPushEnabled: true },
         });
         const location = await prisma.location.findUnique({
-          where: { id: booking.locationId },
+          where: { id: booking.locationId, businessId },
           select: { direccion: true },
         });
         void maybePushCalendarEvent(employeeUser?.calendarPushEnabled ?? false, {
@@ -368,7 +371,7 @@ bookingsRouter.post('/', async (req: AuthedRequest, res: Response) => {
       // conectó Calendar ('missing') o el token está revocado, NUNCA bloquea la cita.
       // El evento queda etiquetado con crmBookingId → el poller de sync no lo re-importa.
       const bizLocation = await prisma.location.findUnique({
-        where: { id: booking.locationId },
+        where: { id: booking.locationId, businessId },
         select: { direccion: true, zonaHoraria: true },
       });
       void createBookingCalendarEvent({
@@ -404,9 +407,12 @@ async function consumePackageSession(
   const cp = candidates.find((c) => c.sesionesUsadas < c.sesionesTotal);
   if (!cp) return;
   await lockCustomerPackage(tx, cp.id);
-  const fresh = await tx.customerPackage.findUnique({ where: { id: cp.id } });
+  const fresh = await tx.customerPackage.findUnique({ where: { id: cp.id, businessId: p.businessId } });
   if (!fresh || fresh.sesionesUsadas >= fresh.sesionesTotal) return; // re-chequeo dentro de la tx
-  await tx.customerPackage.update({ where: { id: fresh.id }, data: { sesionesUsadas: { increment: 1 } } });
+  await tx.customerPackage.update({
+    where: { id: fresh.id, businessId: p.businessId },
+    data: { sesionesUsadas: { increment: 1 } },
+  });
   await tx.packageSession.create({ data: { customerPackageId: fresh.id, bookingId: p.bookingId } });
 }
 
@@ -415,7 +421,7 @@ async function transition(req: AuthedRequest, res: Response, to: BookingStatus) 
   const updated = await prisma.$transaction(async (tx) => {
     const booking = await tx.booking.findFirst({ where: { id: req.params.id, businessId: req.businessId } });
     if (!booking) return null;
-    const row = await tx.booking.update({ where: { id: booking.id }, data: { status: to } });
+    const row = await tx.booking.update({ where: { id: booking.id, businessId: req.businessId! }, data: { status: to } });
     await tx.bookingStatusHistory.create({ data: { bookingId: booking.id, estadoAnterior: booking.status, estadoNuevo: to, cambiadoPor: req.userId, motivo: req.body?.reason } });
 
     // Al completar: consumir una sesión de bono si el cliente tiene uno activo para ese servicio.
@@ -439,7 +445,7 @@ async function transition(req: AuthedRequest, res: Response, to: BookingStatus) 
 bookingsRouter.delete('/:id', async (req: AuthedRequest, res: Response) => {
   const booking = await prisma.booking.findFirst({ where: { id: req.params.id, businessId: req.businessId, eliminadoEn: null } });
   if (!booking) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
-  await prisma.booking.update({ where: { id: booking.id }, data: { eliminadoEn: new Date() } });
+  await prisma.booking.update({ where: { id: booking.id, businessId: req.businessId! }, data: { eliminadoEn: new Date() } });
 
   // WU2 (AC2): la cita borrada desaparece también del Google Calendar del negocio.
   // Fire-and-forget soft-fail: la integración caída nunca bloquea el 204.
@@ -572,7 +578,7 @@ bookingsRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
       data.endAt = avail.endAt;
     }
 
-    const row = await tx.booking.update({ where: { id: booking.id }, data });
+    const row = await tx.booking.update({ where: { id: booking.id, businessId: req.businessId! }, data });
     if (body.status !== undefined && body.status !== booking.status) {
       await tx.bookingStatusHistory.create({
         data: { bookingId: booking.id, estadoAnterior: booking.status, estadoNuevo: body.status as BookingStatus, cambiadoPor: req.userId },

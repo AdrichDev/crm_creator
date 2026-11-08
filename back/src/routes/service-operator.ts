@@ -3,6 +3,7 @@ import { Prisma } from '../lib/generated/prisma/client.js';
 import { prisma } from '../prisma.js';
 import { requireOperatorToken } from '../middleware/operator-token.js';
 import { splitNombre, joinNombre } from '../lib/nombre.js';
+import { runUnscoped } from '../lib/tenant-scope.js';
 import { buildTenantKeysOperatorRouter, type TenantKeysOperatorDb } from './service-operator-tenant-keys.js';
 import { buildLifecycleOperatorRouter, type LifecycleOperatorDb } from './service-operator-lifecycle.js';
 import { buildPurgeOperatorRouter, type PurgeDb } from './service-operator-purge.js';
@@ -564,6 +565,15 @@ export const serviceOperatorRouter = Router();
 
 // Todo el router exige el service token del operador (fail-closed).
 serviceOperatorRouter.use(requireOperatorToken());
+
+// Salida explícita de la guarda de tenancy (S2): el operador opera por diseño sobre
+// CUALQUIER negocio (listados de plataforma, alta de proyectos, lifecycle, purga).
+// El acotado aquí es el service token; los `businessId` de cada handler siguen siendo
+// obligatorios en los datos (los writes los llevan). Cubre también los sub-routers
+// montados más abajo (tenant-keys, lifecycle, purge, platform-oauth).
+serviceOperatorRouter.use((_req, _res, next) =>
+  runUnscoped('operador (service token): opera sobre cualquier negocio por diseño', next),
+);
 
 // Deps reales del alta: Prisma satisface las interfaces estrechas estructuralmente.
 // El owner se lee del entorno EN CADA request (fail-closed si falta o está vacío).

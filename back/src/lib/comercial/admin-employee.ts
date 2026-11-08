@@ -1,4 +1,5 @@
 import { prisma } from '../../prisma.js';
+import { runUnscoped } from '../tenant-scope.js';
 
 // Empleado espejo del ADMIN del negocio (vertical `comerciales`). En este vertical el
 // responsable (admin) actúa como comercial de campo, así que la lista de "empleados"
@@ -85,7 +86,12 @@ export async function ensureAdminEmployee(
 
     // Si el usuario ya está ligado a un empleado en OTRO negocio, no se puede reutilizar el
     // link (Employee.userId @unique global) → se crea con userId=null (clave por email).
-    const linkedElsewhere = await db.employee.findUnique({ where: { userId: m.userId } });
+    // Cross-tenant explícito (S2): la pregunta es justamente si el usuario está vinculado
+    // fuera de este negocio, y `Employee.userId` es único global.
+    const linkedElsewhere = await runUnscoped(
+      'admin-employee: comprobar si el usuario ya está vinculado a un empleado de cualquier negocio (Employee.userId es único global)',
+      async () => await db.employee.findUnique({ where: { userId: m.userId } }),
+    );
 
     // El create puede chocar con P2002 si dos peticiones concurrentes (p.ej. dos GET
     // /employees en paralelo) intentan materializar el mismo admin a la vez y colisionan en

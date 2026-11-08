@@ -118,7 +118,12 @@ export interface CredentialCreate {
 /** Puerto Prisma + fetch. Inyectable para testear sin DB ni red. */
 export interface OAuthDeps {
   findCredential(businessId: string | null, servicio: Servicio): Promise<CredentialRow | null>;
-  updateCredential(id: string, data: CredentialUpdate): Promise<void>;
+  /**
+   * Actualiza la credencial acotando la escritura a su negocio. `businessId === null` es una
+   * credencial de PLATAFORMA (admin) y se escribe como `null` explícito en el `where`, nunca
+   * como ausencia del filtro.
+   */
+  updateCredential(businessId: string | null, id: string, data: CredentialUpdate): Promise<void>;
   createCredential(data: CredentialCreate): Promise<void>;
   fetch: typeof fetch;
   // crm-tenant-oauth-creds: lectura de TenantSecret para resolver client_id/secret
@@ -145,8 +150,10 @@ export function defaultDeps(): OAuthDeps {
         select: { id: true, accessToken: true, refreshToken: true, expiresAt: true },
       });
     },
-    async updateCredential(id, data) {
-      await prisma.oAuthCredential.update({ where: { id }, data });
+    async updateCredential(businessId, id, data) {
+      // Escritura acotada al negocio (S2): el `businessId` viaja en el `where` (null explícito
+      // para credenciales de plataforma), así que no hace falta `runUnscoped`.
+      await prisma.oAuthCredential.update({ where: { id, businessId }, data });
     },
     async createCredential(data) {
       await prisma.oAuthCredential.create({ data });
@@ -237,7 +244,7 @@ async function doRefresh(
     if (!res.ok || data.error) {
       const err = data.error as string | undefined;
       if (err === 'invalid_grant' || err === 'invalid_token' || res.status === 401 || res.status === 400) {
-        await deps.updateCredential(credential.id, { estado: 'reauth_required' });
+        await deps.updateCredential(businessId, credential.id, { estado: 'reauth_required' });
         throw new ReauthRequiredError(businessId, servicio);
       }
       // Otro error (5xx) = fallo transitorio: devolver token viejo, NO marcar reauth.
@@ -246,7 +253,7 @@ async function doRefresh(
     }
 
     const newAccess = data.access_token as string;
-    await deps.updateCredential(credential.id, {
+    await deps.updateCredential(businessId, credential.id, {
       accessToken: encryptToken(newAccess),
       ...(typeof data.refresh_token === 'string' ? { refreshToken: encryptToken(data.refresh_token) } : {}),
       expiresAt: typeof data.expires_in === 'number' ? new Date(Date.now() + data.expires_in * 1000) : null,
@@ -367,7 +374,7 @@ export async function handleCallback(
   // find-then-write null-safe (upsert no maneja businessId null en el compuesto unique).
   const existing = await deps.findCredential(businessId, servicio);
   if (existing) {
-    await deps.updateCredential(existing.id, {
+    await deps.updateCredential(businessId, existing.id, {
       accessToken: encryptedAccess,
       refreshToken: encryptedRefresh,
       expiresAt,
@@ -439,6 +446,6 @@ export async function disconnectIntegration(
     }
   }
 
-  await deps.updateCredential(credential.id, { estado: 'revoked', revokedAt: new Date() });
+  await deps.updateCredential(businessId, credential.id, { estado: 'revoked', revokedAt: new Date() });
   return credential;
 }

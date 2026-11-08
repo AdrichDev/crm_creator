@@ -19,7 +19,7 @@ import { IntegrationMissingError, ReauthRequiredError } from '../integrations/oa
 import type { GoogleCalendarEvent } from '../integrations/calendar.js';
 
 interface Recorder {
-  updates: { id: string; data: BookingUpdate }[];
+  updates: { businessId: string; id: string; data: BookingUpdate }[];
   creates: { businessId: string; input: CreatedBookingInput }[];
   links: { businessId: string; eventId: string; bookingId: string }[];
 }
@@ -31,7 +31,7 @@ function makeDeps(overrides: Partial<CalendarSyncDeps> = {}): { deps: CalendarSy
     getToken: async () => 'tok',
     listEvents: async () => [],
     findBooking: async (): Promise<SyncBookingRow | null> => null,
-    updateBooking: async (id, data) => { rec.updates.push({ id, data }); },
+    updateBooking: async (businessId, id, data) => { rec.updates.push({ businessId, id, data }); },
     resolveTarget: async () => ({ locationId: 'loc-1', serviceId: 'svc-1' }),
     createBooking: async (businessId, input) => { rec.creates.push({ businessId, input }); return { id: 'new-bk' }; },
     linkEvent: async (businessId, _t, eventId, bookingId) => { rec.links.push({ businessId, eventId, bookingId }); },

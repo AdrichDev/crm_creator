@@ -43,7 +43,7 @@ export interface TenantKeysOperatorDb {
     }): Promise<ApiKeyRow>;
     findMany(args: { where: { businessId: string } }): Promise<ApiKeyRow[]>;
     findFirst(args: { where: { id: string; businessId: string } }): Promise<(ApiKeyRow & { revokedAt: Date | null }) | null>;
-    update(args: { where: { id: string }; data: { revokedAt: Date } }): Promise<ApiKeyRow>;
+    update(args: { where: { id: string; businessId?: string }; data: { revokedAt: Date } }): Promise<ApiKeyRow>;
   };
   tenantSecret: {
     upsert(args: {
@@ -136,7 +136,10 @@ export async function rotateApiKeyHandler(db: TenantKeysOperatorDb, req: Request
 
     // Revoca la anterior (idempotente: si ya estaba revocada, no se pisa la fecha original).
     if (!existing.revokedAt) {
-      await db.tenantApiKey.update({ where: { id: keyId }, data: { revokedAt: new Date() } });
+      await db.tenantApiKey.update({
+        where: { id: keyId, businessId },
+        data: { revokedAt: new Date() },
+      });
     }
 
     const { token, prefix, tokenHash } = generateApiKeyToken();
@@ -171,7 +174,10 @@ export async function revokeApiKeyHandler(db: TenantKeysOperatorDb, req: Request
     if (existing.revokedAt) {
       return res.json({ id: existing.id, revokedAt: existing.revokedAt });
     }
-    const updated = await db.tenantApiKey.update({ where: { id: keyId }, data: { revokedAt: new Date() } });
+    const updated = await db.tenantApiKey.update({
+      where: { id: keyId, businessId },
+      data: { revokedAt: new Date() },
+    });
     res.json({ id: updated.id, revokedAt: updated.revokedAt });
   } catch (e) {
     console.error('[service-operator] error revocando API key:', e);

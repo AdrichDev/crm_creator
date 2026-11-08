@@ -117,7 +117,7 @@ async function leerCatalogoAA(agentId: string) {
  * Espeja el horario del agente en las franjas de apertura de la sede. Una clave puede traer
  * varios turnos separados por `|` ("13:00-16:00|19:30-23:00"): cada turno es una fila.
  */
-async function sincronizarHorario(locationId: string, horario: Record<string, string>) {
+async function sincronizarHorario(businessId: string, locationId: string, horario: Record<string, string>) {
   const filas: { locationId: string; diaSemana: number; apertura: string; cierre: string }[] = [];
   for (const [clave, valor] of Object.entries(horario)) {
     const diaSemana = DIA_SEMANA[clave];
@@ -129,7 +129,8 @@ async function sincronizarHorario(locationId: string, horario: Record<string, st
     }
   }
   // Reemplazo completo: el horario de AA manda, no se acumulan franjas de ejecuciones previas.
-  await prisma.openingHour.deleteMany({ where: { locationId } });
+  // OpeningHour es tabla hija: el negocio se filtra por la sucursal padre (S2/S3).
+  await prisma.openingHour.deleteMany({ where: { locationId, location: { businessId } } });
   if (filas.length > 0) await prisma.openingHour.createMany({ data: filas });
   return filas.length;
 }
@@ -144,7 +145,7 @@ async function sincronizarEmpleados(businessId: string, locationId: string, staf
     });
     const datos = { locationId, especialidad: r.zona ?? null };
     const emp = existente
-      ? await prisma.employee.update({ where: { id: existente.id }, data: datos })
+      ? await prisma.employee.update({ where: { id: existente.id, businessId }, data: datos })
       : await prisma.employee.create({ data: { businessId, nombre: r.nombre, ...datos } });
     porNombre.set(r.nombre, emp.id);
   }
@@ -167,7 +168,7 @@ async function sincronizarRecursos(businessId: string, locationId: string, fisic
       select: { id: true },
     });
     const rec = existente
-      ? await prisma.resource.update({ where: { id: existente.id }, data: datos })
+      ? await prisma.resource.update({ where: { id: existente.id, businessId }, data: datos })
       : await prisma.resource.create({ data: { businessId, nombre: r.nombre, ...datos } });
     porNombre.set(r.nombre, rec.id);
   }
@@ -214,7 +215,7 @@ async function sincronizarServicios(
     if (existente) {
       // `set` reemplaza los enlaces: el catálogo de AA manda también al resincronizar.
       await prisma.service.update({
-        where: { id: existente.id },
+        where: { id: existente.id, businessId },
         data: { ...datos, resources: { set: idsFisicos }, employees: { set: idsStaff } },
       });
     } else {
@@ -278,7 +279,7 @@ async function provisionar(owner: { id: string; email: string }) {
       });
       if (ajuste) {
         await prisma.businessSetting.update({
-          where: { id: ajuste.id },
+          where: { id: ajuste.id, businessId: business.id },
           data: { datos: config as Prisma.InputJsonValue },
         });
       }
@@ -305,7 +306,7 @@ async function provisionar(owner: { id: string; email: string }) {
     }
     // Ficha de la sede desde los datos del cliente: dirección, teléfono y email reales.
     await prisma.location.update({
-      where: { id: location.id },
+      where: { id: location.id, businessId: business.id },
       data: {
         direccion: tenant.direccion,
         telefono: tenant.telefono,
@@ -321,7 +322,7 @@ async function provisionar(owner: { id: string; email: string }) {
     await sincronizarServicios(
       business.id, catalogo.servicios, catalogo.enlaces, catalogo.recursos, idsRecurso, idsEmpleado,
     );
-    const franjas = await sincronizarHorario(location.id, catalogo.horario);
+    const franjas = await sincronizarHorario(business.id, location.id, catalogo.horario);
 
     console.log(
       `${creado ? 'ALTA ' : 'SYNC '} ${(tenant.codigo ?? '-').padEnd(7)} ${tenant.nombre.padEnd(22)} ` +

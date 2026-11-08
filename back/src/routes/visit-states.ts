@@ -27,7 +27,10 @@ visitStatesRouter.post('/', async (req: AuthedRequest, res: Response) => {
 visitStatesRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
   const existing = await prisma.visitState.findFirst({ where: { id: req.params.id, businessId: req.businessId, eliminadoEn: null } });
   if (!existing) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
-  const row = await prisma.visitState.update({ where: { id: req.params.id }, data: pickFields(req.body ?? {}, FIELDS) as never });
+  const row = await prisma.visitState.update({
+    where: { id: req.params.id, businessId: req.businessId! },
+    data: pickFields(req.body ?? {}, FIELDS) as never,
+  });
   res.json(row);
 });
 
@@ -35,6 +38,9 @@ visitStatesRouter.delete('/:id', async (req: AuthedRequest, res: Response) => {
   const existing = await prisma.visitState.findFirst({ where: { id: req.params.id, businessId: req.businessId, eliminadoEn: null } });
   if (!existing) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
   if (existing.esSistema) return res.status(409).json({ error: { code: 'protected', message: 'Estado de sistema: no se puede eliminar' } });
-  await prisma.visitState.update({ where: { id: req.params.id }, data: { eliminadoEn: new Date() } });
+  await prisma.visitState.update({
+    where: { id: req.params.id, businessId: req.businessId! },
+    data: { eliminadoEn: new Date() },
+  });
   res.status(204).end();
 });

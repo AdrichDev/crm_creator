@@ -55,7 +55,7 @@ const statusSchema = z.object({ estado: z.enum(INVOICE_ESTADOS) });
 export interface InvoiceStatusDb {
   invoice: {
     findFirst: (args: unknown) => Promise<{ id: string; estado: string } | null>;
-    update: (args: { where: { id: string }; data: Record<string, unknown>; include?: unknown }) => Promise<unknown>;
+    update: (args: { where: { id: string; businessId?: string }; data: Record<string, unknown>; include?: unknown }) => Promise<unknown>;
   };
 }
 
@@ -83,7 +83,7 @@ export async function invoiceStatusHandler(db: InvoiceStatusDb, req: AuthedReque
   }
 
   const invoice = await db.invoice.update({
-    where: { id: existing.id },
+    where: { id: existing.id, businessId: req.businessId! },
     data: { estado, pagadaEn: estado === 'Pagada' ? new Date() : null },
     include: INVOICE_INCLUDE,
   });

@@ -181,7 +181,7 @@ async function main() {
       // (p. ej. un run previo que falló tras crear el pedido), se re-asegura.
       if (existente.estado === 'aceptada' && !existente.invoice) {
         const full = await prisma.pedido.findUniqueOrThrow({
-          where: { id: existente.id },
+          where: { id: existente.id, businessId: BUSINESS_ID },
           include: { lines: { orderBy: { posicion: 'asc' } } },
         });
         await prisma.$transaction(async (tx) => {

@@ -219,7 +219,7 @@ customersRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
     await resolveGeo(body, data);
   }
   const row = await prisma.customer.update({
-    where: { id: req.params.id },
+    where: { id: req.params.id, businessId: req.businessId! },
     data: data as Prisma.CustomerUncheckedUpdateInput,
   });
   res.json(row);
@@ -228,7 +228,10 @@ customersRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
 customersRouter.delete('/:id', async (req: AuthedRequest, res: Response) => {
   const existing = await prisma.customer.findFirst({ where: { id: req.params.id, businessId: req.businessId, eliminadoEn: null } });
   if (!existing) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
-  await prisma.customer.update({ where: { id: req.params.id }, data: { eliminadoEn: new Date() } });
+  await prisma.customer.update({
+    where: { id: req.params.id, businessId: req.businessId! },
+    data: { eliminadoEn: new Date() },
+  });
   res.status(204).end();
 });
 
@@ -236,7 +239,10 @@ customersRouter.delete('/:id', async (req: AuthedRequest, res: Response) => {
 customersRouter.post('/:id/convert', async (req: AuthedRequest, res: Response) => {
   const existing = await prisma.customer.findFirst({ where: { id: req.params.id, businessId: req.businessId, eliminadoEn: null } });
   if (!existing) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
-  const row = await prisma.customer.update({ where: { id: req.params.id }, data: { tipoRegistro: 'CLIENTE' } });
+  const row = await prisma.customer.update({
+    where: { id: req.params.id, businessId: req.businessId! },
+    data: { tipoRegistro: 'CLIENTE' },
+  });
   res.json(row);
 });
 
@@ -307,10 +313,16 @@ customersRouter.post('/geocode/rerun', requireRole('ADMIN', 'MANAGER'), async (r
     if (!hasAddress) { skipped += 1; continue; }
     const geo = await geocoder.geocode({ direccion: c.direccion, numero: c.numero, localidad: c.localidad, provincia: c.provincia, codigoPostal: c.codigoPostal });
     if (geo) {
-      await prisma.customer.update({ where: { id: c.id }, data: { latitud: geo.lat, longitud: geo.lng, geoEstado: 'OK' } });
+      await prisma.customer.update({
+        where: { id: c.id, businessId: req.businessId! },
+        data: { latitud: geo.lat, longitud: geo.lng, geoEstado: 'OK' },
+      });
       ok += 1;
     } else {
-      await prisma.customer.update({ where: { id: c.id }, data: { geoEstado: 'FAILED' } });
+      await prisma.customer.update({
+        where: { id: c.id, businessId: req.businessId! },
+        data: { geoEstado: 'FAILED' },
+      });
       failed += 1;
     }
   }

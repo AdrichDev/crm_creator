@@ -1,5 +1,21 @@
 import { PrismaClient } from './lib/generated/prisma/client.js';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { tenantScopeExtension } from './lib/tenant-scope.js';
+
+// Guarda estructural de tenancy (S2): el singleton exportado es el cliente BASE
+// extendido con `$extends(tenantScopeExtension)`, así que `$allOperations` envuelve TODA
+// operación de modelo y una consulta sin negocio (fuera de `runUnscoped`) lanza
+// `TenantScopeError` antes de tocar la base de datos.
+// Las transacciones interactivas heredan la extensión: `$transaction(fn)` entrega un `tx`
+// con las mismas extensiones (comprobado en `tenant-scope-transaction.test.ts`).
+//
+// La extensión se declara con un tipo estructural amplio (`PrismaExtensionObject`), así que
+// `$extends` devuelve un cliente cuyos delegados el compilador no puede reificar: se
+// reafirma el tipo `PrismaClient` (runtime es un superconjunto) para no alterar el tipado
+// de las ~500 llamadas existentes.
+function withTenantScope(base: PrismaClient): PrismaClient {
+  return base.$extends(tenantScopeExtension) as unknown as PrismaClient;
+}
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
@@ -22,7 +38,7 @@ function createClient(): PrismaClient {
     },
     { schema: process.env.DB_SCHEMA ?? 'crm' },
   );
-  return new PrismaClient({ adapter });
+  return withTenantScope(new PrismaClient({ adapter }));
 }
 
 // Getter lazy: el cliente se crea la primera vez que se accede, cuando dotenv ya cargó.

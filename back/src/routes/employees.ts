@@ -87,14 +87,20 @@ employeesRouter.post('/', async (req: AuthedRequest, res: Response) => {
 employeesRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
   const existing = await prisma.employee.findFirst({ where: { id: req.params.id, businessId: req.businessId, eliminadoEn: null } });
   if (!existing) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
-  const row = await prisma.employee.update({ where: { id: req.params.id }, data: buildData(req.body ?? {}) as Prisma.EmployeeUncheckedUpdateInput });
+  const row = await prisma.employee.update({
+    where: { id: req.params.id, businessId: req.businessId! },
+    data: buildData(req.body ?? {}) as Prisma.EmployeeUncheckedUpdateInput,
+  });
   res.json(row);
 });
 
 employeesRouter.delete('/:id', async (req: AuthedRequest, res: Response) => {
   const existing = await prisma.employee.findFirst({ where: { id: req.params.id, businessId: req.businessId, eliminadoEn: null } });
   if (!existing) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
-  await prisma.employee.update({ where: { id: req.params.id }, data: { eliminadoEn: new Date() } });
+  await prisma.employee.update({
+    where: { id: req.params.id, businessId: req.businessId! },
+    data: { eliminadoEn: new Date() },
+  });
   res.status(204).end();
 });
 
@@ -112,7 +118,7 @@ employeesRouter.get('/:id/horario', async (req: AuthedRequest, res: Response) =>
   const employee = await findScopedEmployee(req);
   if (!employee) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
   const tramos = await prisma.employeeSchedule.findMany({
-    where: { employeeId: employee.id },
+    where: { employeeId: employee.id, employee: { businessId: req.businessId! } },
     orderBy: [{ diaSemana: 'asc' }, { inicio: 'asc' }],
   });
   res.json({ tramos });
@@ -135,7 +141,9 @@ employeesRouter.put('/:id/horario', async (req: AuthedRequest, res: Response) =>
 
   // Reemplazo atómico: borra el horario previo y crea los nuevos tramos en la misma tx.
   await prisma.$transaction(async (tx) => {
-    await tx.employeeSchedule.deleteMany({ where: { employeeId: employee.id } });
+    await tx.employeeSchedule.deleteMany({
+      where: { employeeId: employee.id, employee: { businessId: req.businessId! } },
+    });
     if (tramos.length) {
       await tx.employeeSchedule.createMany({
         data: tramos.map((t) => ({ employeeId: employee.id, diaSemana: t.diaSemana as number, inicio: t.inicio as string, fin: t.fin as string })),
@@ -144,7 +152,7 @@ employeesRouter.put('/:id/horario', async (req: AuthedRequest, res: Response) =>
   });
 
   const nuevos = await prisma.employeeSchedule.findMany({
-    where: { employeeId: employee.id },
+    where: { employeeId: employee.id, employee: { businessId: req.businessId! } },
     orderBy: [{ diaSemana: 'asc' }, { inicio: 'asc' }],
   });
   res.json({ tramos: nuevos });

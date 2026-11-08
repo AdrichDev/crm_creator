@@ -18,6 +18,7 @@
  */
 
 import * as path from "node:path";
+import { runUnscoped } from "../lib/tenant-scope.js";
 import * as fs from "node:fs";
 import { exec } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -591,9 +592,12 @@ export function downloadHandler(deps: ExportsDeps) {
  */
 export function versionsHandler(deps: ExportsDeps) {
   return async function versions(req: AuthedRequest, res: Response): Promise<Response> {
-    const memberships = await deps.db.membership.findMany({
-      where: { userId: req.userId! },
-    });
+    // Cross-tenant explícito (S2): historial de TODOS los negocios del usuario; el listado
+    // se acota después por las membresías resueltas aquí.
+    const memberships = await runUnscoped(
+      "GET /exports/versions: negocios del usuario para acotar el historial de versiones",
+      async () => await deps.db.membership.findMany({ where: { userId: req.userId! } }),
+    );
     const businessIds = memberships.map((m) => m.businessId);
 
     if (businessIds.length === 0) {
@@ -646,9 +650,12 @@ export function versionsHandler(deps: ExportsDeps) {
  */
 export function downloadVersionHandler(deps: ExportsDeps) {
   return async function downloadVersion(req: AuthedRequest, res: Response): Promise<Response> {
-    const version = await deps.db.exportVersion.findFirst({
-      where: { id: req.params.id },
-    });
+    // Cross-tenant explícito (S2): la versión se busca por id (aún no se conoce el negocio)
+    // y acto seguido se autoriza con la membresía del usuario sobre `version.businessId`.
+    const version = await runUnscoped(
+      "GET /exports/versions/:id/download: leer la versión por id y autorizarla después con la membresía",
+      async () => await deps.db.exportVersion.findFirst({ where: { id: req.params.id } }),
+    );
     if (!version) {
       return res.status(404).json({
         error: { code: "version_not_found", message: "Versión no encontrada" },
