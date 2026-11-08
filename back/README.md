@@ -53,7 +53,14 @@ back/
 
 - Toda tabla de negocio lleva `businessId` (`negocio_id`). El token Supabase
   resuelve el usuario; la cabecera `x-business-id` (o la primera membership) fija
-  el tenant activo. Supabase **RLS** filtra las lecturas por negocio.
+  el tenant activo.
+- El aislamiento entre negocios lo garantiza **el código de la API**, no RLS: los
+  filtros por negocio de cada consulta + la guarda estructural de Prisma
+  (`src/lib/tenant-scope.ts`, toda consulta sin negocio lanza y responde 500). La
+  API conecta como dueña del esquema, así que las políticas RLS existentes solo
+  sirven a clientes directos de Supabase y `FORCE ROW LEVEL SECURITY` rompería el
+  back. Detalle, puntos ciegos y verificación:
+  [docs/tenant-isolation.md](../docs/tenant-isolation.md).
 - **RBAC** por `MemberRole` (OWNER/ADMIN/MANAGER/EMPLOYEE/RECEPTIONIST/
   PROFESSIONAL/ACCOUNTANT). Acciones sensibles (aprobar vacaciones) exigen rol.
 - El CRUD genérico filtra y crea **siempre** con el `businessId` del token, y

@@ -26,10 +26,17 @@ jobs:
           curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${VER}/gitleaks_${VER}_linux_x64.tar.gz" | tar -xz gitleaks
           ./gitleaks detect --source . --redact --no-banner -v
 
-  # Gate opcional de postura RLS (requiere el secret DATABASE_URL con la conexión
-  # session-pooler de Supabase). Comentado hasta que el secret esté configurado.
+  # Gate opcional de postura RLS/GRANT. El script EXISTE ya (db/check-security.sql,
+  # solo consultas de lectura a catálogos) pero el job sigue DESACTIVADO a propósito:
+  # requiere un secret DSN dedicado de SOLO LECTURA (nunca el DATABASE_URL de la API
+  # ni el de migraciones, que son dueños del schema y verían la postura como dueño).
+  # Para habilitarlo: crear el secret SECURITY_READONLY_DATABASE_URL con un rol de
+  # Postgres sin permisos de escritura (el script solo lee catálogos: pg_class,
+  # pg_policies, pg_roles, information_schema; no toca los datos), descomentar el job
+  # y comprobar que sus consultas devuelven lo esperado (documentado en
+  # docs/tenant-isolation.md).
   # rls-posture:
   #   runs-on: ubuntu-latest
   #   steps:
   #     - uses: actions/checkout@v4
-  #     - run: psql "${{ secrets.DATABASE_URL }}" -v ON_ERROR_STOP=1 -f db/check-security.sql
+  #     - run: psql "${{ secrets.SECURITY_READONLY_DATABASE_URL }}" -v ON_ERROR_STOP=1 -f db/check-security.sql

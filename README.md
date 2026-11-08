@@ -97,8 +97,14 @@ node scripts/build-schema.mjs --modules clientes,citas,servicios --out proyecto.
 node scripts/build-schema.mjs --from ../mi-config.json --out proyecto.sql   # desde una config de tenant
 ```
 
-Ver `back/README.md` para el detalle (RLS, relaciones entre módulos, aplicar a
-Supabase). El DDL está validado contra el parser real de PostgreSQL.
+Ver `back/README.md` para el detalle (aislamiento por negocio, relaciones entre
+módulos, aplicar a Supabase). El DDL está validado contra el parser real de
+PostgreSQL.
+
+El aislamiento entre negocios lo garantiza el **código de la API** (filtros por
+`businessId` + guarda estructural de Prisma), no RLS: el back conecta como dueño
+del esquema y salta las políticas. Detalle completo, puntos ciegos y cómo
+verificar la postura de la base: [`docs/tenant-isolation.md`](docs/tenant-isolation.md).
 
 ## Cómo está montado el front
 
