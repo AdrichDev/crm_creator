@@ -110,7 +110,8 @@ export function crudRouter(model: string, opts: CrudOptions): Router {
       throw e;
     }
     const data = pickFields(req.body ?? {}, opts.fields);
-    const row = await delegate.update({ where: { id: req.params.id }, data });
+    // Escritura acotada al negocio (S2/S3): el id sale del path, el negocio del token.
+    const row = await delegate.update({ where: { id: req.params.id, businessId: req.businessId }, data });
     res.json(row);
   });
 
@@ -119,7 +120,10 @@ export function crudRouter(model: string, opts: CrudOptions): Router {
   router.delete('/:id', async (req: AuthedRequest, res: Response) => {
     const existing = await delegate.findFirst({ where: { id: req.params.id, businessId: req.businessId, eliminadoEn: null } });
     if (!existing) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
-    await delegate.update({ where: { id: req.params.id }, data: { eliminadoEn: new Date() } });
+    await delegate.update({
+      where: { id: req.params.id, businessId: req.businessId },
+      data: { eliminadoEn: new Date() },
+    });
     res.status(204).end();
   });
 

@@ -81,7 +81,7 @@ function handler(kind: Kind) {
     const url = `${pub.publicUrl}?v=${Date.now()}`;
 
     await (MODEL[kind].update as (args: unknown) => Promise<unknown>)({
-      where: { id },
+      where: { id, businessId },
       data: { imagenUrl: url },
     });
 

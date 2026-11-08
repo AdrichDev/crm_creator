@@ -3,6 +3,7 @@
 // that imports `../prisma.js`: the lazy singleton picks up `globalThis.prisma`.
 import express, { type Router } from 'express';
 import type { AddressInfo } from 'node:net';
+import { guardDelegateCall } from '../../lib/tenant-scope.js';
 
 type Row = Record<string, unknown>;
 export type Seed = Record<string, Row[]>;
@@ -52,27 +53,36 @@ export function installFakePrisma() {
   const writes: Write[] = [];
   let seq = 0;
 
+  // Guarda de tenancy (S2/S3): TODA llamada de delegado —también la del cliente de
+  // transacción (`tx`)— pasa por `guardDelegateCall`, igual que la extensión del cliente
+  // real. Así la suite de rutas corre con la guarda activa y una consulta sin negocio
+  // (fuera de `runUnscoped`) rompe el test con `TenantScopeError` en vez de pasar.
+  const guarded = <A, R>(model: string, op: string, fn: (a: A) => R) => (a?: A): R => {
+    guardDelegateCall(model, op, a);
+    return fn(a as A);
+  };
+
   const delegate = (model: string, tag: ClientTag) => {
     const rows = () => (store[model] ??= []);
     const log = (op: string, args: unknown) => writes.push({ model, op, args, client: tag });
     return {
-      findFirst: async (a?: { where?: unknown }) => rows().find((r) => matches(r, a?.where)) ?? null,
-      findUnique: async (a?: { where?: unknown }) => rows().find((r) => matches(r, a?.where)) ?? null,
-      findMany: async (a?: { where?: unknown }) => rows().filter((r) => matches(r, a?.where)),
-      count: async (a?: { where?: unknown }) => rows().filter((r) => matches(r, a?.where)).length,
-      groupBy: async () => [],
-      create: async (a: { data: Row }) => {
+      findFirst: guarded(model, 'findFirst', async (a?: { where?: unknown }) => rows().find((r) => matches(r, a?.where)) ?? null),
+      findUnique: guarded(model, 'findUnique', async (a?: { where?: unknown }) => rows().find((r) => matches(r, a?.where)) ?? null),
+      findMany: guarded(model, 'findMany', async (a?: { where?: unknown }) => rows().filter((r) => matches(r, a?.where))),
+      count: guarded(model, 'count', async (a?: { where?: unknown }) => rows().filter((r) => matches(r, a?.where)).length),
+      groupBy: guarded(model, 'groupBy', async () => []),
+      create: guarded(model, 'create', async (a: { data: Row; select?: unknown; include?: unknown }) => {
         log('create', a);
         const row = { id: `${model}-${++seq}`, ...a.data };
         rows().push(row);
         return row;
-      },
-      update: async (a: { where: unknown; data: Row }) => {
+      }),
+      update: guarded(model, 'update', async (a: { where: unknown; data: Row }) => {
         log('update', a);
         const row = rows().find((r) => matches(r, a.where)) ?? {};
         return { ...row, ...a.data };
-      },
-      delete: async (a: unknown) => { log('delete', a); return {}; },
+      }),
+      delete: guarded(model, 'delete', async (a?: unknown) => { log('delete', a); return {}; }),
     };
   };
 

@@ -15,9 +15,15 @@ async function findScopedSale(req: AuthedRequest) {
 
 // Recalcula y persiste Sale.total como la suma de subtotales de sus líneas.
 type TxClient = Pick<typeof prisma, 'saleLine' | 'sale' | '$queryRaw'>;
-async function recalcTotal(tx: TxClient, saleId: string): Promise<void> {
-  const agg = await tx.saleLine.aggregate({ where: { saleId }, _sum: { subtotal: true } });
-  await tx.sale.update({ where: { id: saleId }, data: { total: agg._sum.subtotal ?? 0 } });
+async function recalcTotal(tx: TxClient, saleId: string, businessId: string): Promise<void> {
+  const agg = await tx.saleLine.aggregate({
+    where: { saleId, sale: { businessId } },
+    _sum: { subtotal: true },
+  });
+  await tx.sale.update({
+    where: { id: saleId, businessId },
+    data: { total: agg._sum.subtotal ?? 0 },
+  });
 }
 
 // Serializa mutaciones concurrentes sobre la misma venta (lock de fila del padre).
@@ -30,7 +36,10 @@ async function lockSale(tx: TxClient, saleId: string): Promise<void> {
 saleLinesRouter.get('/:id/lineas', async (req: AuthedRequest, res: Response) => {
   const sale = await findScopedSale(req);
   if (!sale) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
-  const lineas = await prisma.saleLine.findMany({ where: { saleId: sale.id }, orderBy: { concepto: 'asc' } });
+  const lineas = await prisma.saleLine.findMany({
+    where: { saleId: sale.id, sale: { businessId: req.businessId! } },
+    orderBy: { concepto: 'asc' },
+  });
   res.json({ lineas });
 });
 
@@ -53,7 +62,7 @@ saleLinesRouter.post('/:id/lineas', async (req: AuthedRequest, res: Response) =>
   const linea = await prisma.$transaction(async (tx) => {
     await lockSale(tx, sale.id);
     const created = await tx.saleLine.create({ data: { saleId: sale.id, concepto: concepto.trim(), cantidad, precioUnitario, subtotal } });
-    await recalcTotal(tx, sale.id);
+    await recalcTotal(tx, sale.id, req.businessId!);
     return created;
   });
   res.status(201).json(linea);
@@ -63,13 +72,15 @@ saleLinesRouter.post('/:id/lineas', async (req: AuthedRequest, res: Response) =>
 saleLinesRouter.delete('/:id/lineas/:lineaId', async (req: AuthedRequest, res: Response) => {
   const sale = await findScopedSale(req);
   if (!sale) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
-  const linea = await prisma.saleLine.findFirst({ where: { id: req.params.lineaId, saleId: sale.id } });
+  const linea = await prisma.saleLine.findFirst({
+    where: { id: req.params.lineaId, saleId: sale.id, sale: { businessId: req.businessId! } },
+  });
   if (!linea) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
 
   await prisma.$transaction(async (tx) => {
     await lockSale(tx, sale.id);
-    await tx.saleLine.delete({ where: { id: linea.id } });
-    await recalcTotal(tx, sale.id);
+    await tx.saleLine.delete({ where: { id: linea.id, sale: { businessId: req.businessId! } } });
+    await recalcTotal(tx, sale.id, req.businessId!);
   });
   res.status(204).end();
 });

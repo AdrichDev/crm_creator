@@ -23,7 +23,9 @@ export interface SecretRow {
 export interface TenantSecretDb {
   tenantSecret: {
     findUnique(args: {
-      where: { businessId_name: { businessId: string; name: string } };
+      // `businessId` viaja también en el nivel superior del `where`: la guarda de tenancy
+      // (S2) no acepta el negocio anidado dentro de la clave compuesta.
+      where: { businessId_name: { businessId: string; name: string }; businessId?: string };
       select: { name: true; scope: true; valueCiphertext: true; iv: true; authTag: true; keyVersion: true };
     }): Promise<SecretRow | null>;
     findMany(args: {
@@ -54,7 +56,7 @@ export async function readTenantSecret(
   db: TenantSecretDb = prisma,
 ): Promise<string | null> {
   const row = await db.tenantSecret.findUnique({
-    where: { businessId_name: { businessId, name } },
+    where: { businessId_name: { businessId, name }, businessId },
     select: { name: true, scope: true, valueCiphertext: true, iv: true, authTag: true, keyVersion: true },
   });
   if (!row) return null;

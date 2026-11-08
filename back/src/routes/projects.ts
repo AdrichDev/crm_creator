@@ -1,6 +1,7 @@
 import { Router, type Response } from 'express';
 import { prisma } from '../prisma.js';
 import { Prisma } from '../lib/generated/prisma/client.js';
+import { runUnscoped } from '../lib/tenant-scope.js';
 import type { AuthedRequest } from '../middleware/types.js';
 import {
   CONFIG_CATEGORY,
@@ -54,10 +55,16 @@ function toProject(b: BusinessRow) {
 
 // GET / → proyectos del usuario (vía Membership), no eliminados.
 projectsRouter.get('/', async (req: AuthedRequest, res: Response) => {
-  const memberships = await prisma.membership.findMany({
-    where: { userId: req.userId },
-    select: { businessId: true },
-  });
+  // Cross-tenant explícito (S2): los proyectos del usuario se listan ANTES de fijar negocio
+  // activo (es el selector); el `business.findMany` de abajo ya va por `id in ids`.
+  const memberships = await runUnscoped(
+    'GET /projects: negocios del usuario para el selector de proyecto (aún sin negocio activo)',
+    async () =>
+      await prisma.membership.findMany({
+        where: { userId: req.userId },
+        select: { businessId: true },
+      }),
+  );
   const ids = memberships.map((m) => m.businessId);
   const businesses = await prisma.business.findMany({
     where: { id: { in: ids }, eliminadoEn: null },
@@ -127,7 +134,10 @@ projectsRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
     // resolvemos con findFirst + update/create.
     const existing = await tx.businessSetting.findFirst({ where: { businessId: id, categoria: CONFIG_CATEGORY } });
     if (existing) {
-      await tx.businessSetting.update({ where: { id: existing.id }, data: { datos: config as Prisma.InputJsonValue } });
+      await tx.businessSetting.update({
+        where: { id: existing.id, businessId: id },
+        data: { datos: config as Prisma.InputJsonValue },
+      });
     } else {
       await tx.businessSetting.create({ data: { businessId: id, categoria: CONFIG_CATEGORY, datos: config as Prisma.InputJsonValue } });
     }

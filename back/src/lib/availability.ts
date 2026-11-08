@@ -100,25 +100,43 @@ export async function checkAvailability(p: AvailabilityParams, db: AvailabilityC
   const winStart = new Date(startAt.getTime() - service.margenAntes * 60000);
   const winEnd = new Date(endAt.getTime() + service.margenDespues * 60000);
 
-  // Horario de apertura
-  const hours = await db.openingHour.findMany({ where: { locationId: p.locationId, diaSemana: startAt.getUTCDay() } });
+  // Horario de apertura (tabla hija: el negocio se filtra por la sucursal padre)
+  const hours = await db.openingHour.findMany({
+    where: { locationId: p.locationId, location: { businessId: p.businessId }, diaSemana: startAt.getUTCDay() },
+  });
   const within = hours.some((h: { apertura: string; cierre: string }) => minutesOfDay(startAt) >= hhmmToMin(h.apertura) && minutesOfDay(endAt) <= hhmmToMin(h.cierre));
   if (hours.length > 0 && !within) return { ok: false, reason: 'outside_opening_hours' };
 
   // Festivos / cierres
-  const holiday = await db.holiday.findFirst({ where: { locationId: p.locationId, fecha: dateOnly(startAt) } });
+  const holiday = await db.holiday.findFirst({
+    where: { locationId: p.locationId, location: { businessId: p.businessId }, fecha: dateOnly(startAt) },
+  });
   if (holiday && !holiday.abierto) return { ok: false, reason: 'holiday' };
 
   // Empleado: solape + ausencias aprobadas
   if (p.employeeId) {
-    const svcEmp = await db.service.findFirst({ where: { id: p.serviceId, employees: { some: { id: p.employeeId } } } });
+    const svcEmp = await db.service.findFirst({
+      where: { id: p.serviceId, businessId: p.businessId, employees: { some: { id: p.employeeId } } },
+    });
     if (service.requiereProfesional && !svcEmp) return { ok: false, reason: 'employee_not_compatible' };
     const overlap = await db.booking.findFirst({
-      where: { employeeId: p.employeeId, status: { in: ACTIVE_STATES }, startAt: { lt: winEnd }, endAt: { gt: winStart } },
+      where: {
+        employeeId: p.employeeId,
+        businessId: p.businessId,
+        status: { in: ACTIVE_STATES },
+        startAt: { lt: winEnd },
+        endAt: { gt: winStart },
+      },
     });
     if (overlap) return { ok: false, reason: 'employee_busy' };
     const off = await db.timeOffRequest.findFirst({
-      where: { employeeId: p.employeeId, estado: 'APPROVED', inicio: { lte: startAt }, fin: { gte: startAt } },
+      where: {
+        employeeId: p.employeeId,
+        businessId: p.businessId,
+        estado: 'APPROVED',
+        inicio: { lte: startAt },
+        fin: { gte: startAt },
+      },
     });
     if (off) return { ok: false, reason: 'employee_time_off' };
   }
@@ -129,7 +147,13 @@ export async function checkAvailability(p: AvailabilityParams, db: AvailabilityC
     const res = await db.resource.findFirst({ where: { id: rid, businessId: p.businessId } });
     if (!res || res.estado !== 'Activo') return { ok: false, reason: 'resource_unavailable' };
     const concurrent = await db.booking.count({
-      where: { status: { in: ACTIVE_STATES }, startAt: { lt: endAt }, endAt: { gt: startAt }, resources: { some: { id: rid } } },
+      where: {
+        businessId: p.businessId,
+        status: { in: ACTIVE_STATES },
+        startAt: { lt: endAt },
+        endAt: { gt: startAt },
+        resources: { some: { id: rid } },
+      },
     });
     if (concurrent >= res.capacidad) return { ok: false, reason: 'resource_full' };
   }
@@ -148,7 +172,9 @@ async function iterateDaySlots(params: AvailabilityParams & { date: string; step
   // day.getTime() + minutos evita setHours/setMinutes (locales) — nunca cruza la
   // fecha por la TZ del servidor.
   const day = new Date(params.date);
-  const hours = await prisma.openingHour.findMany({ where: { locationId: params.locationId, diaSemana: day.getUTCDay() } });
+  const hours = await prisma.openingHour.findMany({
+    where: { locationId: params.locationId, location: { businessId: params.businessId }, diaSemana: day.getUTCDay() },
+  });
   const step = params.stepMin ?? service.duracion;
   const out: { start: Date; end: Date; ok: boolean }[] = [];
   for (const h of hours) {

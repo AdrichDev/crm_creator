@@ -24,12 +24,19 @@ import { Prisma } from './generated/prisma/client.js';
 
 /** Fallo de programación: una consulta intentó cruzar el aislamiento entre negocios. */
 export class TenantScopeError extends Error {
+  /** Modelo de Prisma sobre el que se intentó la operación (para el log del servidor). */
+  readonly model: string;
+  /** Operación de Prisma (findMany, update…), sin argumentos ni valores. */
+  readonly operation: string;
+
   constructor(model: string, operation: string, requirement: string) {
     super(
       `TenantScopeError: la operación ${operation} sobre ${model} no está acotada al negocio: ` +
         `${requirement}. Añade el filtro de negocio o envuelve la llamada en runUnscoped(motivo, fn).`,
     );
     this.name = 'TenantScopeError';
+    this.model = model;
+    this.operation = operation;
   }
 }
 
@@ -153,6 +160,12 @@ export function isUnscoped(): boolean {
  * Salida explícita y auditada a la guarda de tenancy: crons, rutas de operador,
  * resolución de membresías en `authenticate` y búsqueda de clave de API.
  * El motivo es obligatorio y no puede estar en blanco.
+ *
+ * ⚠️ Las consultas de Prisma son PEREZOSAS (`PrismaPromise`): la guarda corre al hacer
+ * `then`, no al crear la promesa. Por eso el callback debe ESPERAR la consulta dentro del
+ * wrap (`async () => … await prisma.x.findMany(…)`); devolver la promesa sin esperarla la
+ * resuelve fuera del contexto y la guarda vuelve a morder. Ver
+ * `tenant-scope-transaction.test.ts`.
  */
 export function runUnscoped<T>(reason: string, fn: () => T): T {
   if (typeof reason !== 'string' || reason.trim() === '') {
@@ -254,11 +267,23 @@ function dataRowsCarry(data: unknown, check: (row: unknown) => boolean): boolean
 // ----------------------------- Validador puro -----------------------------
 
 /**
+ * Nombre canónico del modelo. Prisma entrega el delegado con la inicial en minúscula en
+ * `$allOperations` (`params.model === 'employee'`), mientras que la clasificación de arriba
+ * usa el nombre del datamodel (`Employee`). Se normaliza aquí para que la guarda funcione
+ * igual llamada desde la extensión (runtime) que desde un test (`assertTenantScoped('Employee')`).
+ */
+function canonicalModel(model: string): string {
+  if (model === '') return model;
+  return model[0]!.toUpperCase() + model.slice(1);
+}
+
+/**
  * Valida una operación de Prisma contra la guarda de tenancy. Puro: no consulta la base
  * de datos ni el contexto de `runUnscoped` (eso lo hace `guardDelegateCall`).
  * Lanza `TenantScopeError` si falta el negocio. Nunca incluye valores en el mensaje.
  */
-export function assertTenantScoped(model: string, operation: string, args?: unknown): void {
+export function assertTenantScoped(rawModel: string, operation: string, args?: unknown): void {
+  const model = canonicalModel(rawModel);
   if (EXEMPT_MODELS.includes(model)) return;
 
   const payload: TenantScopeArgs = isPlainObject(args) ? args : {};

@@ -1,6 +1,7 @@
 import { prisma as defaultPrisma } from '../prisma.js';
 import { notifyBookingReminder } from './notify.js';
 import type { BookingNotifyData } from './notify.js';
+import { runUnscoped } from './tenant-scope.js';
 
 // ---------------------------------------------------------------------------
 // Drainer de recordatorios de citas.
@@ -194,12 +195,18 @@ function buildProdDeps(): DrainerDeps {
         RETURNING id, tipo, destino, payload, negocio_id AS "businessId", intentos
       `;
     },
+    // Cross-tenant explícito (S2): el cron reclama notificaciones de TODOS los negocios
+    // (la tabla no lleva filtro de negocio en el claim) y solo transporta el id del booking.
     findBooking: (bookingId: string) =>
-      defaultPrisma.booking.findFirst({
-        where: { id: bookingId, status: { not: 'CANCELLED' }, eliminadoEn: null },
-      }),
+      runUnscoped('reminderDrainer: leer la reserva de un recordatorio ya reclamado (el negocio viene de la fila reclamada)', async () =>
+        await defaultPrisma.booking.findFirst({
+          where: { id: bookingId, status: { not: 'CANCELLED' }, eliminadoEn: null },
+        }),
+      ),
     updateNotification: async (id: string, data: NotificationUpdate) => {
-      await defaultPrisma.notification.update({ where: { id }, data });
+      await runUnscoped('reminderDrainer: cerrar la notificación reclamada por id (el negocio viene de la fila reclamada)', async () =>
+        await defaultPrisma.notification.update({ where: { id }, data }),
+      );
     },
     // Envío vía puerto: notify.ts decide emit(n8n) o SMTP directo. eventId = row.id
     // (idempotencia por fila reclamada). processRow ya garantizó row.destino != null.

@@ -1,6 +1,7 @@
 import type { Response, NextFunction } from 'express';
 import { prisma } from '../prisma.js';
 import { verifySupabaseToken } from '../lib/auth.js';
+import { runUnscoped } from '../lib/tenant-scope.js';
 import type { AuthedRequest } from './types.js';
 
 // Verifies the Supabase access token (ES256 vía JWKS, Bearer), resolves the active tenant
@@ -26,7 +27,11 @@ export async function authenticate(req: AuthedRequest, res: Response, next: Next
   // (b) Membership resolution. A DB failure here is a SERVER error → 500 (the token
   // was valid; we just couldn't serve the request).
   try {
-    const memberships = await prisma.membership.findMany({ where: { userId: sub } });
+    // Cross-tenant explícito (S2): se resuelven las membresías del usuario ANTES de conocer
+    // el negocio activo; el `x-business-id` se valida contra este resultado.
+    const memberships = await runUnscoped('authenticate: resolver las membresías del usuario antes de fijar el negocio activo', async () =>
+      await prisma.membership.findMany({ where: { userId: sub } }),
+    );
     if (memberships.length === 0) {
       return res.status(403).json({ error: { code: 'no_membership', message: 'Sin acceso a ninguna empresa' } });
     }

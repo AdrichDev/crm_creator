@@ -51,7 +51,7 @@ export async function connectWhatsApp(
 
   const existing = await oauthDeps.findCredential(businessId, 'whatsapp');
   if (existing) {
-    await oauthDeps.updateCredential(existing.id, {
+    await oauthDeps.updateCredential(businessId, existing.id, {
       accessToken: '',
       refreshToken: null,
       expiresAt: null,

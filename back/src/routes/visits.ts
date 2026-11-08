@@ -57,7 +57,7 @@ visitsRouter.post('/', async (req: AuthedRequest, res: Response) => {
       },
     }),
     prisma.customer.update({
-      where: { id: customerId },
+      where: { id: customerId, businessId: req.businessId! },
       data: {
         ultimaVisitaEn: fecha,
         ...(estadoPosteriorId ? { estadoVisitaId: estadoPosteriorId } : {}),

@@ -117,7 +117,10 @@ categoriesRouter.patch('/:id', staffOnly as unknown as (req: Request, res: Respo
   if (body.color !== undefined) data.color = body.color;
   if (body.colorVisitante !== undefined) data.colorVisitante = body.colorVisitante;
 
-  const updated = await prisma.team.update({ where: { id: req.params.id }, data });
+  const updated = await prisma.team.update({
+    where: { id: req.params.id, businessId: req.businessId! },
+    data,
+  });
   return res.json(updated);
 });
 
@@ -128,7 +131,10 @@ categoriesRouter.delete('/:id', staffOnly as unknown as (req: Request, res: Resp
   const existing = await findTeam(req.params.id, req.businessId);
   if (!existing) return res.status(404).json({ error: { code: 'not_found', message: 'Equipo no encontrado' } });
 
-  await prisma.team.update({ where: { id: req.params.id }, data: { eliminadoEn: new Date() } });
+  await prisma.team.update({
+    where: { id: req.params.id, businessId: req.businessId! },
+    data: { eliminadoEn: new Date() },
+  });
   return res.status(204).end();
 });
 
@@ -216,7 +222,9 @@ categoriesRouter.patch('/:id/members/:memberId', staffOnly as unknown as (req: R
   const team = await findTeam(req.params.id, req.businessId);
   if (!team) return res.status(404).json({ error: { code: 'not_found', message: 'Equipo no encontrado' } });
 
-  const existing = await prisma.teamMember.findFirst({ where: { id: req.params.memberId, teamId: team.id } });
+  const existing = await prisma.teamMember.findFirst({
+    where: { id: req.params.memberId, teamId: team.id, team: { businessId: req.businessId! } },
+  });
   if (!existing) return res.status(404).json({ error: { code: 'not_found', message: 'Miembro no encontrado' } });
 
   const body = (req.body ?? {}) as Record<string, unknown>;
@@ -227,7 +235,10 @@ categoriesRouter.patch('/:id/members/:memberId', staffOnly as unknown as (req: R
   if (body.contactosEmergencia !== undefined) data.contactosEmergencia = body.contactosEmergencia as never;
   if (body.activoDesde !== undefined) data.activoDesde = body.activoDesde ? new Date(body.activoDesde as string) : null;
 
-  const updated = await prisma.teamMember.update({ where: { id: req.params.memberId }, data });
+  const updated = await prisma.teamMember.update({
+    where: { id: req.params.memberId, team: { businessId: req.businessId! } },
+    data,
+  });
   return res.json(updated);
 });
 
@@ -238,9 +249,13 @@ categoriesRouter.delete('/:id/members/:memberId', staffOnly as unknown as (req: 
   const team = await findTeam(req.params.id, req.businessId);
   if (!team) return res.status(404).json({ error: { code: 'not_found', message: 'Equipo no encontrado' } });
 
-  const existing = await prisma.teamMember.findFirst({ where: { id: req.params.memberId, teamId: team.id } });
+  const existing = await prisma.teamMember.findFirst({
+    where: { id: req.params.memberId, teamId: team.id, team: { businessId: req.businessId! } },
+  });
   if (!existing) return res.status(404).json({ error: { code: 'not_found', message: 'Miembro no encontrado' } });
 
-  await prisma.teamMember.delete({ where: { id: req.params.memberId } });
+  await prisma.teamMember.delete({
+    where: { id: req.params.memberId, team: { businessId: req.businessId! } },
+  });
   return res.status(204).end();
 });

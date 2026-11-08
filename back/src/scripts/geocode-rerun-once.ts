@@ -38,11 +38,14 @@ async function main() {
       direccion: c.direccion, localidad: c.localidad, provincia: c.provincia, codigoPostal: c.codigoPostal,
     });
     if (geo) {
-      await prisma.customer.update({ where: { id: c.id }, data: { latitud: geo.lat, longitud: geo.lng, geoEstado: 'OK' } });
+      await prisma.customer.update({
+        where: { id: c.id, businessId },
+        data: { latitud: geo.lat, longitud: geo.lng, geoEstado: 'OK' },
+      });
       ok += 1;
       console.log(`OK     ${c.nombre} — ${c.direccion ?? ''} -> ${geo.lat},${geo.lng}`);
     } else {
-      await prisma.customer.update({ where: { id: c.id }, data: { geoEstado: 'FAILED' } });
+      await prisma.customer.update({ where: { id: c.id, businessId }, data: { geoEstado: 'FAILED' } });
       failed += 1;
       console.log(`FAILED ${c.nombre} — ${c.direccion ?? ''}`);
     }

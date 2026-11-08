@@ -1,6 +1,7 @@
 import type { Response, NextFunction } from 'express';
 import { createHash, randomBytes } from 'node:crypto';
 import { prisma } from '../prisma.js';
+import { runUnscoped } from '../lib/tenant-scope.js';
 import type { AuthedRequest } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -42,7 +43,7 @@ export interface TenantApiKeyDb {
       where: { tokenHash: string };
       select: { id: true; businessId: true; revokedAt: true };
     }): Promise<{ id: string; businessId: string; revokedAt: Date | null } | null>;
-    update(args: { where: { id: string }; data: { lastUsedAt: Date } }): Promise<unknown>;
+    update(args: { where: { id: string; businessId?: string }; data: { lastUsedAt: Date } }): Promise<unknown>;
   };
 }
 
@@ -66,16 +67,20 @@ export async function tryResolveTenantApiKey(
   const token = header?.startsWith('Bearer ') ? header.slice(7).trim() : '';
   if (!token) return false;
 
-  const key = await db.tenantApiKey.findUnique({
-    where: { tokenHash: hashApiKeyToken(token) },
-    select: { id: true, businessId: true, revokedAt: true },
-  });
+  // Cross-tenant explícito (S2): la clave se busca por su hash, que es justo el dato que
+  // identifica al negocio (no se conoce antes de leer la fila).
+  const key = await runUnscoped('tenant API key: resolver el negocio a partir del hash del token portador', async () =>
+    await db.tenantApiKey.findUnique({
+      where: { tokenHash: hashApiKeyToken(token) },
+      select: { id: true, businessId: true, revokedAt: true },
+    }),
+  );
   if (!key || key.revokedAt != null) return false;
 
   req.tenantBusinessId = key.businessId;
   // Best-effort: no se espera ni bloquea la respuesta por esto.
   void db.tenantApiKey
-    .update({ where: { id: key.id }, data: { lastUsedAt: new Date() } })
+    .update({ where: { id: key.id, businessId: key.businessId }, data: { lastUsedAt: new Date() } })
     .catch((e) => console.error('[tenant-api-key] error actualizando lastUsedAt:', e));
   return true;
 }

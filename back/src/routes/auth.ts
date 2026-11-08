@@ -13,6 +13,7 @@ import type { AuthedRequest } from '../middleware/types.js';
 import { rateLimit, ipKey, ipEmailKey, resetRateLimits } from '../lib/rateLimit.js';
 import { validatePassword } from '../lib/password.js';
 import { loadActiveBusiness } from '../lib/business.js';
+import { runUnscoped } from '../lib/tenant-scope.js';
 
 export const authRouter = Router();
 
@@ -108,7 +109,12 @@ export const meLifecycleGate = resolveMeLifecycle();
 
 authRouter.get('/me', authenticate, meLifecycleGate, async (req: AuthedRequest, res) => {
   const user = await prisma.user.findUnique({ where: { id: req.userId } });
-  const memberships = await prisma.membership.findMany({ where: { userId: req.userId } });
+  // Cross-tenant explícito (S2): /auth/me devuelve TODAS las membresías del usuario (el
+  // selector de negocio vive en el front); no depende de un negocio activo.
+  const memberships = await runUnscoped(
+    'GET /auth/me: membresías del propio usuario para el selector de negocio (aún sin negocio activo)',
+    async () => await prisma.membership.findMany({ where: { userId: req.userId } }),
+  );
   const lifecycle = (res.locals.tenantLifecycle ?? null) as TenantLifecycle | null;
   // Config del negocio activo (la fuente de verdad del front: nombre, vertical,
   // branding). Solo se sirve cuando el estado del negocio permite operar; para

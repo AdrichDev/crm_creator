@@ -30,7 +30,7 @@ configHorarioRouter.get('/horario', async (req: AuthedRequest, res: Response) =>
   const location = await findBusinessLocation(req);
   if (!location) return res.status(404).json({ error: { code: 'location_not_found', message: 'El negocio no tiene sucursal configurada' } });
   const rows = await prisma.openingHour.findMany({
-    where: { locationId: location.id },
+    where: { locationId: location.id, location: { businessId: req.businessId! } },
     orderBy: [{ diaSemana: 'asc' }, { apertura: 'asc' }],
   });
   res.json({ locationId: location.id, tramos: toTramos(rows) });
@@ -71,7 +71,9 @@ configHorarioRouter.put('/horario', async (req: AuthedRequest, res: Response) =>
   // Reemplazo atómico: borra el horario previo de la sucursal y crea los nuevos
   // tramos en la misma tx (tramos vacíos = negocio sin horario = días cerrados).
   await prisma.$transaction(async (tx) => {
-    await tx.openingHour.deleteMany({ where: { locationId: location.id } });
+    await tx.openingHour.deleteMany({
+      where: { locationId: location.id, location: { businessId: req.businessId! } },
+    });
     if (uniqueTramos.length) {
       await tx.openingHour.createMany({
         data: uniqueTramos.map((t) => ({ locationId: location.id, diaSemana: t.diaSemana as number, apertura: t.inicio as string, cierre: t.fin as string })),
@@ -80,7 +82,7 @@ configHorarioRouter.put('/horario', async (req: AuthedRequest, res: Response) =>
   });
 
   const rows = await prisma.openingHour.findMany({
-    where: { locationId: location.id },
+    where: { locationId: location.id, location: { businessId: req.businessId! } },
     orderBy: [{ diaSemana: 'asc' }, { apertura: 'asc' }],
   });
   res.json({ locationId: location.id, tramos: toTramos(rows) });

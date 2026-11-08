@@ -52,10 +52,12 @@ export interface TenantKeysDb {
       select: { name: true; scope: true; envVarName: true; updatedAt: true };
     }): Promise<SecretMetaRow[]>;
     findUnique(args: {
-      where: { businessId_name: { businessId: string; name: string } };
+      // `businessId` también en el nivel superior: la guarda de tenancy (S2) no acepta el
+      // negocio anidado en la clave compuesta.
+      where: { businessId_name: { businessId: string; name: string }; businessId?: string };
     }): Promise<SecretFullRow | null>;
     upsert(args: {
-      where: { businessId_name: { businessId: string; name: string } };
+      where: { businessId_name: { businessId: string; name: string }; businessId?: string };
       create: {
         businessId: string; name: string; scope: 'FRONTEND_PUBLIC' | 'BACKEND_SECRET';
         valueCiphertext: string; iv: string; authTag: string; keyVersion: number;
@@ -67,7 +69,9 @@ export interface TenantKeysDb {
         envVarName: string | null;
       };
     }): Promise<{ name: string; updatedAt: Date }>;
-    delete(args: { where: { businessId_name: { businessId: string; name: string } } }): Promise<unknown>;
+    delete(args: {
+      where: { businessId_name: { businessId: string; name: string }; businessId?: string };
+    }): Promise<unknown>;
   };
 }
 
@@ -198,7 +202,7 @@ export async function upsertSecretHandler(db: TenantKeysDb, req: AuthedRequest, 
 
     const enc = encryptSecret(body.value);
     const row = await db.tenantSecret.upsert({
-      where: { businessId_name: { businessId, name } },
+      where: { businessId_name: { businessId, name }, businessId },
       create: {
         businessId, name, scope,
         valueCiphertext: enc.ciphertext, iv: enc.iv, authTag: enc.authTag, keyVersion: enc.keyVersion,
@@ -232,12 +236,14 @@ export async function deleteSecretHandler(db: TenantKeysDb, req: AuthedRequest, 
 
     // crm-tenant-keys-freeform: opera sobre cualquier name existente, no solo catálogo —
     // el 404 de abajo ya cubre un nombre inventado sin fila.
-    const existing = await db.tenantSecret.findUnique({ where: { businessId_name: { businessId, name } } });
+    const existing = await db.tenantSecret.findUnique({
+      where: { businessId_name: { businessId, name }, businessId },
+    });
     if (!existing) return res.status(404).json({ error: { code: 'secret_not_found', message: 'Secreto no encontrado' } });
 
     // Hard delete: sin tombstone (ver design.md §4) — un TenantSecret borrado es
     // indistinguible de uno que nunca existió, y no hay requisito de auditoría histórica.
-    await db.tenantSecret.delete({ where: { businessId_name: { businessId, name } } });
+    await db.tenantSecret.delete({ where: { businessId_name: { businessId, name }, businessId } });
     res.status(200).json({ name, configured: false });
   } catch (e) {
     console.error('[tenant-keys] error borrando secreto:', e);
@@ -287,7 +293,9 @@ export async function testSecretHandler(
       // Probar un value del body NUNCA lo persiste — no se llama a upsert aquí.
       value = body.value;
     } else {
-      const row = await db.tenantSecret.findUnique({ where: { businessId_name: { businessId, name: slot.name } } });
+      const row = await db.tenantSecret.findUnique({
+        where: { businessId_name: { businessId, name: slot.name }, businessId },
+      });
       if (row) {
         value = decryptSecret({ ciphertext: row.valueCiphertext, iv: row.iv, authTag: row.authTag, keyVersion: row.keyVersion });
       }
@@ -328,7 +336,9 @@ export async function revealSecretHandler(db: TenantKeysDb, req: AuthedRequest, 
     if (!consume(REVEAL_RATE_BUCKET, `${businessId}:${name}`, REVEAL_RATE_WINDOW_MS, REVEAL_RATE_MAX)) {
       return res.status(429).json({ error: { code: 'rate_limited', message: 'Demasiados intentos, espera unos minutos' } });
     }
-    const row = await db.tenantSecret.findUnique({ where: { businessId_name: { businessId, name } } });
+    const row = await db.tenantSecret.findUnique({
+      where: { businessId_name: { businessId, name }, businessId },
+    });
     if (!row) return res.status(404).json({ error: { code: 'secret_not_found', message: 'Secreto no encontrado' } });
     const value = decryptSecret({ ciphertext: row.valueCiphertext, iv: row.iv, authTag: row.authTag, keyVersion: row.keyVersion });
     res.status(200).json({ name, value });

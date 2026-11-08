@@ -174,7 +174,9 @@ interface PedidoWithInvoice extends PedidoForInvoice {
 
 /** Cliente de transacción del handler: cambia el estado del pedido y (si acepta) crea factura. */
 export interface PedidoStatusTx extends InvoiceCreateTx {
-  pedido: { update: (args: { where: { id: string }; data: Record<string, unknown>; include?: unknown }) => Promise<unknown> };
+  pedido: {
+    update: (args: { where: { id: string; businessId?: string }; data: Record<string, unknown>; include?: unknown }) => Promise<unknown>;
+  };
 }
 
 /** BD inyectable del handler (permite el patrón DI de los tests unitarios, como service-operator). */
@@ -224,7 +226,7 @@ export async function pedidoStatusHandler(db: PedidoStatusDb, req: AuthedRequest
 
   const pedido = await db.$transaction(async (tx) => {
     const updated = (await tx.pedido.update({
-      where: { id: existing.id },
+      where: { id: existing.id, businessId: req.businessId! },
       data: { estado: nuevoEstado },
       include: { lines: { orderBy: { posicion: 'asc' } } },
     })) as PedidoForInvoice;
@@ -252,7 +254,7 @@ interface PedidoUpdateRow {
 export interface PedidoUpdateDb {
   pedido: {
     findFirst: (args: unknown) => Promise<PedidoUpdateRow | null>;
-    update: (args: { where: { id: string }; data: Record<string, unknown>; include?: unknown }) => Promise<unknown>;
+    update: (args: { where: { id: string; businessId?: string }; data: Record<string, unknown>; include?: unknown }) => Promise<unknown>;
   };
   customer: { findFirst: (args: unknown) => Promise<{ id: string } | null> };
 }
@@ -338,7 +340,7 @@ export async function pedidoUpdateHandler(db: PedidoUpdateDb, req: AuthedRequest
   }
 
   const pedido = await db.pedido.update({
-    where: { id: existing.id },
+    where: { id: existing.id, businessId: req.businessId! },
     data,
     include: { lines: { orderBy: { posicion: 'asc' } } },
   });

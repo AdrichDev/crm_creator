@@ -5,6 +5,7 @@ import { prisma } from '../prisma.js';
 import { requireRole } from '../middleware/rbac.js';
 import type { AuthedRequest } from '../middleware/types.js';
 import { supabaseAdmin } from '../lib/auth.js';
+import { runUnscoped } from '../lib/tenant-scope.js';
 
 export const usersRouter = Router();
 
@@ -107,7 +108,9 @@ usersRouter.post('/', async (req: AuthedRequest, res: Response) => {
         update: {},
       });
       await prisma.membership.upsert({
-        where: { userId_businessId: { userId: found.id, businessId } },
+        // El negocio va también en el nivel superior: la guarda de tenancy (S2) no acepta
+        // el `businessId` anidado dentro de la clave compuesta.
+        where: { userId_businessId: { userId: found.id, businessId }, businessId },
         create: { userId: found.id, businessId, role: d.role },
         update: { role: d.role },
       });
@@ -159,10 +162,15 @@ usersRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
     }
   }
 
-  if (role) await prisma.membership.update({ where: { id: member.id }, data: { role } });
+  if (role) {
+    await prisma.membership.update({
+      where: { id: member.id, businessId: req.businessId! },
+      data: { role },
+    });
+  }
 
   const updated = await prisma.membership.findFirst({
-    where: { id: member.id },
+    where: { id: member.id, businessId: req.businessId! },
     select: { role: true, user: { select: USER_PUBLIC } },
   });
   res.json({ ...(updated!.user as UserRow), role: updated!.role });
@@ -183,8 +191,14 @@ usersRouter.delete('/:id', async (req: AuthedRequest, res: Response) => {
     }
   }
 
-  const otherMemberships = await prisma.membership.count({ where: { userId: member.user.id, businessId: { not: req.businessId } } });
-  await prisma.membership.delete({ where: { id: member.id } });
+  // Cross-tenant explícito (S2): se cuentan las membresías del usuario en OTROS negocios
+  // para decidir si la cuenta de auth queda huérfana al borrar esta membresía.
+  const otherMemberships = await runUnscoped(
+    'DELETE /users: contar las membresías del usuario en otros negocios antes de borrar la cuenta huérfana',
+    async () =>
+      await prisma.membership.count({ where: { userId: member.user.id, businessId: { not: req.businessId } } }),
+  );
+  await prisma.membership.delete({ where: { id: member.id, businessId: req.businessId! } });
   if (otherMemberships === 0) {
     // Also remove from Supabase auth.users if there are no other memberships.
     await supabaseAdmin.auth.admin.deleteUser(member.user.id);

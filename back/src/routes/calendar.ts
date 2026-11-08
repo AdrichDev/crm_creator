@@ -5,6 +5,7 @@ import { authenticate } from '../middleware/auth.js';
 import { tenantGate } from '../middleware/tenant-gate.js';
 import type { AuthedRequest } from '../middleware/types.js';
 import { rateLimit, ipKey } from '../lib/rateLimit.js';
+import { runUnscoped } from '../lib/tenant-scope.js';
 import {
   generateOrRegenerateToken,
   revokeCalendarToken,
@@ -67,35 +68,46 @@ const tokenRepo: CalendarTokenRepo = {
 // ---------------------------------------------------------------------------
 const feedDeps: CalendarFeedDeps = {
   async findBookingsForUser(userId, range) {
-    const rows = await prisma.booking.findMany({
-      where: {
-        employee: { userId },
-        eliminadoEn: null,
-        status: { notIn: ['CANCELLED'] },
-        startAt: { gte: range.from, lte: range.to },
-      },
-      select: {
-        id: true, startAt: true, endAt: true,
-        service: { select: { nombre: true } },
-        customer: { select: { nombre: true, apellido: true } },
-        location: { select: { direccion: true } },
-      },
-    });
+    // Cross-tenant explícito (S2): el feed es por USUARIO (token opaco), no por negocio;
+    // Employee.userId es @unique, así que la agenda no puede mezclar negocios.
+    const rows = await runUnscoped(
+      'calendar feed ICS: agenda del dueño del token, acotada por usuario y no por negocio (Employee.userId es único)',
+      async () =>
+        await prisma.booking.findMany({
+          where: {
+            employee: { userId },
+            eliminadoEn: null,
+            status: { notIn: ['CANCELLED'] },
+            startAt: { gte: range.from, lte: range.to },
+          },
+          select: {
+            id: true, startAt: true, endAt: true,
+            service: { select: { nombre: true } },
+            customer: { select: { nombre: true, apellido: true } },
+            location: { select: { direccion: true } },
+          },
+        }),
+    );
     return rows;
   },
   async findRemindersForUser(userId, range) {
-    const rows = await prisma.reminder.findMany({
-      where: {
-        responsableId: userId,
-        eliminadoEn: null,
-        estado: { not: 'CANCELLED' },
-        fechaPrevista: { gte: range.from, lte: range.to },
-      },
-      select: {
-        id: true, titulo: true, fechaPrevista: true,
-        customer: { select: { nombre: true, apellido: true, direccion: true } },
-      },
-    });
+    // Cross-tenant explícito (S2): recordatorios del dueño del token, sin negocio activo.
+    const rows = await runUnscoped(
+      'calendar feed ICS: recordatorios del dueño del token, acotados por usuario y no por negocio',
+      async () =>
+        await prisma.reminder.findMany({
+          where: {
+            responsableId: userId,
+            eliminadoEn: null,
+            estado: { not: 'CANCELLED' },
+            fechaPrevista: { gte: range.from, lte: range.to },
+          },
+          select: {
+            id: true, titulo: true, fechaPrevista: true,
+            customer: { select: { nombre: true, apellido: true, direccion: true } },
+          },
+        }),
+    );
     return rows;
   },
 };
@@ -117,16 +129,23 @@ export interface FeedBusinessLookup {
 
 const feedBusinessLookup: FeedBusinessLookup = {
   async findBusinessIdByUserId(userId) {
-    const employee = await prisma.employee.findUnique({
-      where: { userId },
-      select: { businessId: true },
-    });
-    if (employee) return employee.businessId;
-    const membership = await prisma.membership.findFirst({
-      where: { userId },
-      select: { businessId: true },
-    });
-    return membership?.businessId ?? null;
+    // Cross-tenant explícito (S2): se resuelve el negocio del dueño del token antes de
+    // conocerlo (feed sin auth): Employee.userId y, como respaldo, su primera Membership.
+    return runUnscoped(
+      'calendar feed ICS: resolver el negocio del dueño del token (Employee.userId o su primera membresía)',
+      async () => {
+        const employee = await prisma.employee.findUnique({
+          where: { userId },
+          select: { businessId: true },
+        });
+        if (employee) return employee.businessId;
+        const membership = await prisma.membership.findFirst({
+          where: { userId },
+          select: { businessId: true },
+        });
+        return membership?.businessId ?? null;
+      },
+    );
   },
 };
 

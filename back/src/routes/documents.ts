@@ -61,7 +61,10 @@ documentsRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
     throw e;
   }
   const data = pickFields(req.body ?? {}, FIELDS);
-  const row = await prisma.document.update({ where: { id: existing.id }, data: data as never });
+  const row = await prisma.document.update({
+    where: { id: existing.id, businessId: req.businessId! },
+    data: data as never,
+  });
   res.json(row);
 });
 
@@ -69,6 +72,6 @@ documentsRouter.patch('/:id', async (req: AuthedRequest, res: Response) => {
 documentsRouter.delete('/:id', async (req: AuthedRequest, res: Response) => {
   const existing = await prisma.document.findFirst({ where: { id: req.params.id, businessId: req.businessId } });
   if (!existing) return res.status(404).json({ error: { code: 'not_found', message: 'No encontrado' } });
-  await prisma.document.delete({ where: { id: existing.id } });
+  await prisma.document.delete({ where: { id: existing.id, businessId: req.businessId! } });
   res.status(204).end();
 });

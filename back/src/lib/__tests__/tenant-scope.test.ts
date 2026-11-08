@@ -201,6 +201,79 @@ describe('modelos con businessId — where obligatorio', () => {
   });
 });
 
+// Formas que un revisor probó como posible BYPASS de la guarda (S2). Todas tienen que
+// fallar cerrado: ninguna acota de verdad la consulta a un negocio. Las variantes que ya
+// están cubiertas arriba ({ in }, { not }, OR anidado, businessId: null, …) no se repiten.
+describe('no hay bypass: formas que NO acotan el negocio', () => {
+  test('OR con una rama por negocio y otra por id no acota (devuelve filas ajenas)', () => {
+    throwsTenantScope(
+      () =>
+        assertTenantScoped('Customer', 'findMany', {
+          where: { OR: [{ businessId: BUSINESS_ID }, { id: 'de_otro_negocio' }] },
+        }),
+      'Customer',
+      'findMany',
+    );
+  });
+
+  test('businessId: undefined NO acota (Prisma ignora el filtro)', () => {
+    throwsTenantScope(
+      () => assertTenantScoped('Customer', 'findMany', { where: { businessId: undefined } }),
+      'Customer',
+      'findMany',
+    );
+  });
+
+  test('AND vacío no acota (no demuestra el negocio)', () => {
+    throwsTenantScope(
+      () => assertTenantScoped('Customer', 'findMany', { where: { AND: [] } }),
+      'Customer',
+      'findMany',
+    );
+  });
+
+  test('businessId dentro de NOT no acota (negación, no filtro)', () => {
+    throwsTenantScope(
+      () => assertTenantScoped('Customer', 'findMany', { where: { NOT: { businessId: BUSINESS_ID } } }),
+      'Customer',
+      'findMany',
+    );
+  });
+
+  test('businessId solo dentro de una relación anidada no acota el modelo con negocio', () => {
+    throwsTenantScope(
+      () => assertTenantScoped('Sale', 'findMany', { where: { customer: { businessId: BUSINESS_ID } } }),
+      'Sale',
+      'findMany',
+    );
+  });
+
+  test('el delegado en minúscula se clasifica igual: oAuthCredential exige negocio explícito', () => {
+    throwsTenantScope(
+      () => assertTenantScoped('oAuthCredential', 'update', { where: { id: 'cred-1' }, data: { estado: 'connected' } }),
+      'OAuthCredential',
+      'update',
+    );
+    assert.doesNotThrow(() =>
+      assertTenantScoped('oAuthCredential', 'update', {
+        where: { id: 'cred-1', businessId: null },
+        data: { estado: 'connected' },
+      }),
+    );
+  });
+
+  test('el delegado en minúscula se clasifica igual: tenantApiKey exige negocio', () => {
+    throwsTenantScope(
+      () => assertTenantScoped('tenantApiKey', 'findUnique', { where: { tokenHash: 'h' } }),
+      'TenantApiKey',
+      'findUnique',
+    );
+    assert.doesNotThrow(() =>
+      assertTenantScoped('tenantApiKey', 'findUnique', { where: { id: 'k1', businessId: BUSINESS_ID } }),
+    );
+  });
+});
+
 describe('modelos con businessId — data obligatorio', () => {
   for (const operation of TENANT_SCOPE_DATA_OPS) {
     test(`${operation} sin businessId lanza`, () => {
