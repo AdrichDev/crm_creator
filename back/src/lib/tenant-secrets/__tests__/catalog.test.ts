@@ -6,8 +6,8 @@ import assert from 'node:assert/strict';
 import { TENANT_SECRET_CATALOG, findSecretSlot, ENV_KEY_NAME_PATTERN, inferScope } from '../catalog.js';
 
 describe('TENANT_SECRET_CATALOG', () => {
-  test('tiene exactamente los 16 slots con scope/envVarName/provider exactos', () => {
-    assert.equal(TENANT_SECRET_CATALOG.length, 16);
+  test('tiene exactamente los 17 slots con scope/envVarName/provider exactos', () => {
+    assert.equal(TENANT_SECRET_CATALOG.length, 17);
 
     const byName = new Map(TENANT_SECRET_CATALOG.map((s) => [s.name, s]));
 
@@ -22,6 +22,11 @@ describe('TENANT_SECRET_CATALOG', () => {
     });
     assert.deepEqual(byName.get('NANBUILDERS_API_KEY'), {
       name: 'NANBUILDERS_API_KEY', label: 'nanBuilders', scope: 'BACKEND_SECRET', provider: 'nanbuilders', group: 'ai',
+    });
+    // model-catalog S8: DeepSeek entra como proveedor LLM de primera clase (slot BYOK del
+    // panel), con el mismo naming que los demás slots de IA.
+    assert.deepEqual(byName.get('DEEPSEEK_API_KEY'), {
+      name: 'DEEPSEEK_API_KEY', label: 'DeepSeek', scope: 'BACKEND_SECRET', provider: 'deepseek', group: 'ai',
     });
     assert.deepEqual(byName.get('GOOGLE_MAPS_API_KEY'), {
       name: 'GOOGLE_MAPS_API_KEY', label: 'Google Maps', scope: 'FRONTEND_PUBLIC', provider: 'maps',
