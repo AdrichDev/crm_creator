@@ -132,6 +132,56 @@ describe('testProviderConnection — openai/gemini/anthropic (fetch)', () => {
   });
 });
 
+// model-catalog S8: DeepSeek suma slot BYOK y su prueba de clave va contra SU endpoint de
+// modelos (compatible OpenAI, Bearer), con el mismo mapeo 200/401 que openai/anthropic.
+describe('testProviderConnection — deepseek (endpoint de modelos del proveedor)', () => {
+  test('llama a https://api.deepseek.com/models con Bearer del value y 200 → { ok: true }', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const deps: ProviderTestDeps = {
+      fetchImpl: fakeFetch(async (url, init) => {
+        calls.push({ url, init });
+        return jsonResponse(200, { data: [] });
+      }),
+      createPool: unusedPool,
+    };
+
+    const result = await testProviderConnection('deepseek', SECRET_VALUE, deps);
+
+    assert.deepEqual(result, { ok: true });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, 'https://api.deepseek.com/models');
+    assert.deepEqual(calls[0].init?.headers, { Authorization: `Bearer ${SECRET_VALUE}` });
+    assert.ok(calls[0].init?.signal, 'la petición va con AbortSignal (timeout corto)');
+    assertNoValueLeaked(result, SECRET_VALUE);
+  });
+
+  test('401 del proveedor → { ok: false, detail "deepseek respondió 401" } sin filtrar el value', async () => {
+    const deps: ProviderTestDeps = {
+      fetchImpl: fakeFetch(async () => jsonResponse(401, { error: 'invalid key' }, false)),
+      createPool: unusedPool,
+    };
+
+    const result = await testProviderConnection('deepseek', SECRET_VALUE, deps);
+
+    assert.deepEqual(result, { ok: false, detail: 'deepseek respondió 401' });
+    assertNoValueLeaked(result, SECRET_VALUE);
+  });
+
+  test('fallo de red → detail genérico (no se distingue del resto de proveedores)', async () => {
+    const deps: ProviderTestDeps = {
+      fetchImpl: fakeFetch(async () => {
+        throw new Error(`network error with ${SECRET_VALUE}`);
+      }),
+      createPool: unusedPool,
+    };
+
+    const result = await testProviderConnection('deepseek', SECRET_VALUE, deps);
+
+    assert.deepEqual(result, { ok: false, detail: 'timeout o error de conexión al contactar al recurso' });
+    assertNoValueLeaked(result, SECRET_VALUE);
+  });
+});
+
 describe('testProviderConnection — maps (fetch + status body de Google)', () => {
   test('status ok (ni REQUEST_DENIED ni INVALID_REQUEST) → { ok: true }', async () => {
     const deps: ProviderTestDeps = {

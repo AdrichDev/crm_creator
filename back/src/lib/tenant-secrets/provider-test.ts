@@ -22,6 +22,7 @@ export type SecretProvider =
   | 'openai'
   | 'gemini'
   | 'anthropic'
+  | 'deepseek'
   | 'nanbuilders'
   | 'maps'
   | 'database'
@@ -247,6 +248,16 @@ export async function testProviderConnection(
             signal,
           });
           return r.ok ? { ok: true } : { ok: false, detail: `anthropic respondió ${r.status}` };
+        });
+      case 'deepseek':
+        // model-catalog S4/S8: DeepSeek expone un endpoint de modelos compatible OpenAI;
+        // la clave viaja SOLO en la cabecera Bearer (nunca en la URL, nunca en `detail`).
+        return await testWithTimeout(timeoutMs, async (signal) => {
+          const r = await fetchImpl('https://api.deepseek.com/models', {
+            headers: { Authorization: `Bearer ${value}` },
+            signal,
+          });
+          return r.ok ? { ok: true } : { ok: false, detail: `deepseek respondió ${r.status}` };
         });
       case 'nanbuilders': {
         // Proveedor INTERNO OpenAI-compatible: se comprueba la clave contra /models de SU base
