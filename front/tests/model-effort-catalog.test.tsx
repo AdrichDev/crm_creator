@@ -34,22 +34,6 @@ const AA_PAYLOAD = {
       ],
     },
     {
-      id: 'deepseek',
-      name: 'DeepSeek',
-      models: [
-        {
-          id: 'deepseek-reasoner',
-          name: 'DeepSeek reasoner',
-          provider: 'deepseek',
-          reasoning: true,
-          efforts: ['low', 'medium', 'high'],
-          defaultEffort: 'medium',
-          contextWindow: 131072,
-          verified: true,
-        },
-      ],
-    },
-    {
       id: 'nanbuilders',
       name: 'nanBuilders',
       models: [
@@ -62,6 +46,18 @@ const AA_PAYLOAD = {
           defaultEffort: null,
           contextWindow: 128000,
           verified: false,
+        },
+        {
+          // model-catalog S4: DeepSeek va de la mano de NanBuilders; el catálogo de AA lo
+          // sirve como modelo de NanBuilders, sin proveedor `deepseek` propio.
+          id: 'nan/deepseek-v4-flash',
+          name: 'DeepSeek V4 flash',
+          provider: 'nanbuilders',
+          reasoning: true,
+          efforts: ['low', 'medium', 'high'],
+          defaultEffort: 'medium',
+          contextWindow: 131072,
+          verified: true,
         },
       ],
     },
@@ -105,20 +101,35 @@ afterEach(() => {
 
 describe('ModelEffort · catálogo desde agents-agency', () => {
   for (const variant of ['opera', 'config'] as const) {
-    it(`variant='${variant}' pinta los proveedores y modelos del relé (incl. DeepSeek y nanBuilders)`, async () => {
+    it(`variant='${variant}' pinta los proveedores y modelos del relé (incl. los DeepSeek de nanBuilders)`, async () => {
       fetchMock.mockResolvedValue(jsonResponse(AA_PAYLOAD));
 
       const { container } = render(
         <ModelEffort variant={variant} model="gpt-5.6-luna" effort="low" onModel={noop} onEffort={noop} />,
       );
 
-      await waitFor(() => expect(optgroupLabels(container)).toEqual(['OpenAI', 'DeepSeek', 'nanBuilders']));
+      await waitFor(() => expect(optgroupLabels(container)).toEqual(['OpenAI', 'nanBuilders']));
       const { modelSel } = selects(container);
-      expect(optionValues(modelSel)).toEqual(['gpt-5.6-luna', 'deepseek-reasoner', 'nan/auto']);
+      expect(optionValues(modelSel)).toEqual(['gpt-5.6-luna', 'nan/auto', 'nan/deepseek-v4-flash']);
       // La etiqueta visible es la del catálogo (`name`), no el id.
-      expect(Array.from(modelSel.querySelectorAll('option')).map((o) => o.textContent)).toContain('DeepSeek reasoner');
+      expect(Array.from(modelSel.querySelectorAll('option')).map((o) => o.textContent)).toContain('DeepSeek V4 flash');
     });
   }
+
+  it('un modelo DeepSeek servido por nanBuilders se pinta bajo NanBuilders y no como proveedor propio', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(AA_PAYLOAD));
+
+    const { container } = render(
+      <ModelEffort variant="opera" model="nan/deepseek-v4-flash" effort="medium" onModel={noop} onEffort={noop} />,
+    );
+
+    await waitFor(() => expect(optgroupLabels(container)).toEqual(['OpenAI', 'nanBuilders']));
+    const option = Array.from(container.querySelectorAll('option')).find((o) => o.value === 'nan/deepseek-v4-flash');
+    expect(option).toBeDefined();
+    expect(option!.closest('optgroup')?.getAttribute('label')).toBe('nanBuilders');
+    // S4: sin optgroup "DeepSeek" — DeepSeek nunca es un proveedor directo del selector.
+    expect(container.querySelector('optgroup[label="DeepSeek"]')).toBeNull();
+  });
 
   it('si el relé falla, el selector usa la lista estática de respaldo (sin gpt-4.1-nano)', async () => {
     fetchMock.mockRejectedValue(new Error('relay caído'));
@@ -158,11 +169,12 @@ describe('ModelEffort · catálogo desde agents-agency', () => {
     fetchMock.mockResolvedValue(jsonResponse(AA_PAYLOAD));
     const onEffort = vi.fn();
 
-    render(<ModelEffort variant="opera" model="deepseek-reasoner" effort="xhigh" onModel={noop} onEffort={onEffort} />);
+    render(<ModelEffort variant="opera" model="nan/deepseek-v4-flash" effort="xhigh" onModel={noop} onEffort={onEffort} />);
 
-    // deepseek-reasoner declara efforts [low, medium, high]: 'xhigh' no aplica. El catálogo
-    // se carga en dos fases (respaldo estático → relé), así que el último valor emitido es el
-    // defaultEffort del catálogo del relé y todos los emitidos son válidos para el modelo.
+    // nan/deepseek-v4-flash (de nanBuilders) declara efforts [low, medium, high]: 'xhigh' no
+    // aplica. El catálogo se carga en dos fases (respaldo estático → relé), así que el último
+    // valor emitido es el defaultEffort del catálogo del relé y todos los emitidos son válidos
+    // para el modelo.
     await waitFor(() => expect(onEffort).toHaveBeenLastCalledWith('medium'));
     for (const [emitted] of onEffort.mock.calls) {
       expect(['low', 'medium', 'high']).toContain(emitted);
@@ -173,9 +185,9 @@ describe('ModelEffort · catálogo desde agents-agency', () => {
     fetchMock.mockResolvedValue(jsonResponse(AA_PAYLOAD));
     const onEffort = vi.fn();
 
-    render(<ModelEffort variant="opera" model="deepseek-reasoner" effort="high" onModel={noop} onEffort={onEffort} />);
+    render(<ModelEffort variant="opera" model="nan/deepseek-v4-flash" effort="high" onModel={noop} onEffort={onEffort} />);
 
-    await waitFor(() => expect(optgroupLabels(document.body as unknown as HTMLElement)).toContain('DeepSeek'));
+    await waitFor(() => expect(optgroupLabels(document.body as unknown as HTMLElement)).toEqual(['OpenAI', 'nanBuilders']));
     expect(onEffort).not.toHaveBeenCalled();
   });
 

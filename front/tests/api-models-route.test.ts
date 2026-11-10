@@ -35,22 +35,6 @@ const AA_PAYLOAD = {
       ],
     },
     {
-      id: 'deepseek',
-      name: 'DeepSeek',
-      models: [
-        {
-          id: 'deepseek-reasoner',
-          name: 'DeepSeek reasoner',
-          provider: 'deepseek',
-          reasoning: true,
-          efforts: ['low', 'medium', 'high'],
-          defaultEffort: 'low',
-          contextWindow: 131072,
-          verified: true,
-        },
-      ],
-    },
-    {
       id: 'nanbuilders',
       name: 'nanBuilders',
       models: [
@@ -63,6 +47,17 @@ const AA_PAYLOAD = {
           defaultEffort: null,
           contextWindow: 128000,
           verified: false,
+        },
+        {
+          // model-catalog S4: DeepSeek llega por NanBuilders (no hay proveedor `deepseek`).
+          id: 'nan/deepseek-v4-flash',
+          name: 'DeepSeek V4 flash',
+          provider: 'nanbuilders',
+          reasoning: true,
+          efforts: ['low', 'medium', 'high'],
+          defaultEffort: 'medium',
+          contextWindow: 131072,
+          verified: true,
         },
       ],
     },

@@ -42,13 +42,15 @@ export function effortLabel(id: string): string {
 // Niveles que declaran los modelos razonadores de OpenAI y de Anthropic.
 const OPENAI_EFFORTS = ['none', 'low', 'medium', 'high', 'xhigh'];
 const ANTHROPIC_EFFORTS = ['none', 'low', 'medium', 'high'];
-const DEEPSEEK_EFFORTS = ['low', 'medium', 'high'];
 
 /**
  * Respaldo estático (S8). Se usa SOLO cuando el relé `GET /api/models` falla.
  * NanBuilders no aparece aquí a propósito: AA solo lo publica si tiene
  * `NANBUILDERS_BASE_URL` + clave (fail-soft, spec S3), y sin esa configuración sus ids no
  * enrutan a ningún sitio.
+ *
+ * model-catalog S4: DeepSeek tampoco aparece como proveedor propio — va de la mano de
+ * NanBuilders, que sirve sus modelos como `nan/deepseek-…` cuando tiene la clave.
  */
 export const LLM_PROVIDERS: LlmProvider[] = [
   {
@@ -82,15 +84,6 @@ export const LLM_PROVIDERS: LlmProvider[] = [
       { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 (rápido)', reasoning: true, efforts: ANTHROPIC_EFFORTS, defaultEffort: 'low' },
     ],
   },
-  {
-    id: 'deepseek',
-    label: 'DeepSeek',
-    supportsEffort: true,
-    models: [
-      { id: 'deepseek-reasoner', label: 'DeepSeek reasoner', reasoning: true, efforts: DEEPSEEK_EFFORTS, defaultEffort: 'low' },
-      { id: 'deepseek-chat', label: 'DeepSeek chat (económico)', reasoning: false, efforts: [], defaultEffort: null },
-    ],
-  },
 ];
 
 /** Proveedor del modelo según la lista de respaldo (última opción: el primero). */
@@ -103,5 +96,5 @@ export function providerOfModel(model: string): LlmProvider {
  * Con catálogo disponible manda `efforts` del propio modelo (spec S8), no este prefijo.
  */
 export function modelSupportsEffort(model: string): boolean {
-  return model.startsWith('gpt-5') || model.startsWith('claude') || model.startsWith('deepseek-r');
+  return model.startsWith('gpt-5') || model.startsWith('claude');
 }

@@ -22,7 +22,6 @@ export type SecretProvider =
   | 'openai'
   | 'gemini'
   | 'anthropic'
-  | 'deepseek'
   | 'nanbuilders'
   | 'maps'
   | 'database'
@@ -249,16 +248,6 @@ export async function testProviderConnection(
           });
           return r.ok ? { ok: true } : { ok: false, detail: `anthropic respondió ${r.status}` };
         });
-      case 'deepseek':
-        // model-catalog S4/S8: DeepSeek expone un endpoint de modelos compatible OpenAI;
-        // la clave viaja SOLO en la cabecera Bearer (nunca en la URL, nunca en `detail`).
-        return await testWithTimeout(timeoutMs, async (signal) => {
-          const r = await fetchImpl('https://api.deepseek.com/models', {
-            headers: { Authorization: `Bearer ${value}` },
-            signal,
-          });
-          return r.ok ? { ok: true } : { ok: false, detail: `deepseek respondió ${r.status}` };
-        });
       case 'nanbuilders': {
         // Proveedor INTERNO OpenAI-compatible: se comprueba la clave contra /models de SU base
         // URL. Sin NANBUILDERS_BASE_URL configurada no hay destino y se falla cerrado (nunca se
@@ -365,6 +354,11 @@ export async function testProviderConnection(
         const result = await (deps.testMail ?? testMailConnection)(cfg);
         return { ok: result.imap && result.smtp, ...(result.detail ? { detail: result.detail } : {}) };
       }
+      default:
+        // model-catalog S4: el switch es exhaustivo sobre los proveedores del catálogo. Un
+        // nombre heredado (p. ej. una fila vieja `deepseek`) no abre NINGUNA conexión: se falla
+        // cerrado con un detail fijo (nunca el value).
+        return { ok: false, detail: 'proveedor no soportado' };
     }
   } catch (e) {
     // F-04/S2: un destino no público es un rechazo del guard anti-SSRF, no un fallo de
