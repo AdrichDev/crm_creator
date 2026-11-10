@@ -12,7 +12,13 @@
 
 import { test, describe, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { testProviderConnection, postgresConnectConfig, type ProviderTestDeps, type OneShotPool } from '../provider-test.js';
+import {
+  testProviderConnection,
+  postgresConnectConfig,
+  type ProviderTestDeps,
+  type OneShotPool,
+  type SecretProvider,
+} from '../provider-test.js';
 import type { LookupFn } from '../../ssrf.js';
 
 const SECRET_VALUE = 'sk-super-secret-value-1234';
@@ -132,52 +138,27 @@ describe('testProviderConnection — openai/gemini/anthropic (fetch)', () => {
   });
 });
 
-// model-catalog S8: DeepSeek suma slot BYOK y su prueba de clave va contra SU endpoint de
-// modelos (compatible OpenAI, Bearer), con el mismo mapeo 200/401 que openai/anthropic.
-describe('testProviderConnection — deepseek (endpoint de modelos del proveedor)', () => {
-  test('llama a https://api.deepseek.com/models con Bearer del value y 200 → { ok: true }', async () => {
-    const calls: Array<{ url: string; init?: RequestInit }> = [];
+// model-catalog S4: DeepSeek NO es proveedor directo ("deepseek entra porque va de la mano
+// de nanBuilders"), así que `testProviderConnection` ya no lo conoce: su prueba de clave falla
+// cerrada y NO abre ninguna conexión (nada de api.deepseek.com).
+describe('testProviderConnection — proveedor fuera del catálogo (deepseek)', () => {
+  test('no llama a fetch y falla cerrado, sin filtrar el value', async () => {
+    let fetchCalls = 0;
     const deps: ProviderTestDeps = {
-      fetchImpl: fakeFetch(async (url, init) => {
-        calls.push({ url, init });
+      fetchImpl: fakeFetch(async () => {
+        fetchCalls += 1;
         return jsonResponse(200, { data: [] });
       }),
       createPool: unusedPool,
     };
 
-    const result = await testProviderConnection('deepseek', SECRET_VALUE, deps);
+    // El nombre sigue llegando desde fuera (p. ej. una fila vieja del panel): se fuerza el tipo
+    // para comprobar el comportamiento en tiempo de ejecución.
+    const stale = 'deepseek' as unknown as SecretProvider;
+    const result = await testProviderConnection(stale, SECRET_VALUE, deps);
 
-    assert.deepEqual(result, { ok: true });
-    assert.equal(calls.length, 1);
-    assert.equal(calls[0].url, 'https://api.deepseek.com/models');
-    assert.deepEqual(calls[0].init?.headers, { Authorization: `Bearer ${SECRET_VALUE}` });
-    assert.ok(calls[0].init?.signal, 'la petición va con AbortSignal (timeout corto)');
-    assertNoValueLeaked(result, SECRET_VALUE);
-  });
-
-  test('401 del proveedor → { ok: false, detail "deepseek respondió 401" } sin filtrar el value', async () => {
-    const deps: ProviderTestDeps = {
-      fetchImpl: fakeFetch(async () => jsonResponse(401, { error: 'invalid key' }, false)),
-      createPool: unusedPool,
-    };
-
-    const result = await testProviderConnection('deepseek', SECRET_VALUE, deps);
-
-    assert.deepEqual(result, { ok: false, detail: 'deepseek respondió 401' });
-    assertNoValueLeaked(result, SECRET_VALUE);
-  });
-
-  test('fallo de red → detail genérico (no se distingue del resto de proveedores)', async () => {
-    const deps: ProviderTestDeps = {
-      fetchImpl: fakeFetch(async () => {
-        throw new Error(`network error with ${SECRET_VALUE}`);
-      }),
-      createPool: unusedPool,
-    };
-
-    const result = await testProviderConnection('deepseek', SECRET_VALUE, deps);
-
-    assert.deepEqual(result, { ok: false, detail: 'timeout o error de conexión al contactar al recurso' });
+    assert.equal(fetchCalls, 0, 'un proveedor no soportado no debe abrir ninguna conexión');
+    assert.deepEqual(result, { ok: false, detail: 'proveedor no soportado' });
     assertNoValueLeaked(result, SECRET_VALUE);
   });
 });

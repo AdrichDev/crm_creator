@@ -6,8 +6,8 @@ import assert from 'node:assert/strict';
 import { TENANT_SECRET_CATALOG, findSecretSlot, ENV_KEY_NAME_PATTERN, inferScope } from '../catalog.js';
 
 describe('TENANT_SECRET_CATALOG', () => {
-  test('tiene exactamente los 17 slots con scope/envVarName/provider exactos', () => {
-    assert.equal(TENANT_SECRET_CATALOG.length, 17);
+  test('tiene exactamente los 16 slots con scope/envVarName/provider exactos', () => {
+    assert.equal(TENANT_SECRET_CATALOG.length, 16);
 
     const byName = new Map(TENANT_SECRET_CATALOG.map((s) => [s.name, s]));
 
@@ -23,11 +23,11 @@ describe('TENANT_SECRET_CATALOG', () => {
     assert.deepEqual(byName.get('NANBUILDERS_API_KEY'), {
       name: 'NANBUILDERS_API_KEY', label: 'nanBuilders', scope: 'BACKEND_SECRET', provider: 'nanbuilders', group: 'ai',
     });
-    // model-catalog S8: DeepSeek entra como proveedor LLM de primera clase (slot BYOK del
-    // panel), con el mismo naming que los demás slots de IA.
-    assert.deepEqual(byName.get('DEEPSEEK_API_KEY'), {
-      name: 'DEEPSEEK_API_KEY', label: 'DeepSeek', scope: 'BACKEND_SECRET', provider: 'deepseek', group: 'ai',
-    });
+    // model-catalog S4: DeepSeek NO es proveedor directo — "deepseek entra porque va de la
+    // mano de nanBuilders". Sus modelos se sirven como modelos de NanBuilders
+    // (`nan/deepseek-…`), así que el panel del tenant no expone slot BYOK de DeepSeek.
+    assert.equal(TENANT_SECRET_CATALOG.some((s) => (s.name as string) === 'DEEPSEEK_API_KEY'), false);
+    assert.deepEqual(TENANT_SECRET_CATALOG.filter((s) => (s.provider as string) === 'deepseek'), []);
     assert.deepEqual(byName.get('GOOGLE_MAPS_API_KEY'), {
       name: 'GOOGLE_MAPS_API_KEY', label: 'Google Maps', scope: 'FRONTEND_PUBLIC', provider: 'maps',
       envVarName: 'NEXT_PUBLIC_GOOGLE_MAPS_API_KEY', group: 'maps',
@@ -81,6 +81,8 @@ describe('TENANT_SECRET_CATALOG', () => {
   test('findSecretSlot devuelve undefined (no lanza) para un nombre fuera del catálogo', () => {
     assert.equal(findSecretSlot('FOO'), undefined);
     assert.equal(findSecretSlot(''), undefined);
+    // model-catalog S4: el slot de DeepSeek se retiró del catálogo.
+    assert.equal(findSecretSlot('DEEPSEEK_API_KEY'), undefined);
   });
 });
 

@@ -41,22 +41,6 @@ const AA_PAYLOAD = {
       ],
     },
     {
-      id: 'deepseek',
-      name: 'DeepSeek',
-      models: [
-        {
-          id: 'deepseek-reasoner',
-          name: 'DeepSeek reasoner',
-          provider: 'deepseek',
-          reasoning: true,
-          efforts: ['low', 'medium', 'high'],
-          defaultEffort: 'low',
-          contextWindow: 131072,
-          verified: true,
-        },
-      ],
-    },
-    {
       id: 'nanbuilders',
       name: 'nanBuilders',
       models: [
@@ -69,6 +53,18 @@ const AA_PAYLOAD = {
           defaultEffort: null,
           contextWindow: 128000,
           verified: false,
+        },
+        {
+          // model-catalog S4: DeepSeek va de la mano de NanBuilders; AA lo sirve como modelo
+          // de NanBuilders, nunca como proveedor propio.
+          id: 'nan/deepseek-v4-flash',
+          name: 'DeepSeek V4 flash',
+          provider: 'nanbuilders',
+          reasoning: true,
+          efforts: ['low', 'medium', 'high'],
+          defaultEffort: 'medium',
+          contextWindow: 131072,
+          verified: true,
         },
       ],
     },
@@ -101,8 +97,8 @@ describe('parseModelCatalog (contrato S7 → forma del selector)', () => {
     const providers = parseModelCatalog(AA_PAYLOAD);
 
     expect(providers).not.toBeNull();
-    expect(providers!.map((p) => p.id)).toEqual(['openai', 'deepseek', 'nanbuilders']);
-    expect(providers!.map((p) => p.label)).toEqual(['OpenAI', 'DeepSeek', 'nanBuilders']);
+    expect(providers!.map((p) => p.id)).toEqual(['openai', 'nanbuilders']);
+    expect(providers!.map((p) => p.label)).toEqual(['OpenAI', 'nanBuilders']);
 
     const openai = providers!.find((p) => p.id === 'openai')!;
     expect(openai.models.map((m) => m.id)).toEqual(['gpt-5.6-luna', 'gpt-5.4-nano']);
@@ -172,7 +168,7 @@ describe('fetchModelCatalog (relé → selector, con respaldo estático)', () =>
     expect((init as RequestInit).headers).toMatchObject({ Authorization: 'Bearer operator-token' });
     expect((init as RequestInit).cache).toBe('no-store');
 
-    expect(providers.map((p) => p.id)).toEqual(['openai', 'deepseek', 'nanbuilders']);
+    expect(providers.map((p) => p.id)).toEqual(['openai', 'nanbuilders']);
   });
 
   it('sin sesión: no manda Authorization pero sigue pidiendo el catálogo', async () => {
@@ -222,10 +218,11 @@ describe('lista estática de respaldo (front/lib/config/models.ts)', () => {
     expect(allModels.some((id) => id.startsWith('claude'))).toBe(true);
   });
 
-  it('incluye DeepSeek como proveedor de primera clase', () => {
-    const deepseek = LLM_PROVIDERS.find((p) => p.id === 'deepseek');
-    expect(deepseek).toBeDefined();
-    expect(deepseek!.models.map((m) => m.id)).toContain('deepseek-reasoner');
+  it('no ofrece DeepSeek como proveedor directo: sus modelos llegan como modelos de NanBuilders', () => {
+    // model-catalog S4: "deepseek entra porque va de la mano de nanBuilders". Sin proveedor
+    // `deepseek` y sin ids sueltos `deepseek-*` en la lista de respaldo.
+    expect(LLM_PROVIDERS.map((p) => p.id)).not.toContain('deepseek');
+    expect(allModels.filter((id) => id.startsWith('deepseek'))).toEqual([]);
   });
 
   it('todo modelo razonador declara efforts y un defaultEffort válido', () => {
