@@ -12,7 +12,8 @@ services:
   # n8n consume los eventos de dominio que emite el back (best-effort). El CRM
   # NUNCA depende de que este servicio esté arriba.
   n8n:
-    image: n8nio/n8n:2.58.0
+    # Same version as the agents-agency n8n, where the CRM workflows were tested.
+    image: n8nio/n8n:2.25.7
     container_name: crm-n8n
     profiles: ["n8n"]
     restart: unless-stopped
