@@ -5,7 +5,10 @@ services:
   # Supabase. Tenancy ahora es row-level en el schema `crm` de Supabase; el back usa
   # DATABASE_URL al pooler de Supabase. No hay schema-per-tenant ni pool docker.
 
-  # Automatizaciones (perfil opcional): docker compose --profile n8n up -d
+  # Automatizaciones (perfil opcional). Variables en back/.env (único .env del back),
+  # leídas con --env-file: solo se interpolan las que este archivo referencia.
+  # Arrancar: cd back && npm run n8n:up
+  #   (o desde la raíz: docker compose --env-file back/.env --profile n8n up -d)
   # n8n consume los eventos de dominio que emite el back (best-effort). El CRM
   # NUNCA depende de que este servicio esté arriba.
   n8n:
@@ -30,10 +33,10 @@ services:
       # Clave de cifrado de credenciales de n8n: OBLIGATORIA (sin valor por defecto conocido).
       # Si ya arrancaste n8n con el antiguo default, define en tu .env ese mismo valor o n8n
       # no podrá descifrar las credenciales guardadas en el volumen.
-      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:?Define N8N_ENCRYPTION_KEY en tu .env}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:?Define N8N_ENCRYPTION_KEY en back/.env}
       # MISMO secreto que el back (AUTOMATION_WEBHOOK_SECRET). El dispatcher lo lee
       # via $env para recomputar el HMAC y rechazar firmas invalidas.
-      - AUTOMATION_WEBHOOK_SECRET=${AUTOMATION_WEBHOOK_SECRET}
+      - AUTOMATION_WEBHOOK_SECRET=${AUTOMATION_WEBHOOK_SECRET:?Define AUTOMATION_WEBHOOK_SECRET en back/.env}
     volumes:
       - crm_n8n_data:/home/node/.n8n
 

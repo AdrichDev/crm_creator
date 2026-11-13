@@ -19,7 +19,10 @@
     "test:e2e": "node --import tsx --test \"src/**/*.e2e.test.ts\"",
     "test:e2e:local": "node -r dotenv/config --import tsx --test \"src/**/*.e2e.test.ts\" dotenv_config_path=.env.test",
     "test:all": "node --import tsx --test \"src/**/*.test.ts\"",
-    "start:test": "node -r dotenv/config --import tsx src/server.ts dotenv_config_path=.env.test"
+    "start:test": "node -r dotenv/config --import tsx src/server.ts dotenv_config_path=.env.test",
+    "n8n:up": "docker compose -f ../docker-compose.yml --env-file .env --profile n8n up -d n8n",
+    "n8n:down": "docker compose -f ../docker-compose.yml --env-file .env --profile n8n down",
+    "n8n:logs": "docker compose -f ../docker-compose.yml --env-file .env --profile n8n logs -f n8n"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

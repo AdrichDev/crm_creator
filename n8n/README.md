@@ -95,9 +95,10 @@ datos de la cita, sin enlaces con token. `employeeName` se renderiza condicional
    NODE_FUNCTION_ALLOW_BUILTIN=crypto      # permite require('crypto') en el Code node
    N8N_BLOCK_ENV_ACCESS_IN_NODE=false      # permite leer $env.AUTOMATION_WEBHOOK_SECRET en el Code node
    ```
-2. **Arrancar n8n**:
+2. **Arrancar n8n** (lee `N8N_ENCRYPTION_KEY` y `AUTOMATION_WEBHOOK_SECRET` de `back/.env`):
    ```bash
-   docker compose --profile n8n up -d
+   cd back && npm run n8n:up        # n8n:down / n8n:logs
+   # equivalente desde la raíz: docker compose --env-file back/.env --profile n8n up -d
    ```
    Abre http://localhost:5679 y crea el usuario owner.
 3. **Credencial SMTP**: en n8n → *Credentials* → *SMTP* → crea "SMTP CRM" con tu proveedor de correo.
