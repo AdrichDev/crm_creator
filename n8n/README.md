@@ -84,7 +84,7 @@ datos de la cita, sin enlaces con token. `employeeName` se renderiza condicional
 
 1. **Variables** (`.env` en la raíz del repo / entorno del back):
    ```env
-   AUTOMATION_WEBHOOK_URL=http://localhost:5678/webhook/crm-automation
+   AUTOMATION_WEBHOOK_URL=http://localhost:5679/webhook/crm-automation
    AUTOMATION_WEBHOOK_SECRET=<secreto-largo-aleatorio>   # mismo valor en back y n8n
    N8N_ENCRYPTION_KEY=<clave-cifrado-credenciales-n8n>
    # opcionales (defaults en env.ts): AUTOMATION_MAX_ATTEMPTS=3  AUTOMATION_TIMEOUT_MS=5000
@@ -99,7 +99,7 @@ datos de la cita, sin enlaces con token. `employeeName` se renderiza condicional
    ```bash
    docker compose --profile n8n up -d
    ```
-   Abre http://localhost:5678 y crea el usuario owner.
+   Abre http://localhost:5679 y crea el usuario owner.
 3. **Credencial SMTP**: en n8n → *Credentials* → *SMTP* → crea "SMTP CRM" con tu proveedor de correo.
 4. **Importar el workflow**: *Workflows* → *Import from File* → `n8n/workflows/crm/crm-automation-dispatcher.json`.
    - Reasigna la credencial SMTP en los dos nodos *Email* (el JSON trae el placeholder `REPLACE_WITH_SMTP_CREDENTIAL_ID`).
@@ -110,7 +110,7 @@ datos de la cita, sin enlaces con token. `employeeName` se renderiza condicional
 ## API key de n8n (para el MCP / despliegue automatizado)
 
 El MCP `n8n-mcp` (gestión de workflows desde Claude) necesita:
-- `N8N_API_URL=http://localhost:5678` y `N8N_API_KEY` (n8n → *Settings* → *n8n API* → *Create API Key*).
+- `N8N_API_URL=http://localhost:5679` y `N8N_API_KEY` (n8n → *Settings* → *n8n API* → *Create API Key*).
 - **Nota**: el MCP bloquea `localhost` por *SSRF protection (strict mode)*. Para desplegar workflows
   vía MCP, expón n8n por un host/alias no-localhost o desactiva el modo estricto del MCP. Mientras tanto,
   el despliegue es manual (Import from File, arriba).
@@ -187,7 +187,7 @@ back/src/lib/calendarEmitter.ts --POST firmado--> n8n Webhook (/webhook/crm-cale
 
 1. **Variable adicional** (junto a las de `AUTOMATION_WEBHOOK_*`, arriba):
    ```env
-   CALENDAR_WEBHOOK_URL=http://localhost:5678/webhook/crm-calendar-push
+   CALENDAR_WEBHOOK_URL=http://localhost:5679/webhook/crm-calendar-push
    ```
 2. **Credencial Google Calendar OAuth2**: en n8n → *Credentials* → *Google Calendar
    OAuth2 API* → autoriza con la cuenta que va a recibir los eventos (o una cuenta de

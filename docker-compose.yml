@@ -13,13 +13,14 @@ services:
     container_name: crm-n8n
     profiles: ["n8n"]
     restart: unless-stopped
+    # Host port 5679: agents-agency runs its own n8n on 5678, so both can run at once.
     ports:
-      - "5678:5678"
+      - "5679:5678"
     environment:
       - N8N_HOST=localhost
       - N8N_PORT=5678
       - N8N_PROTOCOL=http
-      - WEBHOOK_URL=http://localhost:5678/
+      - WEBHOOK_URL=http://localhost:5679/
       - GENERIC_TIMEZONE=Europe/Madrid
       # Necesario para que el nodo Code del dispatcher pueda usar require('crypto')
       # y verificar la firma HMAC del webhook.
