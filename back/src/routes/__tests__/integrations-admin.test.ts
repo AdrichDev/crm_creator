@@ -3,16 +3,29 @@
 // real, SIN tocar la BD: los casos probados (401 sin token, 404 servicio no-admin, 200
 // connect) resuelven antes de cualquier consulta Prisma. La aislación real (tenant no
 // puede tocar businessId=null) la garantiza el gate: sin el service token → 401.
+//
+// El caso 200 (connect admin) sí pasa por `authorizationUrl`, que resuelve la credencial
+// de plataforma antes de caer al env: se instala un Prisma de mentira en
+// `globalThis.prisma` (mismo mecanismo que `_fake-prisma` en los tests de rutas) para que
+// esa lectura responda "no hay valor" en vez de ir a la base de datos. Así el test no
+// depende de que exista un Postgres detrás de DATABASE_URL (en el CI no lo hay) y el
+// resultado que fija —200 + URL OAuth con state— es el mismo en cualquier entorno.
 
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import type { Server } from 'node:http';
-import { integrationsRouter } from '../integrations.js';
 
 const TOKEN = 'operator-secret-999';
 let server: Server;
 let base: string;
+
+// Sin filas de plataforma: `readPlatformSecret` devuelve null y la resolución de creds
+// cae al env que fija `before()`. Se instala ANTES del import dinámico del router.
+const prismaFake = { platformSetting: { findUnique: async () => null } };
+const globalForPrisma = globalThis as unknown as { prisma?: unknown };
+globalForPrisma.prisma = prismaFake;
+const { integrationsRouter } = await import('../integrations.js');
 
 before(async () => {
   process.env.OPERATOR_SERVICE_TOKEN = TOKEN;
@@ -34,6 +47,7 @@ before(async () => {
 
 after(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
+  delete globalForPrisma.prisma;
 });
 
 function post(path: string, token?: string) {

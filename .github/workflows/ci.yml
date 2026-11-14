@@ -17,8 +17,8 @@ jobs:
       # `prisma generate` (Prisma 7 config) resolves DATABASE_URL eagerly but never connects.
       DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm

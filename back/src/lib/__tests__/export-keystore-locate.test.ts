@@ -16,7 +16,13 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import * as path from 'node:path';
 import { locateKeytool } from '../export-keystore.js';
+
+// Las rutas candidatas se construyen con el MISMO `path.join` que usa la
+// implementacion (`locateKeytool`), no con literales con separador `\`: asi el
+// stub `exists` y la expectativa coinciden tanto en Windows como en el runner
+// Linux del CI (donde `path.join` produce `/`).
 
 const ORIGINAL_JAVA_HOME = process.env.JAVA_HOME;
 
@@ -30,18 +36,20 @@ function withoutJavaHome<T>(fn: () => T): T {
 }
 
 test('5.2 locateKeytool: usa JAVA_HOME/bin/keytool si existe', async () => {
-  process.env.JAVA_HOME = 'C:\\jdk-17';
+  const javaHome = 'C:\\jdk-17';
+  const esperado = path.join(javaHome, 'bin', 'keytool.exe');
+  process.env.JAVA_HOME = javaHome;
   try {
     const execCalls: string[] = [];
     const result = await locateKeytool({
       platform: 'win32',
-      exists: (p) => p === 'C:\\jdk-17\\bin\\keytool.exe',
+      exists: (p) => p === esperado,
       exec: (cmd) => {
         execCalls.push(cmd);
         return { status: 1, stdout: '', stderr: '' };
       },
     });
-    assert.equal(result, 'C:\\jdk-17\\bin\\keytool.exe');
+    assert.equal(result, esperado);
     assert.equal(execCalls.length, 0, 'no debe ejecutar nada si JAVA_HOME resuelve');
   } finally {
     delete process.env.JAVA_HOME;
@@ -51,20 +59,22 @@ test('5.2 locateKeytool: usa JAVA_HOME/bin/keytool si existe', async () => {
 
 test('5.2 locateKeytool: caso shim — where java resuelve a javapath sin keytool, java.home lo tiene', () =>
   withoutJavaHome(async () => {
-    const shimJavaExe = 'C:\\Program Files\\Common Files\\Oracle\\Java\\javapath\\java.exe';
-    const realJdkBin = 'C:\\Program Files\\Eclipse Adoptium\\jdk-17\\bin';
+    const shimJavaExe = path.join('C:\\Program Files\\Common Files\\Oracle\\Java\\javapath', 'java.exe');
+    const realJdkHome = 'C:\\Program Files\\Eclipse Adoptium\\jdk-17';
+    const realJdkBin = path.join(realJdkHome, 'bin');
+    const realKeytool = path.join(realJdkBin, 'keytool.exe');
 
     const result = await locateKeytool({
       platform: 'win32',
       // Solo existe el keytool del JDK real; el del shim (mismo dir que java) NO.
-      exists: (p) => p === `${realJdkBin}\\keytool.exe`,
+      exists: (p) => p === realKeytool,
       exec: (cmd, args) => {
         if (cmd === 'java' && args.includes('-XshowSettings:properties')) {
           // java.home va por STDERR, apuntando al JDK real (NO al dir del shim).
           return {
             status: 0,
             stdout: '',
-            stderr: `Property settings:\n    java.home = C:\\Program Files\\Eclipse Adoptium\\jdk-17\njava version "17.0.9"\n`,
+            stderr: `Property settings:\n    java.home = ${realJdkHome}\njava version "17.0.9"\n`,
           };
         }
         if (cmd === 'where' && args[0] === 'keytool') {
@@ -75,7 +85,7 @@ test('5.2 locateKeytool: caso shim — where java resuelve a javapath sin keytoo
       },
     });
 
-    assert.equal(result, `${realJdkBin}\\keytool.exe`);
+    assert.equal(result, realKeytool);
     assert.notEqual(result, shimJavaExe, 'nunca debe intentar el dir del shim');
   }));
 

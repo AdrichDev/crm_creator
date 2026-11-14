@@ -1,0 +1,14 @@
+# Falsos positivos del rule `generic-api-key`, revisados uno a uno: son valores
+# PLACEHOLDER de tests (contraseñas de fixtures, un client secret de mentira y claves
+# de localStorage), nunca credenciales reales. Se ignoran por FINGERPRINT EXACTO
+# (commit:archivo:regla:linea), no por carpeta ni por regla: cualquier secreto nuevo,
+# en estos mismos archivos o en cualquier otro, sigue rompiendo el scan.
+569fddb028783725ab3dfd4df17ae58ffbd50635:back/src/routes/__tests__/auth-client-register.e2e.test.ts:generic-api-key:31
+ee6a351c9ebd5d8ef7ce25b58b7eb3ed98cf82ce:back/src/routes/__tests__/auth-client-register.e2e.test.ts:generic-api-key:112
+ee6a351c9ebd5d8ef7ce25b58b7eb3ed98cf82ce:back/src/routes/__tests__/auth-client-register.e2e.test.ts:generic-api-key:151
+e26670b8410469296b34e0d492e392e008d17daa:back/src/routes/__tests__/auth-client-register.e2e.test.ts:generic-api-key:116
+e26670b8410469296b34e0d492e392e008d17daa:back/src/routes/__tests__/auth-client-register.e2e.test.ts:generic-api-key:155
+cdd8c9f3d6e1ef031e64447636f2284b4f959e18:back/src/routes/__tests__/platform-oauth.route.test.ts:generic-api-key:164
+f4223cc79cc3d7b1e81b42f03bc323e37ef45cfa:front/tests/calendar-section.test.tsx:generic-api-key:29
+be27b31d9b2b61ffe55526c770e6c52ef910278e:front/lib/fichaje-machine.ts:generic-api-key:41
+be27b31d9b2b61ffe55526c770e6c52ef910278e:front/lib/fichaje-machine.ts:generic-api-key:42
